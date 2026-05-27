@@ -8,6 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/redis/go-redis/v9 v9.19.0
+	github.com/shopspring/decimal v1.4.0
 	github.com/spf13/viper v1.21.0
 )
 
