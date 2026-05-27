@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -131,4 +132,159 @@ func (r *JournalRepository) AddLines(ctx context.Context, tenantID uuid.UUID, jo
 	}
 
 	return result, nil
+}
+
+// UpdateStatus updates the docstatus of a journal entry and records the transition.
+func (r *JournalRepository) UpdateStatus(ctx context.Context, tenantID uuid.UUID, journalID uuid.UUID, newStatus int16, changedBy uuid.UUID, changedByName *string, action model.VoucherAction, reason *string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Get current status
+	var oldStatus int16
+	var createdAt time.Time
+	err = tx.QueryRow(ctx, `SELECT docstatus, created_at FROM journal_entries WHERE id = $1 AND tenant_id = $2`, journalID, tenantID).Scan(&oldStatus, &createdAt)
+	if err != nil {
+		return fmt.Errorf("get current status: %w", err)
+	}
+
+	// Update status
+	_, err = tx.Exec(ctx, `UPDATE journal_entries SET docstatus = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`, newStatus, journalID, tenantID)
+	if err != nil {
+		return fmt.Errorf("update status: %w", err)
+	}
+
+	// Record state transition
+	transition := &model.VoucherStateTransition{
+		ID:             uuid.New(),
+		JournalID:      journalID,
+		TenantID:       tenantID,
+		FromStatus:     model.VoucherStatus(fmt.Sprintf("%d", oldStatus)),
+		ToStatus:       model.VoucherStatus(fmt.Sprintf("%d", newStatus)),
+		Action:         action,
+		ChangedBy:      changedBy,
+		ChangedByName:  changedByName,
+		Reason:         reason,
+		CreatedAt:      time.Now(),
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO voucher_state_transitions (id, journal_id, tenant_id, from_status, to_status, action, changed_by, changed_by_name, reason, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		transition.ID, transition.JournalID, transition.TenantID, transition.FromStatus, transition.ToStatus,
+		transition.Action, transition.ChangedBy, transition.ChangedByName, transition.Reason, transition.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("record state transition: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+// GetStatus retrieves the current docstatus of a journal entry.
+func (r *JournalRepository) GetStatus(ctx context.Context, tenantID uuid.UUID, journalID uuid.UUID) (int16, error) {
+	var status int16
+	err := r.pool.QueryRow(ctx, `SELECT docstatus FROM journal_entries WHERE id = $1 AND tenant_id = $2`, journalID, tenantID).Scan(&status)
+	if err != nil {
+		return 0, fmt.Errorf("get status: %w", err)
+	}
+	return status, nil
+}
+
+// GetPostedByPeriod retrieves all posted (docstatus=1) journal entries for a given period.
+func (r *JournalRepository) GetPostedByPeriod(ctx context.Context, tenantID uuid.UUID, periodNo string) ([]model.JournalEntry, error) {
+	query := `
+		SELECT id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark,
+		       docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by,
+		       created_at, updated_at
+		FROM journal_entries
+		WHERE tenant_id = $1 AND docstatus = 1 AND TO_CHAR(posting_date, 'YYYY-MM') = $2
+		ORDER BY posting_date DESC, voucher_no DESC`
+
+	rows, err := r.pool.Query(ctx, query, tenantID, periodNo)
+	if err != nil {
+		return nil, fmt.Errorf("get posted by period: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []model.JournalEntry
+	for rows.Next() {
+		var je model.JournalEntry
+		if err := rows.Scan(
+			&je.ID, &je.VoucherNo, &je.VoucherType, &je.PostingDate, &je.CompanyID,
+			&je.TenantID, &je.Remark, &je.DocStatus, &je.ReversedID, &je.ReversalID,
+			&je.SubmittedBy, &je.SubmittedAt, &je.CreatedBy, &je.CreatedAt, &je.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan journal entry: %w", err)
+		}
+		entries = append(entries, je)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate journal entries: %w", err)
+	}
+	return entries, nil
+}
+
+// GetLines retrieves all journal entry lines for a given journal entry.
+func (r *JournalRepository) GetLines(ctx context.Context, tenantID uuid.UUID, journalEntryID uuid.UUID) ([]model.JournalEntryLine, error) {
+	query := `
+		SELECT id, journal_entry_id, account_id, debit, credit, debit_ccy, credit_ccy,
+		       account_ccy, exchange_rate, party_type, party_id, cost_center_id, project_id,
+		       user_remark, reconciled, tenant_id
+		FROM journal_entry_lines
+		WHERE journal_entry_id = $1 AND tenant_id = $2`
+
+	rows, err := r.pool.Query(ctx, query, journalEntryID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("get lines: %w", err)
+	}
+	defer rows.Close()
+
+	var lines []model.JournalEntryLine
+	for rows.Next() {
+		var line model.JournalEntryLine
+		if err := rows.Scan(
+			&line.ID, &line.JournalEntryID, &line.AccountID, &line.Debit, &line.Credit,
+			&line.DebitCcy, &line.CreditCcy, &line.AccountCcy, &line.ExchangeRate,
+			&line.PartyType, &line.PartyID, &line.CostCenterID, &line.ProjectID,
+			&line.UserRemark, &line.Reconciled, &line.TenantID,
+		); err != nil {
+			return nil, fmt.Errorf("scan line: %w", err)
+		}
+		lines = append(lines, line)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate lines: %w", err)
+	}
+	return lines, nil
+}
+
+// GetTransitions retrieves all state transitions for a given journal entry.
+func (r *JournalRepository) GetTransitions(ctx context.Context, tenantID uuid.UUID, journalID uuid.UUID) ([]model.VoucherStateTransition, error) {
+	query := `
+		SELECT id, journal_id, tenant_id, from_status, to_status, action, changed_by, changed_by_name, reason, created_at
+		FROM voucher_state_transitions
+		WHERE journal_id = $1 AND tenant_id = $2
+		ORDER BY created_at ASC`
+
+	rows, err := r.pool.Query(ctx, query, journalID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("get transitions: %w", err)
+	}
+	defer rows.Close()
+
+	var transitions []model.VoucherStateTransition
+	for rows.Next() {
+		var t model.VoucherStateTransition
+		if err := rows.Scan(
+			&t.ID, &t.JournalID, &t.TenantID, &t.FromStatus, &t.ToStatus,
+			&t.Action, &t.ChangedBy, &t.ChangedByName, &t.Reason, &t.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan transition: %w", err)
+		}
+		transitions = append(transitions, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate transitions: %w", err)
+	}
+	return transitions, nil
 }

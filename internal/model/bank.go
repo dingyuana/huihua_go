@@ -8,6 +8,56 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// BankTransactionStatus represents the status of a bank transaction.
+type BankTransactionStatus string
+
+const (
+	BankTxnStatusPending    BankTransactionStatus = "pending"
+	BankTxnStatusMatched    BankTransactionStatus = "matched"
+	BankTxnStatusReconciled BankTransactionStatus = "reconciled"
+	BankTxnStatusExcluded   BankTransactionStatus = "excluded"
+)
+
+// BankTransactionImport represents a single row from Excel import.
+type BankTransactionImport struct {
+	RowNumber       int      `json:"row_number"`        // Excel row number (1-indexed, header=1)
+	TransactionDate string   `json:"transaction_date"`  // Date string from Excel
+	VoucherNo       *string  `json:"voucher_no,omitempty"`
+	Description     string   `json:"description"`
+	Income          *float64 `json:"income,omitempty"`  // Positive if income
+	Expense         *float64 `json:"expense,omitempty"`  // Positive if expense
+	Balance         *float64 `json:"balance,omitempty"`
+	Counterparty    *string  `json:"counterparty,omitempty"`
+}
+
+// BankTxnFilter represents query filters for bank transaction listing.
+type BankTxnFilter struct {
+	StartDate      *time.Time             `json:"start_date,omitempty"`
+	EndDate        *time.Time             `json:"end_date,omitempty"`
+	BankAccountID  *uuid.UUID             `json:"bank_account_id,omitempty"`
+	MinAmount      *decimal.Decimal       `json:"min_amount,omitempty"`
+	MaxAmount      *decimal.Decimal       `json:"max_amount,omitempty"`
+	Status         *BankTransactionStatus `json:"status,omitempty"`
+	Search         *string                `json:"search,omitempty"` // description/counterparty search
+	Page           int                     `json:"page,omitempty"`   // default 1
+	PageSize       int                    `json:"page_size,omitempty"` // default 50
+}
+
+// ImportResult represents the result of an Excel import operation.
+type ImportResult struct {
+	TotalRows    int    `json:"total_rows"`
+	SuccessCount int    `json:"success_count"`
+	FailedCount  int    `json:"failed_count"`
+	FailedRows   []int  `json:"failed_rows,omitempty"` // row numbers that failed
+	ErrorMsg     string `json:"error_message,omitempty"`
+}
+
+// MatchResult represents the result of marking transactions as matched.
+type MatchResult struct {
+	MatchedIDs []uuid.UUID `json:"matched_ids"`
+	Count      int         `json:"count"`
+}
+
 // BankAccount represents the bank_accounts table.
 type BankAccount struct {
 	ID                uuid.UUID  `json:"id" db:"id"`

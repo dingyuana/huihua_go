@@ -58,7 +58,6 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	auditRepo := repository.NewAuditRepository(db.GetPool())
 	auditSvc := service.NewAuditService(auditRepo)
 	auditHandler := handler.NewAuditHandler(auditSvc)
-
 	api.Get("/audit-logs", auditHandler.ListAuditLogs)
 	api.Get("/audit-logs/:object_type/:object_id", auditHandler.GetAuditLogsByObject)
 
@@ -68,6 +67,15 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	accountHandler := handler.NewAccountHandler(accountSvc)
 	api.Get("/accounts/tree", accountHandler.GetTree)
 	api.Post("/accounts/init-seed", accountHandler.InitFromSeed)
+
+	exchangeRateRepo := repository.NewExchangeRateRepository(db.GetPool())
+	exchangeRateSvc := service.NewExchangeRateService(exchangeRateRepo)
+	exchangeRateHandler := handler.NewExchangeRateHandler(exchangeRateSvc)
+	api.Get("/exchange-rates", exchangeRateHandler.List)
+	api.Post("/exchange-rates", exchangeRateHandler.Create)
+	api.Get("/exchange-rates/:id", exchangeRateHandler.GetByID)
+	api.Delete("/exchange-rates/:id", exchangeRateHandler.Delete)
+	api.Get("/exchange-rates/convert", exchangeRateHandler.Convert)
 
 	// Bank account routes
 	bankRepo := repository.NewBankRepository(db.GetPool())
@@ -90,4 +98,84 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	setupHandler := handler.NewSetupHandler(setupSvc)
 	api.Get("/account-setup/status", setupHandler.GetStatus)
 	api.Post("/account-setup/wizard", setupHandler.CreateCompany)
+
+	// Asset Depreciation routes
+	depreciationRepo := repository.NewAssetDepreciationRepository(db.GetPool())
+	journalRepo := repository.NewJournalRepository(db.GetPool())
+	depreciationSvc := service.NewAssetDepreciationService(depreciationRepo, journalRepo)
+	depreciationHandler := handler.NewAssetDepreciationHandler(depreciationSvc)
+	api.Post("/assets/:id/depreciation/schedule", depreciationHandler.CreateSchedule)
+	api.Get("/assets/:id/depreciation/schedule", depreciationHandler.GetSchedule)
+	api.Post("/depreciation/run", depreciationHandler.RunDepreciation)
+	api.Get("/depreciation/run", depreciationHandler.ListDepreciationRuns)
+	api.Put("/assets/:id/depreciation", depreciationHandler.CreateSchedule) // alias for schedule creation
+
+	// Invoice routes
+	invoiceRepo := repository.NewInvoiceRepository(db.GetPool())
+	invoiceSvc := service.NewInvoiceService(invoiceRepo)
+	invoiceHandler := handler.NewInvoiceHandler(invoiceSvc)
+	api.Get("/invoices", invoiceHandler.List)
+	api.Post("/invoices", invoiceHandler.Create)
+	api.Post("/invoices/import", invoiceHandler.ImportFromExcel)
+	api.Post("/invoices/parse", invoiceHandler.Parse)
+	api.Get("/invoices/:id", invoiceHandler.GetByID)
+	api.Put("/invoices/:id/status", invoiceHandler.UpdateStatus)
+
+	// Classification rule routes
+	classificationRuleRepo := repository.NewClassificationRuleRepository(db.GetPool())
+	classificationRuleSvc := service.NewClassificationRuleService(classificationRuleRepo, accountRepo)
+	classificationRuleHandler := handler.NewClassificationRuleHandler(classificationRuleSvc)
+	api.Get("/classification-rules", classificationRuleHandler.List)
+	api.Post("/classification-rules", classificationRuleHandler.Create)
+	api.Put("/classification-rules/:id", classificationRuleHandler.Update)
+	api.Delete("/classification-rules/:id", classificationRuleHandler.Delete)
+	api.Post("/classification-rules/reorder", classificationRuleHandler.Reorder)
+	api.Post("/classification-rules/match", classificationRuleHandler.Match)
+
+	// Bank transaction routes
+	bankTransactionRepo := repository.NewBankTransactionRepository(db.GetPool())
+	bankTxnSvc := service.NewBankTransactionService(bankTransactionRepo, classificationRuleSvc, bankRepo)
+	bankTxnHandler := handler.NewBankTransactionHandler(bankTxnSvc)
+	api.Get("/bank-transactions", bankTxnHandler.List)
+	api.Post("/bank-transactions/import", bankTxnHandler.Import)
+	api.Post("/bank-transactions/:id/classify", bankTxnHandler.Classify)
+	api.Post("/bank-transactions/:id/mark-matched", bankTxnHandler.MarkMatched)
+	api.Get("/bank-transactions/unmatched", bankTxnHandler.GetUnmatched)
+	api.Get("/bank-transactions/:id", bankTxnHandler.GetByID)
+	api.Delete("/bank-transactions/:id", bankTxnHandler.Delete)
+
+	// Voucher template routes
+	voucherTemplateRepo := repository.NewVoucherTemplateRepository(db.GetPool())
+	voucherTemplateSvc := service.NewVoucherTemplateService(voucherTemplateRepo, accountRepo)
+	voucherTemplateHandler := handler.NewVoucherTemplateHandler(voucherTemplateSvc)
+	api.Get("/voucher-templates", voucherTemplateHandler.List)
+	api.Post("/voucher-templates", voucherTemplateHandler.Create)
+	api.Get("/voucher-templates/:id", voucherTemplateHandler.GetByID)
+	api.Put("/voucher-templates/:id", voucherTemplateHandler.Update)
+	api.Delete("/voucher-templates/:id", voucherTemplateHandler.Delete)
+	api.Get("/voucher-templates/numbering-rule", voucherTemplateHandler.GetNumberingRule)
+	api.Post("/voucher-templates/numbering-rule", voucherTemplateHandler.UpdateNumberingRule)
+	api.Post("/voucher-templates/numbering-rule/next", voucherTemplateHandler.GenerateNextNumber)
+
+	// Voucher state machine routes
+	auditRepo = repository.NewAuditRepository(db.GetPool())
+	stateMachine := service.NewVoucherStateMachine(journalRepo, auditRepo)
+	voucherHandler := handler.NewVoucherHandler(stateMachine, journalRepo)
+	api.Post("/vouchers/:id/submit", voucherHandler.Submit)
+	api.Post("/vouchers/:id/approve", voucherHandler.Approve)
+	api.Post("/vouchers/:id/reject", voucherHandler.Reject)
+	api.Post("/vouchers/:id/cancel", voucherHandler.Cancel)
+	api.Post("/vouchers/:id/reverse", voucherHandler.Reverse)
+	api.Get("/vouchers/:id/status", voucherHandler.GetStatus)
+	api.Get("/vouchers/:id/transitions", voucherHandler.GetTransitions)
+
+	// Opening balance routes
+	obRepo := repository.NewOpeningBalanceRepository(db.GetPool())
+	obSvc := service.NewOpeningBalanceService(obRepo, accountRepo)
+	obHandler := handler.NewOpeningBalanceHandler(obSvc)
+	api.Post("/opening-balances/import", obHandler.Import)
+	api.Get("/opening-balances", obHandler.List)
+	api.Get("/opening-balances/trial-balance", obHandler.GetTrialBalance)
+	api.Post("/opening-balances/validate", obHandler.Validate)
+	api.Get("/opening-balances/:account_id", obHandler.GetByAccount)
 }
