@@ -276,3 +276,41 @@ func (r *BankTransactionRepository) UpdateMatchedInfo(ctx context.Context, tenan
 	_, err := r.pool.Exec(ctx, query, tenantID, id, glEntryID)
 	return err
 }
+
+// GetMatchedByPeriod retrieves all matched bank transactions within a date range.
+func (r *BankTransactionRepository) GetMatchedByPeriod(ctx context.Context, tenantID, bankAccountID uuid.UUID, startDate, endDate time.Time) ([]model.BankTransaction, error) {
+	query := `
+		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
+		       reference_no, counterparty_name, matched, matched_payment_entry_id, matched_gl_entry_id,
+		       imported_from, raw_data, company_id, created_at
+		FROM bank_transactions
+		WHERE tenant_id = $1 AND bank_account_id = $2 AND matched = TRUE AND txn_date >= $3 AND txn_date <= $4
+		ORDER BY txn_date, created_at`
+
+	rows, err := r.pool.Query(ctx, query, tenantID, bankAccountID, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var txns []model.BankTransaction
+	for rows.Next() {
+		var txn model.BankTransaction
+		err := rows.Scan(
+			&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
+			&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
+			&txn.Matched, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
+			&txn.RawData, &txn.CompanyID, &txn.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		txns = append(txns, txn)
+	}
+	return txns, rows.Err()
+}
+
+// GetPool returns the underlying connection pool.
+func (r *BankTransactionRepository) GetPool() *pgxpool.Pool {
+	return r.pool
+}

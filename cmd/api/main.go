@@ -178,4 +178,23 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/opening-balances/trial-balance", obHandler.GetTrialBalance)
 	api.Post("/opening-balances/validate", obHandler.Validate)
 	api.Get("/opening-balances/:account_id", obHandler.GetByAccount)
+
+	// Reconciliation (核销) routes
+	reconRepo := repository.NewReconciliationRepository(db.GetPool())
+	reconciliationSvc := service.NewReconciliationService(db.GetPool(), bankTransactionRepo, invoiceRepo, reconRepo)
+	reconciliationHandler := handler.NewReconciliationHandler(reconciliationSvc)
+	api.Post("/reconciliation/run", reconciliationHandler.Run)
+	api.Get("/reconciliation/pairs", reconciliationHandler.ListPairs)
+	api.Post("/reconciliation/pairs/:id/confirm", reconciliationHandler.ConfirmPair)
+	api.Post("/reconciliation/pairs/:id/unconfirm", reconciliationHandler.UnconfirmPair)
+	api.Get("/reconciliation/unmatched", reconciliationHandler.GetUnmatched)
+
+	// Bank reconciliation routes
+	glEntryRepo := repository.NewGLEntryRepository(db.GetPool())
+	reconSvc := service.NewBankReconciliationService(bankTransactionRepo, journalRepo, bankRepo, glEntryRepo)
+	reconHandler := handler.NewBankReconciliationHandler(reconSvc)
+	api.Post("/bank-reconciliation/reconcile", reconHandler.Reconcile)
+	api.Get("/bank-reconciliation/report", reconHandler.GetReport)
+	api.Post("/bank-reconciliation/mark-done", reconHandler.MarkDone)
+	api.Get("/bank-reconciliation/status", reconHandler.GetStatus)
 }

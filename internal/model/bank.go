@@ -125,3 +125,52 @@ type BankReconciliationStatement struct {
 	CreatedBy            *uuid.UUID      `json:"created_by,omitempty" db:"created_by"`
 	CreatedAt            time.Time       `json:"created_at" db:"created_at"`
 }
+
+// ReconciliationRecord represents the reconciliation_records table.
+type ReconciliationRecord struct {
+	ID              uuid.UUID       `json:"id" db:"id"`
+	TenantID        uuid.UUID       `json:"tenant_id" db:"tenant_id"`
+	BankAccountID   uuid.UUID       `json:"bank_account_id" db:"bank_account_id"`
+	PeriodNo        int             `json:"period_no" db:"period_no"`
+	BankBalance     decimal.Decimal `json:"bank_balance" db:"bank_balance"`
+	BookBalance     decimal.Decimal `json:"book_balance" db:"book_balance"`
+	AdjustedBalance decimal.Decimal `json:"adjusted_balance" db:"adjusted_balance"`
+	BankOnlyTotal   decimal.Decimal `json:"bank_only_total" db:"bank_only_total"`
+	BookOnlyTotal   decimal.Decimal `json:"book_only_total" db:"book_only_total"`
+	Status          string          `json:"status" db:"status"`
+	ReconciledBy    *uuid.UUID      `json:"reconciled_by,omitempty" db:"reconciled_by"`
+	ReconciledAt    *time.Time      `json:"reconciled_at,omitempty" db:"reconciled_at"`
+	CreatedAt       time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at" db:"updated_at"`
+}
+
+// UnreconciledItem represents the unreconciled_items table.
+type UnreconciledItem struct {
+	ID                     uuid.UUID       `json:"id" db:"id"`
+	ReconciliationRecordID uuid.UUID       `json:"reconciliation_record_id" db:"reconciliation_record_id"`
+	ItemType               string          `json:"item_type" db:"item_type"` // bank_only/book_only
+	SourceType             string          `json:"source_type" db:"source_type"` // bank_transaction/gl_entry
+	SourceID               uuid.UUID       `json:"source_id" db:"source_id"`
+	TxnDate                time.Time       `json:"txn_date" db:"txn_date"`
+	Description           *string         `json:"description,omitempty" db:"description"`
+	Debit                  decimal.Decimal `json:"debit" db:"debit"`
+	Credit                 decimal.Decimal `json:"credit" db:"credit"`
+	Amount                 decimal.Decimal `json:"amount" db:"amount"`
+	TenantID               uuid.UUID       `json:"tenant_id" db:"tenant_id"`
+	CreatedAt              time.Time       `json:"created_at" db:"created_at"`
+}
+
+// ReconciliationReport represents a bank reconciliation report.
+type ReconciliationReport struct {
+	ID              uuid.UUID              `json:"id" db:"id"`
+	BankAccountID   uuid.UUID             `json:"bank_account_id" db:"bank_account_id"`
+	PeriodNo        int                    `json:"period_no" db:"period_no"`
+	BankBalance     decimal.Decimal        `json:"bank_balance" db:"bank_balance"`
+	BookBalance     decimal.Decimal        `json:"book_balance" db:"book_balance"`
+	AdjustedBalance decimal.Decimal        `json:"adjusted_balance" db:"adjusted_balance"`
+	BankOnlyItems   []UnreconciledItem     `json:"bank_only_items,omitempty"`
+	BookOnlyItems   []UnreconciledItem     `json:"book_only_items,omitempty"`
+	Status          string                 `json:"status" db:"status"`
+	ReconciledBy    *uuid.UUID            `json:"reconciled_by,omitempty" db:"reconciled_by"`
+	ReconciledAt    *time.Time            `json:"reconciled_at,omitempty" db:"reconciled_at"`
+}
