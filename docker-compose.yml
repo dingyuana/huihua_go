@@ -8,8 +8,8 @@ services:
     environment:
       - HF_DATABASE_HOST=postgres
       - HF_DATABASE_PORT=5432
-      - HF_DATABASE_USER=huihua
-      - HF_DATABASE_PASSWORD=hfpwd
+      - HF_DATABASE_USER=huihua_app
+      - HF_DATABASE_PASSWORD=hfpwd_app
       - HF_DATABASE_DBNAME=huihua_finance
       - HF_DATABASE_SSLMODE=disable
       - HF_REDIS_HOST=redis
@@ -43,7 +43,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
 

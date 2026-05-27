@@ -1,0 +1,25 @@
+-- 008_rls_force.sql: Force RLS on all tables (including for table owner)
+-- Without FORCE, the table owner bypasses RLS policies automatically.
+-- This is critical for multi-tenant isolation.
+
+ALTER TABLE tenants FORCE ROW LEVEL SECURITY;
+ALTER TABLE users FORCE ROW LEVEL SECURITY;
+ALTER TABLE accounts FORCE ROW LEVEL SECURITY;
+ALTER TABLE journal_entries FORCE ROW LEVEL SECURITY;
+ALTER TABLE journal_entry_lines FORCE ROW LEVEL SECURITY;
+ALTER TABLE gl_entries FORCE ROW LEVEL SECURITY;
+ALTER TABLE sales_invoices FORCE ROW LEVEL SECURITY;
+ALTER TABLE payment_entries FORCE ROW LEVEL SECURITY;
+ALTER TABLE payment_allocations FORCE ROW LEVEL SECURITY;
+ALTER TABLE bank_accounts FORCE ROW LEVEL SECURITY;
+ALTER TABLE bank_transactions FORCE ROW LEVEL SECURITY;
+ALTER TABLE bank_reconciliation_details FORCE ROW LEVEL SECURITY;
+ALTER TABLE bank_reconciliation_statements FORCE ROW LEVEL SECURITY;
+ALTER TABLE asset_categories FORCE ROW LEVEL SECURITY;
+ALTER TABLE assets FORCE ROW LEVEL SECURITY;
+ALTER TABLE depreciation_schedules FORCE ROW LEVEL SECURITY;
+ALTER TABLE budgets FORCE ROW LEVEL SECURITY;
+ALTER TABLE budget_accounts FORCE ROW LEVEL SECURITY;
+ALTER TABLE budget_distributions FORCE ROW LEVEL SECURITY;
+ALTER TABLE budget_control_configs FORCE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
