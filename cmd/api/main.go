@@ -9,6 +9,8 @@ import (
 	"huihua/finance/internal/config"
 	"huihua/finance/internal/handler"
 	"huihua/finance/internal/middleware"
+	"huihua/finance/internal/repository"
+	"huihua/finance/internal/service"
 	"huihua/finance/pkg/database"
 )
 
@@ -52,5 +54,11 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api := app.Group("/api/v1", middleware.Auth(cfg))
 	api.Use(middleware.Tenant(db))
 
-	// TODO: Add business handlers here
+	// Audit log routes
+	auditRepo := repository.NewAuditRepository(db.GetPool())
+	auditSvc := service.NewAuditService(auditRepo)
+	auditHandler := handler.NewAuditHandler(auditSvc)
+
+	api.Get("/audit-logs", auditHandler.ListAuditLogs)
+	api.Get("/audit-logs/:object_type/:object_id", auditHandler.GetAuditLogsByObject)
 }
