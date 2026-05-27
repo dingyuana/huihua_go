@@ -28,15 +28,18 @@ CREATE TABLE IF NOT EXISTS users (
 -- Accounts table (chart of accounts, tree structure with nested set)
 CREATE TABLE IF NOT EXISTS accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    parent_id UUID REFERENCES accounts(id) ON DELETE SET NULL,
-    code VARCHAR(50) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    account_type VARCHAR(50) NOT NULL, -- asset/liability/equity/revenue/expense
-    is_group BOOLEAN DEFAULT FALSE,
+    code VARCHAR(20) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    account_type VARCHAR(20),           -- asset/liability/equity/revenue/expense
+    root_type VARCHAR(10),              -- debit/credit, balance direction
+    parent_id UUID REFERENCES accounts(id) ON DELETE RESTRICT,
+    lft INT NOT NULL,                   -- nested set left
+    rgt INT NOT NULL,                   -- nested set right
+    is_group BOOLEAN DEFAULT FALSE,     -- TRUE=summary account (no posting), FALSE=detail account
+    company_id UUID NOT NULL,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+    currency VARCHAR(3) DEFAULT 'CNY',
     is_active BOOLEAN DEFAULT TRUE,
-    lft INT,  -- nested set left
-    rgt INT,  -- nested set right
     opening_balance DECIMAL(18,2) DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -58,12 +61,6 @@ CREATE POLICY tenant_isolation ON users
 
 CREATE POLICY tenant_isolation ON accounts
     USING (tenant_id = current_setting('app.current_tenant')::uuid);
-
--- For development: allow all operations on tables without RLS (set app.current_tenant = '')
--- This is useful for admin operations that need to see all data
--- CREATE POLICY tenant_bypass ON accounts
---     FOR ALL
---     USING (current_setting('app.current_tenant', true) IS NULL OR current_setting('app.current_tenant', true) = '');
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
