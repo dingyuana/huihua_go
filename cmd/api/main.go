@@ -61,4 +61,33 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	api.Get("/audit-logs", auditHandler.ListAuditLogs)
 	api.Get("/audit-logs/:object_type/:object_id", auditHandler.GetAuditLogsByObject)
+
+	// Account routes
+	accountRepo := repository.NewAccountRepository(db.GetPool())
+	accountSvc := service.NewAccountService(accountRepo, db.GetPool())
+	accountHandler := handler.NewAccountHandler(accountSvc)
+	api.Get("/accounts/tree", accountHandler.GetTree)
+	api.Post("/accounts/init-seed", accountHandler.InitFromSeed)
+
+	// Bank account routes
+	bankRepo := repository.NewBankRepository(db.GetPool())
+	bankSvc := service.NewBankService(bankRepo, accountRepo)
+	bankHandler := handler.NewBankHandler(bankSvc)
+	api.Get("/bank-accounts", bankHandler.List)
+	api.Post("/bank-accounts", bankHandler.Create)
+
+	// Party routes
+	partyRepo := repository.NewPartyRepository(db.GetPool())
+	partySvc := service.NewPartyService(partyRepo)
+	partyHandler := handler.NewPartyHandler(partySvc)
+	api.Get("/parties", partyHandler.List)
+	api.Post("/parties/import", partyHandler.ImportExcel)
+
+	// Account setup routes
+	companyRepo := repository.NewCompanyRepository(db.GetPool())
+	periodRepo := repository.NewPeriodRepository(db.GetPool())
+	setupSvc := service.NewSetupService(companyRepo, periodRepo, accountSvc)
+	setupHandler := handler.NewSetupHandler(setupSvc)
+	api.Get("/account-setup/status", setupHandler.GetStatus)
+	api.Post("/account-setup/wizard", setupHandler.CreateCompany)
 }
