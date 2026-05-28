@@ -346,6 +346,21 @@ func (s *ApprovalService) ListApprovalFlows(ctx context.Context, tenantID uuid.U
 	return s.approvalRepo.ListFlows(ctx, tenantID)
 }
 
+// UpdateApprovalFlow updates an existing approval flow.
+func (s *ApprovalService) UpdateApprovalFlow(ctx context.Context, tenantID, flowID uuid.UUID, flowName string, description *string) error {
+	flow := &model.ApprovalFlow{
+		ID:          flowID,
+		FlowName:    flowName,
+		Description: description,
+	}
+	return s.approvalRepo.UpdateFlow(ctx, tenantID, flow)
+}
+
+// DeleteApprovalFlow deletes an approval flow by ID.
+func (s *ApprovalService) DeleteApprovalFlow(ctx context.Context, tenantID, flowID uuid.UUID) error {
+	return s.approvalRepo.DeleteFlow(ctx, tenantID, flowID)
+}
+
 // GetJournalEntryTotalAmount calculates the total amount for a journal entry.
 func (s *ApprovalService) GetJournalEntryTotalAmount(ctx context.Context, tenantID uuid.UUID, journalEntryID uuid.UUID) (decimal.Decimal, error) {
 	lines, err := s.journalRepo.GetLines(ctx, tenantID, journalEntryID)

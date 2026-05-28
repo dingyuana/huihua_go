@@ -276,6 +276,42 @@ func (h *ApprovalHandler) ListApprovalFlows(c *fiber.Ctx) error {
 	})
 }
 
+// UpdateApprovalFlow handles PUT /api/v1/approval-flows/:id
+func (h *ApprovalHandler) UpdateApprovalFlow(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	flowID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid flow id"})
+	}
+
+	var req struct {
+		FlowName    string  `json:"flow_name"`
+		Description *string `json:"description"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if err := h.approvalSvc.UpdateApprovalFlow(c.Context(), tenantID, flowID, req.FlowName, req.Description); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "updated"})
+}
+
+// DeleteApprovalFlow handles DELETE /api/v1/approval-flows/:id
+func (h *ApprovalHandler) DeleteApprovalFlow(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	flowID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid flow id"})
+	}
+
+	if err := h.approvalSvc.DeleteApprovalFlow(c.Context(), tenantID, flowID); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "deleted"})
+}
+
 // MarshalJSON for ApproverInput - custom marshal for internal use
 func (a ApproverInput) MarshalJSON() ([]byte, error) {
 	type Alias ApproverInput

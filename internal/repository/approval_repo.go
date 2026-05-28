@@ -122,6 +122,19 @@ func (r *ApprovalRepository) UpdateFlow(ctx context.Context, tenantID uuid.UUID,
 	return nil
 }
 
+// DeleteFlow deletes an approval flow by ID.
+func (r *ApprovalRepository) DeleteFlow(ctx context.Context, tenantID, flowID uuid.UUID) error {
+	query := `DELETE FROM approval_flows WHERE id = $1 AND tenant_id = $2`
+	result, err := r.pool.Exec(ctx, query, flowID, tenantID)
+	if err != nil {
+		return fmt.Errorf("delete approval flow: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("approval flow not found")
+	}
+	return nil
+}
+
 // GetDefaultFlow retrieves the default approval flow for a tenant.
 func (r *ApprovalRepository) GetDefaultFlow(ctx context.Context, tenantID uuid.UUID) (*model.ApprovalFlow, error) {
 	query := `
