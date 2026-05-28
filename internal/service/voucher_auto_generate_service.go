@@ -12,12 +12,13 @@ import (
 
 // VoucherAutoGenerateService auto-generates vouchers from bank transactions, invoices, and reconciliation pairs.
 type VoucherAutoGenerateService struct {
-	journalRepo      *repository.JournalRepository
-	glRepo           *repository.GLEntryRepository
-	bankTxnRepo      *repository.BankTransactionRepository
-	invoiceRepo      *repository.InvoiceRepository
+	journalRepo       *repository.JournalRepository
+	glRepo            *repository.GLEntryRepository
+	bankTxnRepo       *repository.BankTransactionRepository
+	invoiceRepo       *repository.InvoiceRepository
 	classificationSvc *ClassificationRuleService
-	templateSvc      *VoucherTemplateService
+	templateSvc       *VoucherTemplateService
+	approvalSvc       *ApprovalService
 }
 
 // NewVoucherAutoGenerateService creates a new VoucherAutoGenerateService.
@@ -28,11 +29,13 @@ func NewVoucherAutoGenerateService(
 	invoiceRepo *repository.InvoiceRepository,
 	classificationSvc *ClassificationRuleService,
 	templateSvc *VoucherTemplateService,
+	approvalSvc *ApprovalService,
 ) *VoucherAutoGenerateService {
 	return &VoucherAutoGenerateService{
 		journalRepo: journalRepo, glRepo: glRepo,
 		bankTxnRepo: bankTxnRepo, invoiceRepo: invoiceRepo,
 		classificationSvc: classificationSvc, templateSvc: templateSvc,
+		approvalSvc: approvalSvc,
 	}
 }
 
@@ -126,6 +129,23 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 	if err != nil {
 		return nil, err
 	}
+
+	// Submit for approval using the template's bound approval flow (if any)
+	if s.approvalSvc != nil && je.CreatedBy != uuid.Nil {
+		var flowID *uuid.UUID
+		// Template binding: look up the active template for this tenant
+		templates, err := s.templateSvc.ListTemplates(ctx, tenantID)
+		if err == nil && len(templates) > 0 {
+			for i := range templates {
+				if templates[i].IsActive && templates[i].ApprovalFlowID != nil {
+					flowID = templates[i].ApprovalFlowID
+					break // use first active template with a flow
+				}
+			}
+		}
+		_ = s.approvalSvc.SubmitForApproval(ctx, tenantID, je.ID, je.CreatedBy, flowID)
+	}
+
 	// Mark bank txn as matched
 	_ = s.bankTxnRepo.UpdateStatus(ctx, tenantID, txnID, true)
 	return je, nil

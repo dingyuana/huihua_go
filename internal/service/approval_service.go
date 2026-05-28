@@ -34,8 +34,8 @@ func NewApprovalService(approvalRepo *repository.ApprovalRepository, journalRepo
 }
 
 // SubmitForApproval submits a voucher for approval.
-// It determines the required approval levels based on amount and creates tasks.
-func (s *ApprovalService) SubmitForApproval(ctx context.Context, tenantID uuid.UUID, journalEntryID uuid.UUID, userID uuid.UUID) error {
+// If flowID is provided (not nil), that specific approval flow is used; otherwise the tenant's default flow is used.
+func (s *ApprovalService) SubmitForApproval(ctx context.Context, tenantID uuid.UUID, journalEntryID uuid.UUID, userID uuid.UUID, flowID *uuid.UUID) error {
 	// Get the journal entry
 	journal, err := s.journalRepo.GetByID(ctx, tenantID, journalEntryID)
 	if err != nil {
@@ -77,13 +77,24 @@ func (s *ApprovalService) SubmitForApproval(ctx context.Context, tenantID uuid.U
 	}
 
 	// Determine required approval levels based on amount (DB thresholds, fallback to package defaults)
-	// Get or create default flow (needed for threshold values)
-	flow, err := s.approvalRepo.GetDefaultFlow(ctx, tenantID)
-	if err != nil {
-		// Create a default flow if none exists
-		flow, err = s.createDefaultFlow(ctx, tenantID)
+	// Get the approval flow (specific flow if flowID provided, otherwise tenant's default)
+	var flow *model.ApprovalFlow
+	if flowID != nil {
+		flow, err = s.approvalRepo.GetFlow(ctx, tenantID, *flowID)
 		if err != nil {
-			return fmt.Errorf("create default flow: %w", err)
+			return fmt.Errorf("get approval flow: %w", err)
+		}
+		if flow == nil {
+			return fmt.Errorf("approval flow %s not found", *flowID)
+		}
+	} else {
+		flow, err = s.approvalRepo.GetDefaultFlow(ctx, tenantID)
+		if err != nil {
+			// Create a default flow if none exists
+			flow, err = s.createDefaultFlow(ctx, tenantID)
+			if err != nil {
+				return fmt.Errorf("create default flow: %w", err)
+			}
 		}
 	}
 

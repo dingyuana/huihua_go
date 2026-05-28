@@ -36,9 +36,9 @@ func (r *VoucherTemplateRepository) CreateTemplate(ctx context.Context, tenantID
 
 	// Insert template
 	_, err = tx.Exec(ctx, `
-		INSERT INTO voucher_templates (id, tenant_id, name, description, number_prefix, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		t.ID, tenantID, t.Name, t.Description, t.NumberPrefix, t.IsActive, now, now)
+		INSERT INTO voucher_templates (id, tenant_id, name, description, number_prefix, is_active, approval_flow_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		t.ID, tenantID, t.Name, t.Description, t.NumberPrefix, t.IsActive, t.ApprovalFlowID, now, now)
 	if err != nil {
 		return nil, fmt.Errorf("insert template: %w", err)
 	}
@@ -75,7 +75,7 @@ func (r *VoucherTemplateRepository) CreateTemplate(ctx context.Context, tenantID
 // ListTemplates returns all voucher templates for a tenant.
 func (r *VoucherTemplateRepository) ListTemplates(ctx context.Context, tenantID uuid.UUID) ([]model.VoucherTemplate, error) {
 	query := `
-		SELECT id, tenant_id, name, description, number_prefix, is_active, created_at, updated_at
+		SELECT id, tenant_id, name, description, number_prefix, is_active, approval_flow_id, created_at, updated_at
 		FROM voucher_templates
 		WHERE tenant_id = $1
 		ORDER BY created_at DESC`
@@ -89,7 +89,7 @@ func (r *VoucherTemplateRepository) ListTemplates(ctx context.Context, tenantID 
 	var templates []model.VoucherTemplate
 	for rows.Next() {
 		var t model.VoucherTemplate
-		if err := rows.Scan(&t.ID, &t.TenantID, &t.Name, &t.Description, &t.NumberPrefix, &t.IsActive, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.TenantID, &t.Name, &t.Description, &t.NumberPrefix, &t.IsActive, &t.ApprovalFlowID, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan template: %w", err)
 		}
 		templates = append(templates, t)
@@ -100,13 +100,13 @@ func (r *VoucherTemplateRepository) ListTemplates(ctx context.Context, tenantID 
 // GetTemplateByID returns a voucher template with its lines.
 func (r *VoucherTemplateRepository) GetTemplateByID(ctx context.Context, tenantID, id uuid.UUID) (*model.VoucherTemplate, error) {
 	query := `
-		SELECT id, tenant_id, name, description, number_prefix, is_active, created_at, updated_at
+		SELECT id, tenant_id, name, description, number_prefix, is_active, approval_flow_id, created_at, updated_at
 		FROM voucher_templates
 		WHERE id = $1 AND tenant_id = $2`
 
 	t := &model.VoucherTemplate{}
 	err := r.pool.QueryRow(ctx, query, id, tenantID).Scan(
-		&t.ID, &t.TenantID, &t.Name, &t.Description, &t.NumberPrefix, &t.IsActive, &t.CreatedAt, &t.UpdatedAt)
+		&t.ID, &t.TenantID, &t.Name, &t.Description, &t.NumberPrefix, &t.IsActive, &t.ApprovalFlowID, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -156,9 +156,9 @@ func (r *VoucherTemplateRepository) UpdateTemplate(ctx context.Context, tenantID
 	// Update template
 	_, err = tx.Exec(ctx, `
 		UPDATE voucher_templates 
-		SET name = $1, description = $2, number_prefix = $3, is_active = $4, updated_at = $5
-		WHERE id = $6 AND tenant_id = $7`,
-		t.Name, t.Description, t.NumberPrefix, t.IsActive, now, id, tenantID)
+		SET name = $1, description = $2, number_prefix = $3, is_active = $4, approval_flow_id = $5, updated_at = $6
+		WHERE id = $7 AND tenant_id = $8`,
+		t.Name, t.Description, t.NumberPrefix, t.IsActive, t.ApprovalFlowID, now, id, tenantID)
 	if err != nil {
 		return fmt.Errorf("update template: %w", err)
 	}

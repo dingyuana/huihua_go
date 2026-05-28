@@ -22,7 +22,8 @@ func NewApprovalHandler(approvalSvc *service.ApprovalService) *ApprovalHandler {
 // ApprovalSubmitRequest is the request body for submitting a voucher for approval.
 type ApprovalSubmitRequest struct {
 	UserID     string `json:"user_id"`
-	VoucherID  string `json:"voucher_id"`
+	VoucherID string `json:"voucher_id"`
+	FlowID    *string `json:"flow_id,omitempty"` // optional specific approval flow
 }
 
 // SubmitForApproval handles POST /api/v1/approvals/submit
@@ -44,7 +45,16 @@ func (h *ApprovalHandler) SubmitForApproval(c *fiber.Ctx) error {
 
 	tenantID := c.Locals("tenant_id").(uuid.UUID)
 
-	if err := h.approvalSvc.SubmitForApproval(c.Context(), tenantID, voucherID, userID); err != nil {
+	var flowID *uuid.UUID
+	if req.FlowID != nil {
+		parsed, err := uuid.Parse(*req.FlowID)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid flow_id"})
+		}
+		flowID = &parsed
+	}
+
+	if err := h.approvalSvc.SubmitForApproval(c.Context(), tenantID, voucherID, userID, flowID); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 

@@ -40,11 +40,12 @@ func (s *VoucherTemplateService) CreateTemplate(ctx context.Context, tenantID uu
 	}
 
 	t := &model.VoucherTemplate{
-		ID:          uuid.New(),
-		Name:        req.Name,
-		Description: req.Description,
-		NumberPrefix: numberPrefix,
-		IsActive:    req.IsActive,
+		ID:             uuid.New(),
+		Name:           req.Name,
+		Description:    req.Description,
+		NumberPrefix:   numberPrefix,
+		IsActive:       req.IsActive,
+		ApprovalFlowID: req.ApprovalFlowID,
 	}
 
 	for i, lineReq := range req.Lines {
@@ -109,6 +110,9 @@ func (s *VoucherTemplateService) UpdateTemplate(ctx context.Context, tenantID, i
 	}
 	if req.IsActive != nil {
 		existing.IsActive = *req.IsActive
+	}
+	if req.ApprovalFlowID != nil {
+		existing.ApprovalFlowID = req.ApprovalFlowID
 	}
 
 	// Replace lines

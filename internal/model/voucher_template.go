@@ -8,15 +8,16 @@ import (
 
 // VoucherTemplate represents a voucher template (凭证模板).
 type VoucherTemplate struct {
-	ID          uuid.UUID            `json:"id" db:"id"`
-	TenantID    uuid.UUID             `json:"tenant_id" db:"tenant_id"`
-	Name        string                `json:"name" db:"name"`
-	Description string                `json:"description,omitempty" db:"description"`
-	NumberPrefix string               `json:"number_prefix" db:"number_prefix"`
-	IsActive    bool                  `json:"is_active" db:"is_active"`
-	CreatedAt   time.Time             `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time             `json:"updated_at" db:"updated_at"`
-	Lines       []VoucherTemplateLine `json:"lines,omitempty"`
+	ID             uuid.UUID            `json:"id" db:"id"`
+	TenantID       uuid.UUID            `json:"tenant_id" db:"tenant_id"`
+	Name           string               `json:"name" db:"name"`
+	Description    string               `json:"description,omitempty" db:"description"`
+	NumberPrefix   string               `json:"number_prefix" db:"number_prefix"`
+	IsActive       bool                 `json:"is_active" db:"is_active"`
+	ApprovalFlowID *uuid.UUID           `json:"approval_flow_id,omitempty" db:"approval_flow_id"` // bound approval flow
+	CreatedAt      time.Time            `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time            `json:"updated_at" db:"updated_at"`
+	Lines          []VoucherTemplateLine `json:"lines,omitempty"`
 }
 
 // VoucherTemplateLine represents a line item in a voucher template (模板行).
@@ -49,11 +50,12 @@ type VoucherNumberingRule struct {
 
 // CreateTemplateRequest represents the request to create a voucher template.
 type CreateTemplateRequest struct {
-	Name        string                   `json:"name" validate:"required"`
-	Description string                   `json:"description"`
-	NumberPrefix string                  `json:"number_prefix"`
-	IsActive    bool                     `json:"is_active"`
-	Lines       []CreateTemplateLineRequest `json:"lines"`
+	Name           string                       `json:"name" validate:"required"`
+	Description    string                       `json:"description"`
+	NumberPrefix   string                       `json:"number_prefix"`
+	IsActive       bool                         `json:"is_active"`
+	ApprovalFlowID *uuid.UUID                   `json:"approval_flow_id,omitempty"`
+	Lines          []CreateTemplateLineRequest `json:"lines"`
 }
 
 // CreateTemplateLineRequest represents a line item in create template request.
@@ -69,11 +71,12 @@ type CreateTemplateLineRequest struct {
 
 // UpdateTemplateRequest represents the request to update a voucher template.
 type UpdateTemplateRequest struct {
-	Name        string                   `json:"name"`
-	Description string                   `json:"description"`
-	NumberPrefix string                 `json:"number_prefix"`
-	IsActive    *bool                    `json:"is_active"`
-	Lines       []CreateTemplateLineRequest `json:"lines"`
+	Name           string                       `json:"name"`
+	Description    string                       `json:"description"`
+	NumberPrefix   string                       `json:"number_prefix"`
+	IsActive       *bool                        `json:"is_active"`
+	ApprovalFlowID *uuid.UUID                   `json:"approval_flow_id,omitempty"`
+	Lines          []CreateTemplateLineRequest `json:"lines"`
 }
 
 // NumberingRuleRequest represents the request to create/update numbering rule.
