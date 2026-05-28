@@ -1,6 +1,11 @@
 package config
 
 import (
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/spf13/viper"
 )
 
@@ -44,20 +49,37 @@ type JWTConfig struct {
 func Load() *Config {
 	viper.SetEnvPrefix("HF")
 	viper.AutomaticEnv()
+	// Map HF_DATABASE_* → database.*
+	// HF_DATABASE_HOST → database.host, HF_DATABASE_PORT → database.port, etc.
+	viper.SetEnvKeyReplacer(strings.NewReplacer("DATABASE_", "database.", "REDIS_", "redis.", "JWT_", "jwt.", "SERVER_", "server."))
 
 	viper.SetDefault("server.host", "0.0.0.0")
 	viper.SetDefault("server.port", "8080")
 	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("jwt.expiry", "30m")
 
+	// Try executable dir first, then current working directory
+	exeDir := filepath.Dir(os.Args[0])
+	paths := []string{exeDir, "."}
+	if absExe, err := filepath.Abs(exeDir); err == nil {
+		paths = []string{absExe, exeDir, "."}
+	}
+	for _, p := range paths {
+		viper.AddConfigPath(p)
+	}
 	viper.SetConfigName(".env")
 	viper.SetConfigType("env")
-	viper.AddConfigPath(".")
-	_ = viper.ReadInConfig()
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("[DEBUG] viper.ReadInConfig error (tried %v): %v", paths, err)
+	} else {
+		log.Printf("[DEBUG] viper config file: %s", viper.ConfigFileUsed())
+	}
 
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		panic(err)
 	}
+	log.Printf("[DEBUG] cfg.Database.Host=%q user=%q", cfg.Database.Host, cfg.Database.User)
 	return &cfg
 }

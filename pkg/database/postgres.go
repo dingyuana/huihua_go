@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,15 +18,36 @@ type DB struct {
 }
 
 func NewPostgres(cfg *config.Config) (*DB, error) {
+	host := os.Getenv("HF_DATABASE_HOST")
+	if host == "" {
+		host = cfg.Database.Host
+	}
+	port := os.Getenv("HF_DATABASE_PORT")
+	if port == "" {
+		port = cfg.Database.Port
+	}
+	user := os.Getenv("HF_DATABASE_USER")
+	if user == "" {
+		user = cfg.Database.User
+	}
+	password := os.Getenv("HF_DATABASE_PASSWORD")
+	if password == "" {
+		password = cfg.Database.Password
+	}
+	dbname := os.Getenv("HF_DATABASE_DBNAME")
+	if dbname == "" {
+		dbname = cfg.Database.DBName
+	}
+	sslmode := os.Getenv("HF_DATABASE_SSLMODE")
+	if sslmode == "" {
+		sslmode = cfg.Database.SSLMode
+	}
+
 	dsn := fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		cfg.Database.User,
-		cfg.Database.Password,
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.DBName,
-		cfg.Database.SSLMode,
+		user, password, host, port, dbname, sslmode,
 	)
+	log.Printf("[DEBUG] DSN: postgres://%s:***@%s:%s/%s?sslmode=%s", user, host, port, dbname, sslmode)
 	poolConfig, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
