@@ -186,6 +186,14 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/opening-balances/validate", obHandler.Validate)
 	api.Get("/opening-balances/:account_id", obHandler.GetByAccount)
 
+	// Accounting period routes
+	periodRepo = repository.NewPeriodRepository(db.GetPool())
+	periodSvc := service.NewPeriodService(periodRepo, journalRepo, glEntryRepo, accountRepo)
+	periodHandler := handler.NewPeriodHandler(periodSvc)
+	api.Get("/periods", periodHandler.List)
+	api.Get("/periods/current", periodHandler.GetCurrent)
+	api.Post("/periods/:period_no/close", periodHandler.Close)
+
 	// Reconciliation (核销) routes
 	reconRepo := repository.NewReconciliationRepository(db.GetPool())
 	reconciliationSvc := service.NewReconciliationService(db.GetPool(), bankTransactionRepo, invoiceRepo, reconRepo)

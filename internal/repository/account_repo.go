@@ -149,3 +149,32 @@ func (r *AccountRepository) GetTree(ctx context.Context, tenantID uuid.UUID) ([]
 	}
 	return accounts, nil
 }
+
+// ListByType retrieves accounts by account_type.
+func (r *AccountRepository) ListByType(ctx context.Context, tenantID uuid.UUID, accountType string) ([]model.Account, error) {
+	query := `
+		SELECT id, code, name, account_type, root_type, parent_id, lft, rgt, is_group,
+		       company_id, tenant_id, currency, is_active, opening_balance, created_at
+		FROM accounts WHERE tenant_id = $1 AND account_type = $2
+		ORDER BY code`
+
+	rows, err := r.pool.Query(ctx, query, tenantID, accountType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var accounts []model.Account
+	for rows.Next() {
+		var a model.Account
+		if err := rows.Scan(
+			&a.ID, &a.Code, &a.Name, &a.AccountType, &a.RootType, &a.ParentID,
+			&a.Lft, &a.Rgt, &a.IsGroup, &a.CompanyID, &a.TenantID,
+			&a.Currency, &a.IsActive, &a.OpeningBalance, &a.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, a)
+	}
+	return accounts, rows.Err()
+}
