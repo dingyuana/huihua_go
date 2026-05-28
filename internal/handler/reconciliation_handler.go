@@ -3,7 +3,6 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"huihua/finance/internal/model"
 	"huihua/finance/internal/service"
 )
 
@@ -68,6 +67,10 @@ func (h *ReconciliationHandler) UnconfirmPair(c *fiber.Ctx) error {
 
 // GetUnmatched returns unmatched items.
 func (h *ReconciliationHandler) GetUnmatched(c *fiber.Ctx) error {
-	// Returns from the last run result — simplified
-	return c.JSON(fiber.Map{"data": []model.UnmatchedItem{}})
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	items, err := h.svc.GetUnmatched(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": items})
 }

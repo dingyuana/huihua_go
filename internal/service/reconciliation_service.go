@@ -18,6 +18,7 @@ type ReconciliationService struct {
 	bankTxnRepo *repository.BankTransactionRepository
 	invoiceRepo *repository.InvoiceRepository
 	reconRepo   *repository.ReconciliationRepository
+	journalRepo *repository.JournalRepository
 }
 
 // NewReconciliationService creates a new ReconciliationService.
@@ -26,9 +27,14 @@ func NewReconciliationService(
 	bankTxnRepo *repository.BankTransactionRepository,
 	invoiceRepo *repository.InvoiceRepository,
 	reconRepo *repository.ReconciliationRepository,
+	journalRepo *repository.JournalRepository,
 ) *ReconciliationService {
 	return &ReconciliationService{
-		pool: pool, bankTxnRepo: bankTxnRepo, invoiceRepo: invoiceRepo, reconRepo: reconRepo,
+		pool:        pool,
+		bankTxnRepo: bankTxnRepo,
+		invoiceRepo: invoiceRepo,
+		reconRepo:   reconRepo,
+		journalRepo: journalRepo,
 	}
 }
 
@@ -257,6 +263,55 @@ func (s *ReconciliationService) UnconfirmPair(ctx context.Context, tenantID, pai
 // ListPairs returns all pairs.
 func (s *ReconciliationService) ListPairs(ctx context.Context, tenantID uuid.UUID, status string) ([]model.ReconciliationPair, error) {
 	return s.reconRepo.ListByTenant(ctx, tenantID, status)
+}
+
+// GetUnmatched returns unmatched bank transactions and journal entries.
+func (s *ReconciliationService) GetUnmatched(ctx context.Context, tenantID uuid.UUID) ([]model.UnmatchedItem, error) {
+	// Get unmatched bank transactions
+	bankTxns, err := s.bankTxnRepo.ListUnmatched(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	// Get unmatched journal entries (status = submitted, no bank_txn_id)
+	journalEntries, err := s.journalRepo.ListUnmatched(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]model.UnmatchedItem, 0, len(bankTxns)+len(journalEntries))
+	for _, txn := range bankTxns {
+		counterparty := ""
+		if txn.CounterpartyName != nil {
+			counterparty = *txn.CounterpartyName
+		}
+		desc := ""
+		if txn.Description != nil {
+			desc = *txn.Description
+		}
+		items = append(items, model.UnmatchedItem{
+			Type:      "bank_transaction",
+			ID:        txn.ID,
+			Amount:    txn.Debit.Add(txn.Credit),
+			Date:      txn.TxnDate,
+			PartyName: counterparty,
+			Summary:   desc,
+		})
+	}
+	for _, je := range journalEntries {
+		remark := ""
+		if je.Remark != nil {
+			remark = *je.Remark
+		}
+		items = append(items, model.UnmatchedItem{
+			Type:      "journal_entry",
+			ID:        je.ID,
+			Amount:    decimal.Zero, // amount requires line aggregation
+			Date:      je.PostingDate,
+			PartyName: "",
+			Summary:   remark,
+		})
+	}
+	return items, nil
 }
 
 func withinDays(a, b time.Time, days int) bool {

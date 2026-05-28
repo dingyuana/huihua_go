@@ -403,3 +403,32 @@ func (r *JournalRepository) GetTransitions(ctx context.Context, tenantID uuid.UU
 	}
 	return transitions, nil
 }
+
+// ListUnmatched returns journal entries that have been submitted but not matched to any bank transaction.
+// Amount must be fetched separately by summing lines.
+func (r *JournalRepository) ListUnmatched(ctx context.Context, tenantID uuid.UUID) ([]model.JournalEntry, error) {
+	query := `
+		SELECT id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark, docstatus,
+		       reversed_id, reversal_id, submitted_by, submitted_at, created_by,
+		       updated_at, created_at
+		FROM journal_entries
+		WHERE tenant_id = $1 AND docstatus >= 2 AND (bank_transaction_id IS NULL OR bank_transaction_id = '00000000-0000-0000-0000-000000000000')
+		ORDER BY posting_date`
+	rows, err := r.pool.Query(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list unmatched journals: %w", err)
+	}
+	defer rows.Close()
+	var entries []model.JournalEntry
+	for rows.Next() {
+		var e model.JournalEntry
+		if err := rows.Scan(&e.ID, &e.VoucherNo, &e.VoucherType, &e.PostingDate, &e.CompanyID,
+			&e.TenantID, &e.Remark, &e.DocStatus, &e.ReversedID, &e.ReversalID,
+			&e.SubmittedBy, &e.SubmittedAt, &e.CreatedBy,
+			&e.UpdatedAt, &e.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan unmatched journal: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}

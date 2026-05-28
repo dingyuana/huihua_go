@@ -212,6 +212,34 @@ func (r *BankTransactionRepository) MarkAsReconciled(ctx context.Context, tenant
 	return err
 }
 
+// ListUnmatched returns all unmatched bank transactions for a tenant (across all accounts).
+func (r *BankTransactionRepository) ListUnmatched(ctx context.Context, tenantID uuid.UUID) ([]model.BankTransaction, error) {
+	query := `
+		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
+		       reference_no, counterparty_name, matched, matched_payment_entry_id, matched_gl_entry_id,
+		       imported_from, raw_data, company_id, created_at
+		FROM bank_transactions
+		WHERE tenant_id = $1 AND matched = FALSE
+		ORDER BY txn_date`
+	rows, err := r.pool.Query(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list unmatched: %w", err)
+	}
+	defer rows.Close()
+	var txns []model.BankTransaction
+	for rows.Next() {
+		var t model.BankTransaction
+		if err := rows.Scan(&t.ID, &t.TenantID, &t.BankAccountID, &t.TxnDate, &t.Description,
+			&t.Debit, &t.Credit, &t.Direction, &t.ReferenceNo, &t.CounterpartyName,
+			&t.Matched, &t.MatchedPaymentEntryID, &t.MatchedGLEntryID, &t.ImportedFrom,
+			&t.RawData, &t.CompanyID, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		txns = append(txns, t)
+	}
+	return txns, rows.Err()
+}
+
 // GetUnmatched retrieves all unmatched transactions for a bank account.
 func (r *BankTransactionRepository) GetUnmatched(ctx context.Context, tenantID, bankAccountID uuid.UUID) ([]model.BankTransaction, error) {
 	query := `
