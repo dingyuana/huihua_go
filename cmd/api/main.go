@@ -197,4 +197,17 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/bank-reconciliation/report", reconHandler.GetReport)
 	api.Post("/bank-reconciliation/mark-done", reconHandler.MarkDone)
 	api.Get("/bank-reconciliation/status", reconHandler.GetStatus)
+
+	// Approval workflow routes
+	approvalRepo := repository.NewApprovalRepository(db.GetPool())
+	approvalSvc := service.NewApprovalService(approvalRepo, journalRepo)
+	approvalHandler := handler.NewApprovalHandler(approvalSvc)
+	api.Post("/approvals/submit", approvalHandler.SubmitForApproval)
+	api.Post("/approvals/:id/approve", approvalHandler.Approve)
+	api.Post("/approvals/:id/reject", approvalHandler.Reject)
+	api.Get("/approvals/pending", approvalHandler.GetPendingTasks)
+	api.Get("/approvals/history", approvalHandler.GetApprovalHistory)
+	api.Get("/approvals/voucher/:id/status", approvalHandler.GetVoucherApprovalStatus)
+	api.Post("/approval-flows", approvalHandler.CreateApprovalFlow)
+	api.Get("/approval-flows", approvalHandler.ListApprovalFlows)
 }
