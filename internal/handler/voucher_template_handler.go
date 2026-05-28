@@ -116,7 +116,7 @@ func (h *VoucherTemplateHandler) Update(c *fiber.Ctx) error {
 		})
 	}
 	return c.JSON(fiber.Map{
-		"status": "ok",
+		"status": "updated",
 	})
 }
 

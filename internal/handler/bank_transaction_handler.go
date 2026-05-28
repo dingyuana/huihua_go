@@ -138,7 +138,7 @@ func (h *BankTransactionHandler) MarkMatched(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"status": "ok"})
+	return c.JSON(fiber.Map{"status": "matched"})
 }
 
 // GetUnmatched returns all unmatched transactions.
@@ -195,7 +195,7 @@ func (h *BankTransactionHandler) Delete(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"status": "ok"})
+	return c.JSON(fiber.Map{"status": "deleted"})
 }
 
 // parseDate parses a date string in various formats.
