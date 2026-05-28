@@ -15,15 +15,17 @@ import (
 
 // VoucherStateMachine handles voucher status transitions.
 type VoucherStateMachine struct {
-	journalRepo    *repository.JournalRepository
-	auditRepo      *repository.AuditRepository
+	journalRepo *repository.JournalRepository
+	auditRepo   *repository.AuditRepository
+	glRepo      *repository.GLEntryRepository
 }
 
 // NewVoucherStateMachine creates a new VoucherStateMachine.
-func NewVoucherStateMachine(journalRepo *repository.JournalRepository, auditRepo *repository.AuditRepository) *VoucherStateMachine {
+func NewVoucherStateMachine(journalRepo *repository.JournalRepository, auditRepo *repository.AuditRepository, glRepo *repository.GLEntryRepository) *VoucherStateMachine {
 	return &VoucherStateMachine{
-		journalRepo:    journalRepo,
-		auditRepo:      auditRepo,
+		journalRepo: journalRepo,
+		auditRepo:   auditRepo,
+		glRepo:      glRepo,
 	}
 }
 
@@ -100,6 +102,29 @@ func (s *VoucherStateMachine) ExecuteTransition(ctx context.Context, tenantID uu
 	// Update status in repository
 	if err := s.journalRepo.UpdateStatus(ctx, tenantID, journalID, newStatus, userID, userNamePtr, action, reasonPtr); err != nil {
 		return fmt.Errorf("update status: %w", err)
+	}
+
+	// Write GL entries on submit (draft -> posted)
+	if action == model.VoucherActionSubmit && s.glRepo != nil {
+		lines, err := s.journalRepo.GetLines(ctx, tenantID, journalID)
+		if err != nil {
+			return fmt.Errorf("get journal lines for GL: %w", err)
+		}
+		je, err := s.journalRepo.GetByID(ctx, tenantID, journalID)
+		if err != nil {
+			return fmt.Errorf("get journal entry for GL: %w", err)
+		}
+		voucherType := je.VoucherType
+		if err := s.glRepo.WriteGLEntries(ctx, tenantID, journalID, lines, je.PostingDate, voucherType, je.CompanyID); err != nil {
+			return fmt.Errorf("write GL entries: %w", err)
+		}
+	}
+
+	// Cancel GL entries on reverse/cancel
+	if (action == model.VoucherActionReverse || action == model.VoucherActionCancel) && s.glRepo != nil {
+		if err := s.glRepo.CancelGLEntriesByVoucher(ctx, tenantID, journalID); err != nil {
+			return fmt.Errorf("cancel GL entries: %w", err)
+		}
 	}
 
 	// Record audit log

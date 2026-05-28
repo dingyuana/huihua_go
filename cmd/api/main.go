@@ -102,6 +102,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Asset Depreciation routes
 	depreciationRepo := repository.NewAssetDepreciationRepository(db.GetPool())
 	journalRepo := repository.NewJournalRepository(db.GetPool())
+	glEntryRepo := repository.NewGLEntryRepository(db.GetPool())
 	depreciationSvc := service.NewAssetDepreciationService(depreciationRepo, journalRepo)
 	depreciationHandler := handler.NewAssetDepreciationHandler(depreciationSvc)
 	api.Post("/assets/:id/depreciation/schedule", depreciationHandler.CreateSchedule)
@@ -159,7 +160,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Voucher state machine routes
 	auditRepo = repository.NewAuditRepository(db.GetPool())
-	stateMachine := service.NewVoucherStateMachine(journalRepo, auditRepo)
+	stateMachine := service.NewVoucherStateMachine(journalRepo, auditRepo, glEntryRepo)
 	voucherHandler := handler.NewVoucherHandler(stateMachine, journalRepo)
 	api.Post("/vouchers/:id/submit", voucherHandler.Submit)
 	api.Post("/vouchers/:id/approve", voucherHandler.Approve)
@@ -190,7 +191,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/reconciliation/unmatched", reconciliationHandler.GetUnmatched)
 
 	// Bank reconciliation routes
-	glEntryRepo := repository.NewGLEntryRepository(db.GetPool())
+	glEntryRepo = repository.NewGLEntryRepository(db.GetPool())
 	reconSvc := service.NewBankReconciliationService(bankTransactionRepo, journalRepo, bankRepo, glEntryRepo)
 	reconHandler := handler.NewBankReconciliationHandler(reconSvc)
 	api.Post("/bank-reconciliation/reconcile", reconHandler.Reconcile)
