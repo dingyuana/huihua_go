@@ -210,4 +210,14 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/approvals/voucher/:id/status", approvalHandler.GetVoucherApprovalStatus)
 	api.Post("/approval-flows", approvalHandler.CreateApprovalFlow)
 	api.Get("/approval-flows", approvalHandler.ListApprovalFlows)
+
+	// Voucher auto-generate routes (from bank transactions)
+	// Placed after approvalSvc is initialized so it can be injected
+	autoGenSvc := service.NewVoucherAutoGenerateService(
+		journalRepo, glEntryRepo, bankTransactionRepo,
+		invoiceRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
+	)
+	autoGenHandler := handler.NewVoucherAutoGenerateHandler(autoGenSvc)
+	api.Post("/bank-transactions/:id/generate-voucher", autoGenHandler.GenerateFromBankTxn)
+	api.Post("/bank-transactions/batch-generate", autoGenHandler.BatchGenerate)
 }
