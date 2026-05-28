@@ -258,6 +258,121 @@ func (r *JournalRepository) GetLines(ctx context.Context, tenantID uuid.UUID, jo
 	return lines, nil
 }
 
+// ListVouchers retrieves vouchers with optional filters (for manual CRUD UI).
+func (r *JournalRepository) ListVouchers(ctx context.Context, tenantID uuid.UUID, startDate, endDate *time.Time, voucherType *string, docStatus *int16, accountID *uuid.UUID, limit, offset int) ([]model.JournalEntry, error) {
+	query := `
+		SELECT DISTINCT je.id, je.voucher_no, je.voucher_type, je.posting_date, je.company_id,
+		       je.tenant_id, je.remark, je.docstatus, je.reversed_id, je.reversal_id,
+		       je.submitted_by, je.submitted_at, je.created_by, je.created_at, je.updated_at
+		FROM journal_entries je`
+	var args []interface{}
+	argIdx := 1
+
+	if accountID != nil {
+		query += fmt.Sprintf(" INNER JOIN journal_entry_lines jel ON je.id = jel.journal_entry_id AND jel.tenant_id = $%d", argIdx)
+		args = append(args, tenantID)
+		argIdx++
+		query += fmt.Sprintf(" AND jel.account_id = $%d", argIdx)
+		args = append(args, *accountID)
+		argIdx++
+	} else {
+		query += " WHERE je.tenant_id = $" + fmt.Sprintf("%d", argIdx)
+		args = append(args, tenantID)
+		argIdx++
+	}
+
+	if startDate != nil {
+		query += fmt.Sprintf(" AND je.posting_date >= $%d", argIdx)
+		args = append(args, *startDate)
+		argIdx++
+	}
+	if endDate != nil {
+		query += fmt.Sprintf(" AND je.posting_date <= $%d", argIdx)
+		args = append(args, *endDate)
+		argIdx++
+	}
+	if voucherType != nil {
+		query += fmt.Sprintf(" AND je.voucher_type = $%d", argIdx)
+		args = append(args, *voucherType)
+		argIdx++
+	}
+	if docStatus != nil {
+		query += fmt.Sprintf(" AND je.docstatus = $%d", argIdx)
+		args = append(args, *docStatus)
+		argIdx++
+	}
+
+	query += " ORDER BY je.posting_date DESC, je.voucher_no DESC"
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	args = append(args, limit, offset)
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list vouchers: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []model.JournalEntry
+	for rows.Next() {
+		var je model.JournalEntry
+		if err := rows.Scan(
+			&je.ID, &je.VoucherNo, &je.VoucherType, &je.PostingDate, &je.CompanyID,
+			&je.TenantID, &je.Remark, &je.DocStatus, &je.ReversedID, &je.ReversalID,
+			&je.SubmittedBy, &je.SubmittedAt, &je.CreatedBy, &je.CreatedAt, &je.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan voucher: %w", err)
+		}
+		entries = append(entries, je)
+	}
+	return entries, rows.Err()
+}
+
+// Update updates the header fields of a journal entry (not lines).
+func (r *JournalRepository) Update(ctx context.Context, tenantID uuid.UUID, je *model.JournalEntry) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE journal_entries
+		SET voucher_type = $1, posting_date = $2, remark = $3, updated_at = $4
+		WHERE id = $5 AND tenant_id = $6`,
+		je.VoucherType, je.PostingDate, je.Remark, je.UpdatedAt, je.ID, tenantID)
+	if err != nil {
+		return fmt.Errorf("update journal entry: %w", err)
+	}
+	return nil
+}
+
+// DeleteLines deletes all lines for a given journal entry.
+func (r *JournalRepository) DeleteLines(ctx context.Context, tenantID, journalEntryID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM journal_entry_lines WHERE journal_entry_id = $1 AND tenant_id = $2`, journalEntryID, tenantID)
+	if err != nil {
+		return fmt.Errorf("delete lines: %w", err)
+	}
+	return nil
+}
+
+// DeleteVoucher deletes a journal entry and its lines.
+func (r *JournalRepository) DeleteVoucher(ctx context.Context, tenantID, journalEntryID uuid.UUID) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, `DELETE FROM journal_entry_lines WHERE journal_entry_id = $1 AND tenant_id = $2`, journalEntryID, tenantID)
+	if err != nil {
+		return fmt.Errorf("delete lines: %w", err)
+	}
+	_, err = tx.Exec(ctx, `DELETE FROM voucher_state_transitions WHERE journal_id = $1 AND tenant_id = $2`, journalEntryID, tenantID)
+	if err != nil {
+		return fmt.Errorf("delete transitions: %w", err)
+	}
+	_, err = tx.Exec(ctx, `DELETE FROM journal_entries WHERE id = $1 AND tenant_id = $2`, journalEntryID, tenantID)
+	if err != nil {
+		return fmt.Errorf("delete journal entry: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
 // GetTransitions retrieves all state transitions for a given journal entry.
 func (r *JournalRepository) GetTransitions(ctx context.Context, tenantID uuid.UUID, journalID uuid.UUID) ([]model.VoucherStateTransition, error) {
 	query := `
