@@ -67,6 +67,22 @@ func (r *PartyRepository) List(ctx context.Context, tenantID uuid.UUID) ([]model
 }
 
 // ListByType retrieves parties by type for a tenant.
+// ListByType retrieves parties by type.
+func (r *PartyRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.Party, error) {
+	row := r.pool.QueryRow(ctx, `
+		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
+		       contact_name, contact_phone, credit_limit, payment_days, is_active, created_at, updated_at
+		FROM parties WHERE id = $1 AND tenant_id = $2`,
+		id, tenantID)
+	var p model.Party
+	err := row.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.BankName, &p.BankAccount,
+		&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 func (r *PartyRepository) ListByType(ctx context.Context, tenantID uuid.UUID, partyType string) ([]model.Party, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,

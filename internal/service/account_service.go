@@ -69,3 +69,8 @@ func (s *AccountService) InitFromSeed(ctx context.Context, tenantID, companyID u
 	return nil
 }
 
+// GetTree returns all accounts for a tenant.
+func (s *AccountService) GetTree(ctx context.Context, tenantID uuid.UUID) ([]model.Account, error) {
+	return s.repo.GetTree(ctx, tenantID)
+}
+

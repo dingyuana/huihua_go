@@ -55,6 +55,11 @@ func (s *PartyService) DeleteParty(ctx context.Context, tenantID, id uuid.UUID) 
 	return s.repo.Delete(ctx, tenantID, id)
 }
 
+// GetByID returns a party by ID.
+func (s *PartyService) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.Party, error) {
+	return s.repo.GetByID(ctx, tenantID, id)
+}
+
 // ImportResult holds the result of an Excel import.
 type ImportResult struct {
 	SuccessCount int      `json:"success_count"`
@@ -64,7 +69,7 @@ type ImportResult struct {
 }
 
 // ImportExcel imports parties from an Excel file.
-func (s *PartyService) ImportExcel(ctx context.Context, tenantID uuid.UUID, data []byte) (ImportResult, error) {
+func (s *PartyService) ImportFromExcel(ctx context.Context, tenantID uuid.UUID, data []byte) (ImportResult, error) {
 	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
 		return ImportResult{}, fmt.Errorf("open excel file: %w", err)
