@@ -41,6 +41,11 @@ func (s *BankService) List(ctx context.Context, tenantID uuid.UUID) ([]model.Ban
 	return s.repo.ListByTenant(ctx, tenantID)
 }
 
+// GetByID returns a single bank account.
+func (s *BankService) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.BankAccount, error) {
+	return s.repo.GetByID(ctx, tenantID, id)
+}
+
 // Update updates bank account (only non-protected fields).
 func (s *BankService) Update(ctx context.Context, tenantID, id uuid.UUID, req *model.BankAccount) error {
 	return s.repo.Update(ctx, tenantID, id, req)

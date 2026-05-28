@@ -90,6 +90,10 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	partyHandler := handler.NewPartyHandler(partySvc)
 	api.Get("/parties", partyHandler.List)
 	api.Post("/parties/import", partyHandler.ImportExcel)
+	api.Get("/parties/:id", partyHandler.GetByID)
+	api.Post("/parties", partyHandler.Create)
+	api.Put("/parties/:id", partyHandler.Update)
+	api.Delete("/parties/:id", partyHandler.Delete)
 
 	// Account setup routes
 	companyRepo := repository.NewCompanyRepository(db.GetPool())
