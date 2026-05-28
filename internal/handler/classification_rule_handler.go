@@ -62,7 +62,7 @@ func (h *ClassificationRuleHandler) Update(c *fiber.Ctx) error {
 	if err := h.svc.UpdateRule(c.Context(), tenantID, id, &req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"status": "ok"})
+	return c.JSON(fiber.Map{"status": "updated"})
 }
 
 // Delete handles DELETE /api/v1/classification-rules/:id.
@@ -78,7 +78,7 @@ func (h *ClassificationRuleHandler) Delete(c *fiber.Ctx) error {
 	if err := h.svc.DeleteRule(c.Context(), tenantID, id); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"status": "ok"})
+	return c.JSON(fiber.Map{"status": "deleted"})
 }
 
 // Reorder handles POST /api/v1/classification-rules/reorder.
@@ -102,7 +102,7 @@ func (h *ClassificationRuleHandler) Reorder(c *fiber.Ctx) error {
 	if err := h.svc.ReorderPriority(c.Context(), tenantID, ruleIDs); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"status": "ok"})
+	return c.JSON(fiber.Map{"status": "reordered"})
 }
 
 // Match handles POST /api/v1/classification-rules/match.
