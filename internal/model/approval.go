@@ -19,14 +19,17 @@ const (
 
 // ApprovalFlow represents a configured approval workflow.
 type ApprovalFlow struct {
-	ID          uuid.UUID       `json:"id" db:"id"`
-	TenantID    uuid.UUID       `json:"tenant_id" db:"tenant_id"`
-	FlowName    string          `json:"flow_name" db:"flow_name"`
-	Description *string         `json:"description,omitempty" db:"description"`
-	Approvers   json.RawMessage `json:"approvers" db:"approvers"` // JSON array of approver IDs and levels
-	CreatedBy   *uuid.UUID      `json:"created_by,omitempty" db:"created_by"`
-	CreatedAt   time.Time       `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at" db:"updated_at"`
+	ID                     uuid.UUID       `json:"id" db:"id"`
+	TenantID               uuid.UUID       `json:"tenant_id" db:"tenant_id"`
+	FlowName               string          `json:"flow_name" db:"flow_name"`
+	Description            *string         `json:"description,omitempty" db:"description"`
+	Approvers              json.RawMessage `json:"approvers" db:"approvers"` // JSON array of approver IDs and levels
+	ThresholdAmountLevel2  decimal.Decimal `json:"threshold_amount_level2" db:"threshold_amount_level2"` // default 1000000
+	ThresholdAmountLevel3  decimal.Decimal `json:"threshold_amount_level3" db:"threshold_amount_level3"` // default 5000000
+	Currency               string          `json:"currency" db:"currency"` // default CNY
+	CreatedBy              *uuid.UUID      `json:"created_by,omitempty" db:"created_by"`
+	CreatedAt              time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt              time.Time       `json:"updated_at" db:"updated_at"`
 }
 
 // ApproverInfo represents a single approver level in an approval flow.

@@ -13,13 +13,10 @@ import (
 	"huihua/finance/internal/repository"
 )
 
-// Threshold amounts for multi-level approval (in base currency units)
-const (
-	// Level 1: Any voucher
-	// Level 2: Amount > 1,000,000 requires second approval
-	// Level 3: Amount > 5,000,000 requires finance manager approval
-	ThresholdLevel2 = 1000000 // 100万
-	ThresholdLevel3 = 5000000 // 500万
+// Threshold amounts — defaults only; real values come from approval_flows.threshold_amount_level2/3
+var (
+	ThresholdLevel2 int64 = 1000000 // 100万 — fallback if DB has no value
+	ThresholdLevel3 int64 = 5000000 // 500万 — fallback if DB has no value
 )
 
 // ApprovalService handles approval workflow operations.
@@ -79,10 +76,8 @@ func (s *ApprovalService) SubmitForApproval(ctx context.Context, tenantID uuid.U
 		}
 	}
 
-	// Determine required approval levels based on amount
-	levels := s.determineApprovalLevels(totalAmount)
-
-	// Get or create default flow
+	// Determine required approval levels based on amount (DB thresholds, fallback to package defaults)
+	// Get or create default flow (needed for threshold values)
 	flow, err := s.approvalRepo.GetDefaultFlow(ctx, tenantID)
 	if err != nil {
 		// Create a default flow if none exists
@@ -91,6 +86,19 @@ func (s *ApprovalService) SubmitForApproval(ctx context.Context, tenantID uuid.U
 			return fmt.Errorf("create default flow: %w", err)
 		}
 	}
+
+	// Extract thresholds from flow record, falling back to package defaults
+	level2 := ThresholdLevel2
+	level3 := ThresholdLevel3
+	if flow != nil {
+		if !flow.ThresholdAmountLevel2.IsZero() {
+			level2 = flow.ThresholdAmountLevel2.CoefficientInt64()
+		}
+		if !flow.ThresholdAmountLevel3.IsZero() {
+			level3 = flow.ThresholdAmountLevel3.CoefficientInt64()
+		}
+	}
+	levels := s.determineApprovalLevels(totalAmount, level2, level3)
 
 	// Parse approvers from flow
 	approvers, err := s.approvalRepo.GetApproversForFlow(flow)
@@ -241,16 +249,17 @@ func (s *ApprovalService) GetJournalEntryApprovalStatus(ctx context.Context, ten
 	return "pending", pendingTasks, nil
 }
 
-// determineApprovalLevels determines which approval levels are required based on amount.
-func (s *ApprovalService) determineApprovalLevels(amount decimal.Decimal) []int {
+// determineApprovalLevels reads thresholds from the flow record (DB-first),
+// falling back to package-level defaults if not set in the DB.
+func (s *ApprovalService) determineApprovalLevels(amount decimal.Decimal, level2, level3 int64) []int {
 	levels := []int{1} // Level 1 always required
 
-	if amount.GreaterThan(decimal.NewFromInt(ThresholdLevel2)) {
-		levels = append(levels, 2) // Add level 2
+	if level2 > 0 && amount.GreaterThan(decimal.NewFromInt(level2)) {
+		levels = append(levels, 2)
 	}
 
-	if amount.GreaterThan(decimal.NewFromInt(ThresholdLevel3)) {
-		levels = append(levels, 3) // Add level 3
+	if level3 > 0 && amount.GreaterThan(decimal.NewFromInt(level3)) {
+		levels = append(levels, 3)
 	}
 
 	return levels

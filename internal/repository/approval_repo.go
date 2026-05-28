@@ -48,14 +48,18 @@ func (r *ApprovalRepository) CreateFlow(ctx context.Context, tenantID uuid.UUID,
 // GetFlow retrieves an approval flow by ID.
 func (r *ApprovalRepository) GetFlow(ctx context.Context, tenantID uuid.UUID, flowID uuid.UUID) (*model.ApprovalFlow, error) {
 	query := `
-		SELECT id, tenant_id, flow_name, description, approvers, created_by, created_at, updated_at
+		SELECT id, tenant_id, flow_name, description, approvers,
+		       threshold_amount_level2, threshold_amount_level3, currency,
+		       created_by, created_at, updated_at
 		FROM approval_flows
 		WHERE id = $1 AND tenant_id = $2`
 
 	flow := &model.ApprovalFlow{}
 	err := r.pool.QueryRow(ctx, query, flowID, tenantID).Scan(
 		&flow.ID, &flow.TenantID, &flow.FlowName, &flow.Description,
-		&flow.Approvers, &flow.CreatedBy, &flow.CreatedAt, &flow.UpdatedAt,
+		&flow.Approvers,
+		&flow.ThresholdAmountLevel2, &flow.ThresholdAmountLevel3, &flow.Currency,
+		&flow.CreatedBy, &flow.CreatedAt, &flow.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get approval flow: %w", err)
@@ -67,7 +71,9 @@ func (r *ApprovalRepository) GetFlow(ctx context.Context, tenantID uuid.UUID, fl
 // ListFlows retrieves all approval flows for a tenant.
 func (r *ApprovalRepository) ListFlows(ctx context.Context, tenantID uuid.UUID) ([]model.ApprovalFlow, error) {
 	query := `
-		SELECT id, tenant_id, flow_name, description, approvers, created_by, created_at, updated_at
+		SELECT id, tenant_id, flow_name, description, approvers,
+		       threshold_amount_level2, threshold_amount_level3, currency,
+		       created_by, created_at, updated_at
 		FROM approval_flows
 		WHERE tenant_id = $1
 		ORDER BY created_at DESC`
@@ -83,7 +89,9 @@ func (r *ApprovalRepository) ListFlows(ctx context.Context, tenantID uuid.UUID) 
 		var flow model.ApprovalFlow
 		if err := rows.Scan(
 			&flow.ID, &flow.TenantID, &flow.FlowName, &flow.Description,
-			&flow.Approvers, &flow.CreatedBy, &flow.CreatedAt, &flow.UpdatedAt,
+			&flow.Approvers,
+			&flow.ThresholdAmountLevel2, &flow.ThresholdAmountLevel3, &flow.Currency,
+			&flow.CreatedBy, &flow.CreatedAt, &flow.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan approval flow: %w", err)
 		}
@@ -117,7 +125,9 @@ func (r *ApprovalRepository) UpdateFlow(ctx context.Context, tenantID uuid.UUID,
 // GetDefaultFlow retrieves the default approval flow for a tenant.
 func (r *ApprovalRepository) GetDefaultFlow(ctx context.Context, tenantID uuid.UUID) (*model.ApprovalFlow, error) {
 	query := `
-		SELECT id, tenant_id, flow_name, description, approvers, created_by, created_at, updated_at
+		SELECT id, tenant_id, flow_name, description, approvers,
+		       threshold_amount_level2, threshold_amount_level3, currency,
+		       created_by, created_at, updated_at
 		FROM approval_flows
 		WHERE tenant_id = $1
 		ORDER BY created_at ASC
@@ -126,7 +136,9 @@ func (r *ApprovalRepository) GetDefaultFlow(ctx context.Context, tenantID uuid.U
 	flow := &model.ApprovalFlow{}
 	err := r.pool.QueryRow(ctx, query, tenantID).Scan(
 		&flow.ID, &flow.TenantID, &flow.FlowName, &flow.Description,
-		&flow.Approvers, &flow.CreatedBy, &flow.CreatedAt, &flow.UpdatedAt,
+		&flow.Approvers,
+		&flow.ThresholdAmountLevel2, &flow.ThresholdAmountLevel3, &flow.Currency,
+		&flow.CreatedBy, &flow.CreatedAt, &flow.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get default flow: %w", err)
