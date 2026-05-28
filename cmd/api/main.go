@@ -205,13 +205,19 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/reconciliation/unmatched", reconciliationHandler.GetUnmatched)
 
 	// Bank reconciliation routes
-	glEntryRepo = repository.NewGLEntryRepository(db.GetPool())
 	reconSvc := service.NewBankReconciliationService(bankTransactionRepo, journalRepo, bankRepo, glEntryRepo)
 	reconHandler := handler.NewBankReconciliationHandler(reconSvc)
 	api.Post("/bank-reconciliation/reconcile", reconHandler.Reconcile)
 	api.Get("/bank-reconciliation/report", reconHandler.GetReport)
 	api.Post("/bank-reconciliation/mark-done", reconHandler.MarkDone)
 	api.Get("/bank-reconciliation/status", reconHandler.GetStatus)
+
+	// Financial report routes
+	reportSvc := service.NewReportService(glEntryRepo, obRepo, accountRepo, periodRepo)
+	reportHandler := handler.NewReportHandler(reportSvc)
+	api.Get("/reports/trial-balance", reportHandler.GetTrialBalance)
+	api.Get("/reports/income-statement", reportHandler.GetIncomeStatement)
+	api.Get("/reports/balance-sheet", reportHandler.GetBalanceSheet)
 
 	// Approval workflow routes
 	approvalRepo := repository.NewApprovalRepository(db.GetPool())

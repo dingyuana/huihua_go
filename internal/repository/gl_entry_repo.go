@@ -121,6 +121,41 @@ func (r *GLEntryRepository) GetByAccountAndPeriod(ctx context.Context, tenantID,
 	return entries, rows.Err()
 }
 
+// GetByTenantInRange retrieves all GL entries for a tenant within a date range.
+func (r *GLEntryRepository) GetByTenantInRange(ctx context.Context, tenantID uuid.UUID, startDate, endDate time.Time) ([]model.GLEntry, error) {
+	query := `
+		SELECT id, account_id, posting_date, debit, credit, debit_ccy, credit_ccy,
+		       account_ccy, voucher_type, voucher_id, against_voucher_type, against_voucher_id,
+		       party_type, party_id, cost_center_id, project_id, company_id, tenant_id,
+		       is_cancelled, created_at
+		FROM gl_entries
+		WHERE tenant_id = $1 AND posting_date >= $2 AND posting_date <= $3
+		ORDER BY account_id, posting_date, created_at`
+
+	rows, err := r.pool.Query(ctx, query, tenantID, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []model.GLEntry
+	for rows.Next() {
+		var e model.GLEntry
+		err := rows.Scan(
+			&e.ID, &e.AccountID, &e.PostingDate, &e.Debit, &e.Credit,
+			&e.DebitCcy, &e.CreditCcy, &e.AccountCcy, &e.VoucherType, &e.VoucherID,
+			&e.AgainstVoucherType, &e.AgainstVoucherID, &e.PartyType, &e.PartyID,
+			&e.CostCenterID, &e.ProjectID, &e.CompanyID, &e.TenantID,
+			&e.IsCancelled, &e.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 // GetPool returns the underlying connection pool.
 func (r *GLEntryRepository) GetPool() *pgxpool.Pool {
 	return r.pool

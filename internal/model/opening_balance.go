@@ -65,8 +65,55 @@ type TrialBalanceEntry struct {
 // TrialBalance represents the full trial balance for a period.
 type TrialBalance struct {
 	PeriodNo       int                `json:"period_no"`
+	PeriodName     string             `json:"period_name,omitempty"`
+	StartDate      time.Time          `json:"start_date,omitempty"`
+	EndDate        time.Time          `json:"end_date,omitempty"`
 	Entries        []TrialBalanceEntry `json:"entries"`
 	TotalDebit     decimal.Decimal    `json:"total_debit"`
 	TotalCredit    decimal.Decimal    `json:"total_credit"`
 	IsBalanced     bool               `json:"is_balanced"`
+}
+
+// IncomeStatementAccountEntry is a line item in the income statement detail.
+type IncomeStatementAccountEntry struct {
+	AccountCode   string          `json:"account_code"`
+	AccountName   string          `json:"account_name"`
+	PeriodDebit   decimal.Decimal `json:"period_debit"`
+	PeriodCredit  decimal.Decimal `json:"period_credit"`
+	NetAmount     decimal.Decimal `json:"net_amount"`
+}
+
+// IncomeStatement represents a P&L report for a period.
+type IncomeStatement struct {
+	PeriodNo        int                             `json:"period_no"`
+	PeriodName      string                          `json:"period_name"`
+	StartDate       time.Time                       `json:"start_date"`
+	EndDate         time.Time                       `json:"end_date"`
+	TotalIncome     decimal.Decimal                 `json:"total_income"`
+	TotalExpense    decimal.Decimal                 `json:"total_expense"`
+	NetProfit       decimal.Decimal                 `json:"net_profit"`
+	IncomeDetails  []IncomeStatementAccountEntry   `json:"income_details,omitempty"`
+	ExpenseDetails []IncomeStatementAccountEntry   `json:"expense_details,omitempty"`
+}
+
+// BalanceSheetAccountEntry is a line item in the balance sheet.
+type BalanceSheetAccountEntry struct {
+	AccountCode string          `json:"account_code"`
+	AccountName string          `json:"account_name"`
+	Balance     decimal.Decimal `json:"balance"`
+}
+
+// BalanceSheet represents the balance sheet as of a period end.
+type BalanceSheet struct {
+	PeriodNo         int                       `json:"period_no"`
+	PeriodName       string                    `json:"period_name"`
+	AsOfDate         time.Time                 `json:"as_of_date"`
+	TotalAssets      decimal.Decimal           `json:"total_assets"`
+	TotalLiabilities decimal.Decimal           `json:"total_liabilities"`
+	TotalEquity      decimal.Decimal           `json:"total_equity"`
+	DerivedEquity    decimal.Decimal           `json:"derived_equity,omitempty"`
+	IsBalanced       bool                      `json:"is_balanced"`
+	AssetEntries     []BalanceSheetAccountEntry `json:"asset_entries,omitempty"`
+	LiabilityEntries []BalanceSheetAccountEntry `json:"liability_entries,omitempty"`
+	EquityEntries    []BalanceSheetAccountEntry `json:"equity_entries,omitempty"`
 }
