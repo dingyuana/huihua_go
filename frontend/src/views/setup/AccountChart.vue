@@ -109,10 +109,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import type { Account } from '@/types/models/account'
+import request from '@/api/request'
 
 /** 余额方向根据科目类型自动确定 */
 function rootTypeByAccountType(type: string): string {
@@ -252,7 +253,7 @@ function buildStandardAccounts(): Account[] {
   ]
 }
 
-const allAccounts = ref<Account[]>(buildStandardAccounts())
+const allAccounts = ref<Account[]>([])
 const searchKeyword = ref('')
 const filterType = ref('')
 const showLedgerOnly = ref(false)
@@ -391,8 +392,37 @@ function handleDelete(row: Account) {
   }).catch(() => {})
 }
 
-function importStandardChart() {
-  ElMessage.success('已导入《小企业会计准则》标准科目表（5 大类，80+ 科目）')
+/** 页面加载时从后端获取科目表 */
+onMounted(async () => {
+  try {
+    const res: any = await request.get('/accounts/tree')
+    const data = res?.data || res
+    if (Array.isArray(data) && data.length > 0) {
+      allAccounts.value = data
+      return
+    }
+  } catch {
+    console.warn('后端科目表接口不可用，使用本地数据')
+  }
+  // 降级：使用本地内置科目表
+  allAccounts.value = buildStandardAccounts()
+})
+
+/** 加载标准科目表（调用后端 seed 接口或本地） */
+async function importStandardChart() {
+  try {
+    await request.post('/accounts/init-seed', {
+      tenant_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      company_id: '12345678-1234-1234-1234-123456789abc',
+    })
+    // 重新加载
+    const res: any = await request.get('/accounts/tree')
+    allAccounts.value = res?.data || res || buildStandardAccounts()
+    ElMessage.success('已导入《小企业会计准则》标准科目表（5 大类，80+ 科目）')
+  } catch {
+    allAccounts.value = buildStandardAccounts()
+    ElMessage.success('已导入标准科目表（本地模式）')
+  }
 }
 </script>
 

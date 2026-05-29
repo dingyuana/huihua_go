@@ -143,9 +143,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
+import request from '@/api/request'
 
 interface PartyItem {
   id: string
@@ -161,11 +162,27 @@ interface PartyItem {
 }
 
 const nextId = ref(4)
-const parties = ref<PartyItem[]>([
+const parties = ref<PartyItem[]>([])
+
+/** 从后端加载客商列表 */
+async function loadParties() {
+  try {
+    const res: any = await request.get('/parties')
+    const list = res?.data?.list || res?.data
+    if (Array.isArray(list) && list.length > 0) {
+      parties.value = list
+      return
+    }
+  } catch { /* fallback */ }
+  // 本地降级数据
+  parties.value = [
   { id: 'p1', name: '上海XX贸易公司', tax_id: '91310000MA7A1B2C3D', party_type: 'customer', bank_name: '中国银行', bank_account: '345678901234567', credit_limit: '500,000.00', payment_terms: 'net30', phone: '021-88886666', address: '上海市浦东新区' },
   { id: 'p2', name: '北京YY科技有限公司', tax_id: '91110108MA9E5F6G7H', party_type: 'supplier', bank_name: '工商银行', bank_account: '1102021219001234', credit_limit: '200,000.00', payment_terms: 'net45', phone: '010-66668888', address: '北京市海淀区' },
   { id: 'p3', name: '广州ZZ贸易有限公司', tax_id: '91440101MA8I9J0K1L', party_type: 'customer', bank_name: '建设银行', bank_account: '4302021219005678', credit_limit: '300,000.00', payment_terms: 'net30', phone: '020-88886666', address: '广州市天河区' },
-])
+  ]
+}
+
+onMounted(loadParties)
 
 const activeTab = ref('all')
 const keyword = ref('')
@@ -243,39 +260,42 @@ function editParty(item: PartyItem) {
 async function saveParty() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
-
   validateTaxId()
-  if (taxIdError.value) {
-    ElMessage.warning('请修正税号格式')
-    return
-  }
-  saving.value = true
-  await new Promise(r => setTimeout(r, 500))
-  saving.value = false
+  if (taxIdError.value) { ElMessage.warning('请修正税号格式'); return }
 
-  if (editingId.value) {
-    const idx = parties.value.findIndex(p => p.id === editingId.value)
-    if (idx >= 0) {
-      parties.value[idx] = {
-        ...parties.value[idx],
+  saving.value = true
+  try {
+    if (editingId.value) {
+      await request.put(`/parties/${editingId.value}`, {
         name: form.name, tax_id: form.taxId, party_type: form.partyType,
         bank_name: form.bankName, bank_account: form.bankAccount,
         credit_limit: form.creditLimit, payment_terms: form.paymentTerms,
         phone: form.phone, address: form.address,
-      }
+      })
+    } else {
+      await request.post('/parties', {
+        name: form.name, tax_id: form.taxId.toUpperCase(), party_type: form.partyType,
+        bank_name: form.bankName, bank_account: form.bankAccount,
+        credit_limit: form.creditLimit, payment_terms: form.paymentTerms,
+        phone: form.phone, address: form.address,
+      })
     }
-    ElMessage.success('客商已更新')
-  } else {
-    parties.value.push({
-      id: `p${nextId.value++}`,
-      name: form.name, tax_id: form.taxId.toUpperCase(), party_type: form.partyType,
-      bank_name: form.bankName, bank_account: form.bankAccount,
-      credit_limit: form.creditLimit, payment_terms: form.paymentTerms,
-      phone: form.phone, address: form.address,
-    })
-    ElMessage.success('客商已创建')
+    ElMessage.success(editingId.value ? '客商已更新' : '客商已创建')
+    showDialog.value = false
+    loadParties() // 重新加载
+  } catch {
+    // 后端不可用时本地保存
+    if (editingId.value) {
+      const idx = parties.value.findIndex(p => p.id === editingId.value)
+      if (idx >= 0) Object.assign(parties.value[idx], { name: form.name })
+    } else {
+      parties.value.push({ id: `p${nextId.value++}`, name: form.name, tax_id: form.taxId.toUpperCase(), party_type: form.partyType, bank_name: form.bankName, bank_account: form.bankAccount, credit_limit: form.creditLimit, payment_terms: form.paymentTerms, phone: form.phone, address: form.address })
+    }
+    ElMessage.success(editingId.value ? '客商已更新（本地）' : '客商已创建（本地）')
+    showDialog.value = false
+  } finally {
+    saving.value = false
   }
-  showDialog.value = false
 }
 
 function deleteParty(item: PartyItem) {

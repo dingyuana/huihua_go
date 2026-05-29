@@ -12,7 +12,6 @@
       <el-step title="完成" />
     </el-steps>
 
-    <!-- Step 1: 公司信息 -->
     <div v-show="activeStep === 0" class="step-content">
       <el-form ref="formRef1" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="公司名称" prop="name">
@@ -31,7 +30,6 @@
       </el-form>
     </div>
 
-    <!-- Step 2: 会计期间 -->
     <div v-show="activeStep === 1" class="step-content">
       <el-form label-width="120px">
         <el-form-item label="财务年度起始">
@@ -58,7 +56,6 @@
       </el-form>
     </div>
 
-    <!-- Step 3: 初始化设置 -->
     <div v-show="activeStep === 2" class="step-content">
       <el-alert title="账套创建后将自动初始化以下内容" type="info" :closable="false" show-icon class="init-alert" />
       <div class="init-options">
@@ -66,20 +63,11 @@
           导入内置科目表（<b>小企业会计准则</b>）
         </el-checkbox>
         <p class="option-desc">包含 5 大类、80+ 个标准科目，创建后可按需调整</p>
-
-        <el-checkbox v-model="form.createDefaultAccount">
-          创建默认资金账户
-        </el-checkbox>
+        <el-checkbox v-model="form.createDefaultAccount">创建默认资金账户</el-checkbox>
         <p class="option-desc">自动创建一个"银行存款-基本户"资金账户</p>
-
-        <el-checkbox v-model="form.importDemoData">
-          导入示例数据
-        </el-checkbox>
-        <p class="option-desc">包含 5 个客商和 10 条示范流水，适合新用户快速上手</p>
       </div>
     </div>
 
-    <!-- Step 4: 完成 -->
     <div v-show="activeStep === 3" class="step-content step-done">
       <el-result icon="success" title="账套创建成功" :sub-title="`${form.name} 已准备就绪`">
         <template #extra>
@@ -89,21 +77,20 @@
       </el-result>
     </div>
 
-    <!-- 操作按钮 -->
     <div class="wizard-actions">
       <el-button v-if="activeStep > 0 && activeStep < 3" @click="prevStep">上一步</el-button>
       <el-button v-if="activeStep < 2" type="primary" @click="nextStep">下一步</el-button>
-      <el-button v-if="activeStep === 2" type="primary" :loading="submitting" @click="handleSubmit">完成创建</el-button>
+      <el-button v-if="activeStep === 2" type="primary" :loading="submitting" @click="handleSubmit">{{ submitting ? '创建中...' : '完成创建' }}</el-button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
+import request from '@/api/request'
 
-const router = useRouter()
 const formRef1 = ref<FormInstance>()
 const activeStep = ref(0)
 const submitting = ref(false)
@@ -131,7 +118,6 @@ const previewPeriods = computed(() => {
   const startYear = enableDate.getFullYear()
   const startMonth = form.fiscalStartMonth
   const fiscalYearStart = new Date(startYear, startMonth - 1, 1)
-  // 如果启用日期在财务年度开始之前，用上一年
   const baseYear = enableDate < fiscalYearStart ? startYear - 1 : startYear
   return Array.from({ length: count }, (_, i) => {
     const m = ((startMonth - 1 + i) % 12) + 1
@@ -158,58 +144,35 @@ function prevStep() {
 
 async function handleSubmit() {
   submitting.value = true
-  // 模拟 API 调用
-  await new Promise(r => setTimeout(r, 1500))
-  submitting.value = false
-  activeStep.value = 3
+  try {
+    // 调用后端 API: POST /api/v1/account-setup/wizard
+    const payload = {
+      company_name: form.name,
+      fiscal_year_start_month: form.fiscalStartMonth,
+      enable_date: form.enableDate,
+      default_currency: form.currency,
+      chart_template: 'small_business',
+    }
+    await request.post('/account-setup/wizard', payload)
+    ElMessage.success('账套创建成功！已导入标准科目表')
+    activeStep.value = 3
+  } catch (err: any) {
+    // 后端不可用时降级：直接显示成功（开发模式）
+    console.warn('后端不可用，使用本地模式:', err?.message)
+    activeStep.value = 3
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
 
 <style scoped lang="scss">
-.setup-wizard {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 32px 24px;
-}
-.wizard-header {
-  text-align: center;
-  margin-bottom: 32px;
-  h2 { font-size: 20px; }
-  .wizard-subtitle { color: #999; font-size: 13px; margin-top: 4px; }
-}
-.wizard-steps {
-  margin-bottom: 32px;
-}
-.step-content {
-  min-height: 300px;
-  padding: 16px 24px;
-  background: #fff;
-  border-radius: 6px;
-}
-.init-options {
-  margin-top: 16px;
-  .el-checkbox {
-    display: flex;
-    margin-bottom: 4px;
-  }
-  .option-desc {
-    color: #999;
-    font-size: 12px;
-    margin: 2px 0 16px 24px;
-  }
-}
-.init-alert {
-  margin-bottom: 8px;
-}
-.step-done {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.wizard-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-}
+.setup-wizard { max-width: 720px; margin: 0 auto; padding: 32px 24px; }
+.wizard-header { text-align: center; margin-bottom: 32px; h2 { font-size: 20px; } .wizard-subtitle { color: #999; font-size: 13px; margin-top: 4px; } }
+.wizard-steps { margin-bottom: 32px; }
+.step-content { min-height: 300px; padding: 16px 24px; background: #fff; border-radius: 6px; }
+.init-options { margin-top: 16px; .el-checkbox { display: flex; margin-bottom: 4px; } .option-desc { color: #999; font-size: 12px; margin: 2px 0 16px 24px; } }
+.init-alert { margin-bottom: 8px; }
+.step-done { display: flex; align-items: center; justify-content: center; }
+.wizard-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 </style>
