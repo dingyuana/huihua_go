@@ -105,10 +105,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import type { Account } from '@/types/models/account'
+import request from '@/api/request'
 
 interface BankAccountItem {
   id: string
@@ -124,11 +125,23 @@ interface BankAccountItem {
   balance?: string
 }
 
-const accounts = ref<BankAccountItem[]>([
+const accounts = ref<BankAccountItem[]>([])
+
+const localAccounts: BankAccountItem[] = [
   { id: 'ba-1', bank_name: '工商银行-基本户', account_number: '1102021219001234567', bank_account_type: 'bank', clearing_account_code: '1001-01', iban: 'CN1234567890', swift_code: 'ICBKCNBJ', currency: 'CNY', is_active: true, balance: '1,250,000.00' },
   { id: 'ba-2', bank_name: '建设银行-一般户', account_number: '4302021219007654321', bank_account_type: 'bank', clearing_account_code: '1001-02', iban: 'CN9876543210', swift_code: 'PCBCCNBJ', currency: 'CNY', is_active: true, balance: '680,000.00' },
   { id: 'ba-3', bank_name: '库存现金', account_number: '-', bank_account_type: 'cash', clearing_account_code: '1001-03', currency: 'CNY', is_active: true, balance: '12,000.00' },
-])
+]
+
+async function loadBankAccounts() {
+  try {
+    const res: any = await request.get('/bank-accounts')
+    const list = res?.data?.list || res?.data
+    if (Array.isArray(list) && list.length > 0) { accounts.value = list; return }
+  } catch { /* fallback */ }
+  accounts.value = localAccounts
+}
+onMounted(loadBankAccounts)
 
 const nextId = ref(4)
 const showDialog = ref(false)

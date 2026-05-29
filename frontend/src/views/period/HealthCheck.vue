@@ -70,9 +70,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import request from '@/api/request'
 
 const router = useRouter()
 const period = ref('2026-05')
@@ -88,7 +89,7 @@ interface CheckItem {
   route?: string
 }
 
-const checks = ref<CheckItem[]>([
+const localChecks: CheckItem[] = [
   { name: '凭证借贷平衡', status: 'passed', message: '全部凭证借贷平衡', action: false },
   { name: '凭证完整性', status: 'warning', message: '3 张凭证待审核', action: true, actionBtn: '去审核 →', route: '/vouchers/review' },
   { name: '凭证编号连续性', status: 'passed', message: '编号连续', action: false },
@@ -99,7 +100,17 @@ const checks = ref<CheckItem[]>([
   { name: '进项发票到期', status: 'warning', message: '3 张发票即将过期', action: true, actionBtn: '查看 →', route: '/invoices' },
   { name: '损益结转', status: 'blocked', message: '损益类科目尚未结转', action: true, actionBtn: '生成结转凭证 →' },
   { name: '期间锁定状态', status: 'passed', message: '当前期间未锁定', action: false },
-])
+]
+
+const checks = ref<CheckItem[]>([])
+onMounted(async () => {
+  try {
+    const res: any = await request.post('/periods/health-check', { period: period.value })
+    const items = res?.data?.checks || res?.data
+    if (Array.isArray(items)) { checks.value = items; return }
+  } catch { /* fallback */ }
+  checks.value = localChecks
+})
 
 const overallStatus = computed(() => {
   if (checks.value.some(c => c.status === 'blocked')) return 'red'

@@ -114,8 +114,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 
 interface Rule {
   name: string
@@ -133,12 +134,23 @@ const defaultForm = {
   direction: '', classification: 'business_receipt', priority: 10,
 }
 
-const rules = ref<Rule[]>([
+const localRules: Rule[] = [
   { name: '手续费匹配', pattern: '手续费|管理费|年费|账户管理', matchType: 'regex', matchField: 'description', direction: 'out', classification: 'bank_fee', priority: 1, is_active: true },
   { name: '利息收入', pattern: '利息|结息', matchType: 'keyword', matchField: 'description', direction: 'in', classification: 'interest_income', priority: 2, is_active: true },
   { name: '内部转账', pattern: '同行.*划转|内部.*调拨', matchType: 'regex', matchField: 'description', direction: '', classification: 'internal_transfer', priority: 3, is_active: true },
   { name: '上海XX回款', pattern: '上海XX贸易公司', matchType: 'keyword', matchField: 'counterparty', direction: 'in', classification: 'business_receipt', priority: 4, is_active: true },
-])
+]
+const rules = ref<Rule[]>([])
+
+async function loadRules() {
+  try {
+    const res: any = await request.get('/classification-rules')
+    const list = res?.data?.list || res?.data
+    if (Array.isArray(list) && list.length > 0) { rules.value = list; return }
+  } catch { /* fallback */ }
+  rules.value = [...localRules]
+}
+onMounted(loadRules)
 
 const showDialog = ref(false)
 const editingIndex = ref(-1)

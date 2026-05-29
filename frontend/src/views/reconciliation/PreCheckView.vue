@@ -68,6 +68,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
+import request from '@/api/request'
 
 const router = useRouter()
 const selectedPayment = ref('')

@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 
 const period = ref('2026-05')
 const activeTab = ref('bs')
@@ -72,6 +73,15 @@ const balanceSheet = ref([
   { code: '', name: '未分配利润', opening: '200,000.00', closing: '350,000.00', level: 1 },
   { code: '', name: '权益合计', opening: '1,200,000.00', closing: '1,350,000.00', level: 0 },
 ])
+
+async function loadReport() {
+  try {
+    const res: any = await request.get('/reports/balance-sheet', { params: { period: period.value } })
+    const data = res?.data?.rows || res?.data
+    if (Array.isArray(data) && data.length > 0) { balanceSheet.value = data; return }
+  } catch { /* fallback */ }
+}
+onMounted(loadReport)
 
 const cashFlow = ref([
   { category: '一、经营活动产生的现金流量', item: '销售商品、提供劳务收到的现金', current: '850,000.00', last: '720,000.00', level: 0 },

@@ -156,8 +156,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 
 const invoiceView = ref('list')
 
@@ -207,12 +208,23 @@ const filter = reactive({
   keyword: '',
 })
 
-const invoices = ref<InvoiceItem[]>([
+const invoices = ref<InvoiceItem[]>([])
+
+const localInvoices: InvoiceItem[] = [
   { invoice_no: '12345678', type: 'sale', customer_name: '上海XX贸易公司', posting_date: '2026-05-10', due_date: '2026-06-10', total_amount: '113,000.00', tax_amount: '13,000.00', net_amount: '100,000.00', outstanding: '0.00', status: 'paid' },
   { invoice_no: '87654321', type: 'sale', customer_name: '深圳AA科技', posting_date: '2026-05-15', due_date: '2026-06-15', total_amount: '56,500.00', tax_amount: '6,500.00', net_amount: '50,000.00', outstanding: '56,500.00', status: 'unpaid' },
   { invoice_no: '11223344', type: 'purchase', customer_name: '北京YY科技', posting_date: '2026-05-12', due_date: '2026-05-28', total_amount: '22,600.00', tax_amount: '2,600.00', net_amount: '20,000.00', outstanding: '0.00', status: 'paid' },
   { invoice_no: '99887766', type: 'purchase', customer_name: '广州ZZ贸易', posting_date: '2026-05-20', due_date: '2026-06-20', total_amount: '45,200.00', tax_amount: '5,200.00', net_amount: '40,000.00', outstanding: '22,600.00', status: 'partially_paid' },
-])
+]
+
+onMounted(async () => {
+  try {
+    const res: any = await request.get('/invoices')
+    const list = res?.data?.list || res?.data
+    if (Array.isArray(list) && list.length > 0) { invoices.value = list; return }
+  } catch { /* fallback */ }
+  invoices.value = localInvoices
+})
 
 const showUpload = ref(false)
 const showDetail = ref<InvoiceItem | null>(null)

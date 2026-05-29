@@ -135,8 +135,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 
 interface TxnItem {
   id: string
@@ -149,7 +150,7 @@ interface TxnItem {
   confirmed: boolean
 }
 
-const allTxns = ref<TxnItem[]>([
+const localTxns: TxnItem[] = [
   { id: 't1', date: '05-20', amount: '12,000.00', direction: 'in', counterparty: '上海XX贸易公司', description: '网银转账-收款-上海XX', classification: 'business_receipt', confirmed: true },
   { id: 't2', date: '05-20', amount: '50.00', direction: 'out', counterparty: '', description: '账户管理费', classification: 'bank_fee', confirmed: true },
   { id: 't3', date: '05-21', amount: '3,500.00', direction: 'in', counterparty: '北京YY科技', description: '转账收入', classification: 'business_receipt', confirmed: false },
@@ -158,7 +159,17 @@ const allTxns = ref<TxnItem[]>([
   { id: 't6', date: '05-22', amount: '10,000.00', direction: 'out', counterparty: '上海XX贸易公司', description: '网银转账', classification: 'pending', confirmed: false },
   { id: 't7', date: '05-23', amount: '200.00', direction: 'out', counterparty: '', description: '跨行转账手续费', classification: 'bank_fee', confirmed: false },
   { id: 't8', date: '05-23', amount: '8,000.00', direction: 'in', counterparty: '未知', description: '来账-摘要不明', classification: 'pending', confirmed: false },
-])
+]
+
+const allTxns = ref<TxnItem[]>([])
+onMounted(async () => {
+  try {
+    const res: any = await request.get('/bank-transactions', { params: { page: 1, pageSize: 50 } })
+    const list = res?.data?.list || res?.data
+    if (Array.isArray(list) && list.length > 0) { allTxns.value = list; return }
+  } catch { /* fallback */ }
+  allTxns.value = localTxns
+})
 
 const viewMode = ref('list')
 const tableRef = ref()

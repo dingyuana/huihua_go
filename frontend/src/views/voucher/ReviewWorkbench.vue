@@ -116,8 +116,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 
 interface RiskItem {
   severity: 'error' | 'warning'
@@ -136,7 +137,7 @@ interface VoucherItem {
   lines?: { account: string; debit: string; credit: string }[]
 }
 
-const pendingVouchers = ref<VoucherItem[]>([
+const localPending: VoucherItem[] = [
   {
     id: 'v1', voucher_no: '记-2026-05-0010', date: '05-27',
     remark: '收款-上海XX贸易公司', amount: '12,000.00', creator: '李四',
@@ -178,9 +179,19 @@ const pendingVouchers = ref<VoucherItem[]>([
       { account: '1001-01 银行存款-工行', debit: '', credit: '200,000.00' },
     ],
   },
-])
+]
 
-const pendingCount = ref(pendingVouchers.value.length)
+const pendingCount = ref(0)
+const pendingVouchers = ref<VoucherItem[]>([])
+onMounted(async () => {
+  try {
+    const res: any = await request.get('/vouchers/pending-review')
+    const list = res?.data?.list || res?.data
+    if (Array.isArray(list) && list.length > 0) { pendingVouchers.value = list; pendingCount.value = list.length; return }
+  } catch { /* fallback */ }
+  pendingVouchers.value = localPending; pendingCount.value = localPending.length
+})
+
 const selectAll = ref(false)
 const selectedIds = ref<string[]>([])
 const showRejectDialog = ref(false)

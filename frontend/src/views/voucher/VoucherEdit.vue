@@ -123,9 +123,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import request from '@/api/request'
 
 const route = useRoute()
 const router = useRouter()
@@ -142,11 +143,11 @@ interface LineItem {
   reverse_credit?: string
 }
 
-const docstatus = ref(0) // 0=draft, 1=submitted, 2=cancelled
+const docstatus = ref(0)
 const readonly = computed(() => docstatus.value === 1)
 const reversalId = ref('')
 
-const form = reactive({ date: '2026-05-27', type: '记', remark: '' })
+const form = reactive({ date: '', type: '记', remark: '' })
 const lines = ref<LineItem[]>([
   { account: null, debit: '', credit: '' },
   { account: null, debit: '', credit: '' },
@@ -154,7 +155,35 @@ const lines = ref<LineItem[]>([
 
 const voucherNo = computed(() => {
   if (isNew.value) return '(自动生成)'
-  return '记-2026-05-0001'
+  return route.params.id as string || '记-2026-05-XXXX'
+})
+
+/** 编辑模式：从后端加载凭证数据 */
+onMounted(async () => {
+  if (isNew.value) {
+    form.date = new Date().toISOString().slice(0, 10)
+    return
+  }
+  try {
+    const res: any = await request.get(`/vouchers/${route.params.id}`)
+    const data = res?.data || res
+    if (data) {
+      form.date = data.posting_date || ''
+      form.type = data.voucher_type || '记'
+      form.remark = data.remark || ''
+      docstatus.value = data.docstatus ?? 0
+      reversalId.value = data.reversal_id || ''
+      if (data.lines?.length) {
+        lines.value = data.lines.map((l: any) => ({
+          account: { id: l.account_id, code: l.account_code, name: l.account_name },
+          debit: l.debit || '',
+          credit: l.credit || '',
+        }))
+      }
+    }
+  } catch {
+    form.date = new Date().toISOString().slice(0, 10)
+  }
 })
 
 const totalDebit = computed(() =>

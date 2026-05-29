@@ -123,8 +123,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 
 const bankAccountId = ref('')
 const uploadedFile = ref<File | null>(null)

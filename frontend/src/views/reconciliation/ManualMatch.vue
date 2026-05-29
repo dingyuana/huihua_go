@@ -42,8 +42,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 
 const availableInvoices = ref([
   { id: 'i1', invoice_no: '87654321', outstanding: '8,000.00' },

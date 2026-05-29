@@ -68,8 +68,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 
 const l1Matches = ref([
   { invoice_no: '12345678', customer: '上海XX贸易公司', amount: '¥12,000', after: '¥0' },
