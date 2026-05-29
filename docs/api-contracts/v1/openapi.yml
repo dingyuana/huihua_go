@@ -1,0 +1,680 @@
+# API 契约文档 — 银行流水驱动业财一体化智能财务平台
+
+**版本**：V1.0
+**日期**：2026-05-27
+**协议**：OpenAPI 3.0（用于前后端对账与代码生成）
+
+---
+
+## OAS 3.0 根文件
+
+```yaml
+openapi: "3.0.3"
+info:
+  title: 慧财智能财务平台 API
+  version: "1.0.0"
+  description: |
+    银行流水驱动业财一体化智能财务平台后端 API。
+    所有业务接口均通过 JWT 认证，tenant_id 在 JWT 中携带，由后端 RLS 强制隔离。
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: 本地开发环境
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT 中必须包含 tenant_id 声明。
+        代账会计切换租户时刷新 token。
+
+  parameters:
+    TenantHeader:
+      name: X-Tenant-ID
+      in: header
+      description: 显式指定租户 ID（代账会计切换场景，通常通过 JWT 自动携带）
+      schema:
+        type: string
+        format: uuid
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+    PageSizeParam:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+    SortParam:
+      name: sort
+      in: query
+      description: 排序字段，格式 "field:asc|desc"，如 "posting_date:desc"
+      schema:
+        type: string
+
+  schemas:
+    # ============================================
+    # 通用类型
+    # ============================================
+    ApiResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: 0=成功，非0=业务错误
+          example: 0
+        message:
+          type: string
+          example: "ok"
+        data:
+          type: object
+
+    PageResult:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            type: object
+        total:
+          type: integer
+          example: 100
+        page:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 20
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 20001
+        message:
+          type: string
+          example: "借贷不平衡: 借方 1000.00 != 贷方 500.00"
+        data:
+          type: object
+          nullable: true
+
+    # ============================================
+    # 枚举
+    # ============================================
+    DocStatus:
+      type: integer
+      enum: [0, 1, 2]
+      description: 0=草稿(Draft), 1=已审核(Submitted), 2=已作废(Cancelled)
+
+    AccountType:
+      type: string
+      enum: [asset, liability, expense, income, equity]
+      description: 科目类型，决定默认余额方向
+
+    RootType:
+      type: string
+      enum: [debit, credit]
+      description: 余额方向
+
+    PartyType:
+      type: string
+      enum: [customer, supplier, employee, both]
+
+    InvoiceType:
+      type: string
+      enum: [sale, purchase, credit_note]
+
+    InvoiceStatus:
+      type: string
+      enum: [unpaid, partially_paid, paid, credit_note, written_off]
+
+    PaymentType:
+      type: string
+      enum: [receive, pay]
+
+    BankAccountType:
+      type: string
+      enum: [savings, current]
+
+    BankTxnDirection:
+      type: string
+      enum: [in, out]
+
+    BankTxnClassification:
+      type: string
+      enum: [business_receipt, business_payment, bank_fee, interest_income, internal_transfer, pending]
+
+    ImportFormat:
+      type: string
+      enum: [csv, excel, camt053, mt940]
+
+    VoucherType:
+      type: string
+      enum: [记, 银, 现, 转, 折旧, 结转]
+
+    PeriodStatus:
+      type: string
+      enum: [open, closing, closed, locked]
+
+    ReconciliationMatchLevel:
+      type: string
+      enum: [L1_exact, L2_fifo, L3_fuzzy, L4_tail, L5_manual]
+
+    # ============================================
+    # 领域模型
+    # ============================================
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-..."
+        code:
+          type: string
+          description: "4-2-2-2 科目编码"
+          example: "1001-01-00-00"
+        name:
+          type: string
+          example: "银行存款-工行"
+        account_type:
+          $ref: '#/components/schemas/AccountType'
+        root_type:
+          $ref: '#/components/schemas/RootType'
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+        lft:
+          type: integer
+        rgt:
+          type: integer
+        is_group:
+          type: boolean
+          description: true=汇总科目不可记账, false=明细科目可记账
+        company_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          example: "CNY"
+        created_at:
+          type: string
+          format: date-time
+
+    JournalEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        voucher_no:
+          type: string
+          example: "记-2026-05-0001"
+        voucher_type:
+          $ref: '#/components/schemas/VoucherType'
+        posting_date:
+          type: string
+          format: date
+        company_id:
+          type: string
+          format: uuid
+        remark:
+          type: string
+        docstatus:
+          $ref: '#/components/schemas/DocStatus'
+        reversed_id:
+          type: string
+          format: uuid
+          nullable: true
+        reversal_id:
+          type: string
+          format: uuid
+          nullable: true
+        submitted_by:
+          type: string
+          format: uuid
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/JournalEntryLine'
+
+    JournalEntryLine:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        journal_entry_id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        account_code:
+          type: string
+          example: "1001-01-00-00"
+        account_name:
+          type: string
+          example: "银行存款-工行"
+        debit:
+          type: string
+          description: "本位币借方金额，DECIMAL(18,2)"
+          example: "1000.00"
+        credit:
+          type: string
+          description: "本位币贷方金额"
+          example: "0.00"
+        debit_ccy:
+          type: string
+          description: "原币借方金额"
+        credit_ccy:
+          type: string
+          description: "原币贷方金额"
+        account_ccy:
+          type: string
+          example: "USD"
+        exchange_rate:
+          type: string
+          example: "7.240000"
+        party_type:
+          $ref: '#/components/schemas/PartyType'
+        party_id:
+          type: string
+          format: uuid
+          nullable: true
+        cost_center_id:
+          type: string
+          format: uuid
+          nullable: true
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        user_remark:
+          type: string
+
+    GlEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        posting_date:
+          type: string
+          format: date
+        debit:
+          type: string
+        credit:
+          type: string
+        voucher_type:
+          type: string
+        voucher_id:
+          type: string
+          format: uuid
+        party_type:
+          $ref: '#/components/schemas/PartyType'
+        party_id:
+          type: string
+          format: uuid
+          nullable: true
+        is_cancelled:
+          type: boolean
+
+    SalesInvoice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invoice_no:
+          type: string
+          example: "12345678"
+        invoice_type:
+          $ref: '#/components/schemas/InvoiceType'
+        customer_id:
+          type: string
+          format: uuid
+        customer_name:
+          type: string
+        tax_id:
+          type: string
+          example: "91110108MA..."
+        posting_date:
+          type: string
+          format: date
+        due_date:
+          type: string
+          format: date
+        total_amount:
+          type: string
+          description: "价税合计"
+        tax_amount:
+          type: string
+        net_amount:
+          type: string
+          description: "不含税金额"
+        outstanding_amount:
+          type: string
+          description: "未结清金额"
+        status:
+          $ref: '#/components/schemas/InvoiceStatus'
+        docstatus:
+          $ref: '#/components/schemas/DocStatus'
+
+    PaymentEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        payment_no:
+          type: string
+          example: "SK-2026-05-0001"
+        payment_type:
+          $ref: '#/components/schemas/PaymentType'
+        party_type:
+          $ref: '#/components/schemas/PartyType'
+        party_id:
+          type: string
+          format: uuid
+        party_name:
+          type: string
+        paid_from_id:
+          type: string
+          format: uuid
+        paid_to_id:
+          type: string
+          format: uuid
+        paid_amount:
+          type: string
+        received_amount:
+          type: string
+        reference_no:
+          type: string
+        posting_date:
+          type: string
+          format: date
+        bank_account_id:
+          type: string
+          format: uuid
+          nullable: true
+        docstatus:
+          $ref: '#/components/schemas/DocStatus'
+
+    PaymentAllocation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        payment_entry_id:
+          type: string
+          format: uuid
+        invoice_id:
+          type: string
+          format: uuid
+        invoice_type:
+          type: string
+        allocated_amount:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    BankAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bank_name:
+          type: string
+          example: "中国工商银行"
+        account_number:
+          type: string
+          example: "110202121900..."
+        clearing_account_id:
+          type: string
+          format: uuid
+        clearing_account_code:
+          type: string
+          example: "1001-01"
+        company_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          example: "CNY"
+        iban:
+          type: string
+        swift_code:
+          type: string
+        bank_account_type:
+          $ref: '#/components/schemas/BankAccountType'
+        is_active:
+          type: boolean
+
+    BankTransaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bank_account_id:
+          type: string
+          format: uuid
+        txn_date:
+          type: string
+          format: date
+        description:
+          type: string
+        debit:
+          type: string
+        credit:
+          type: string
+        direction:
+          $ref: '#/components/schemas/BankTxnDirection'
+        reference_no:
+          type: string
+        counterparty_name:
+          type: string
+        classification:
+          $ref: '#/components/schemas/BankTxnClassification'
+        matched:
+          type: boolean
+        imported_from:
+          $ref: '#/components/schemas/ImportFormat'
+        is_duplicate:
+          type: boolean
+
+    ImportResult:
+      type: object
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+        bank_account_id:
+          type: string
+          format: uuid
+        total:
+          type: integer
+        imported:
+          type: integer
+        duplicated:
+          type: integer
+        failed:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+
+    Party:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "北京XX科技有限公司"
+        tax_id:
+          type: string
+          example: "91110108MA..."
+        party_type:
+          $ref: '#/components/schemas/PartyType'
+        bank_name:
+          type: string
+        bank_account:
+          type: string
+        credit_limit:
+          type: string
+        payment_terms:
+          type: string
+          description: "账期策略，如 'net30'"
+        phone:
+          type: string
+        address:
+          type: string
+        is_active:
+          type: boolean
+
+    ReconciliationPreCheck:
+      type: object
+      properties:
+        invoice_id:
+          type: string
+          format: uuid
+        payment_id:
+          type: string
+          format: uuid
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckItem'
+        passed:
+          type: boolean
+        overall_message:
+          type: string
+
+    CheckItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          example: "对方单位匹配"
+        status:
+          type: string
+          enum: [passed, warning, blocked]
+        message:
+          type: string
+        severity:
+          type: string
+          enum: [error, warning, info]
+
+    MatchRecommendation:
+      type: object
+      properties:
+        level:
+          $ref: '#/components/schemas/ReconciliationMatchLevel'
+        invoice_id:
+          type: string
+          format: uuid
+        payment_id:
+          type: string
+          format: uuid
+        score:
+          type: number
+          format: float
+          description: "匹配得分 L3/L5 场景"
+        amount:
+          type: string
+        auto_execute:
+          type: boolean
+        need_confirm:
+          type: boolean
+
+    HealthCheckReport:
+      type: object
+      properties:
+        period:
+          type: string
+          example: "2026-05"
+        company:
+          type: string
+        overall_status:
+          type: string
+          enum: [green, yellow, red]
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthCheckItem'
+
+    HealthCheckItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+          enum: [passed, warning, blocked]
+        message:
+          type: string
+        action:
+          type: string
+          description: "修复建议"
+        redirect:
+          type: string
+          description: "点击跳转 URL"
+
+    FinancialReport:
+      type: object
+      properties:
+        report_type:
+          type: string
+          enum: [balance_sheet, profit_loss, cash_flow]
+        period:
+          type: string
+          example: "2026-05"
+        generated_at:
+          type: string
+          format: date-time
+        columns:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: object
+          description: "报表行数据，每行含 account_code, account_name, 各列金额"
+```
+

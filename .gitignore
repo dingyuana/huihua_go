@@ -26,3 +26,8 @@ coverage.out
 
 # Docker volumes
 data/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/pnpm-lock.yaml
