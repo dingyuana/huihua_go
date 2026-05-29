@@ -83,6 +83,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	bankHandler := handler.NewBankHandler(bankSvc)
 	api.Get("/bank-accounts", bankHandler.List)
 	api.Post("/bank-accounts", bankHandler.Create)
+	api.Put("/bank-accounts/:id", bankHandler.Update)
+	api.Delete("/bank-accounts/:id", bankHandler.Delete)
 
 	// Party routes
 	partyRepo := repository.NewPartyRepository(db.GetPool())

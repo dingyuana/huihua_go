@@ -1,3 +1,23 @@
+---
+## 📌 Changelog (2026-05-28)
+
+### 🔴 Major Change — 2026-05-28
+- **Change type**: architecture adjustment / scope expansion
+- **Summary**: huihua-finance Go版完成度从~83%上调，MEMORY.md架构文档今日新增，所有核心模块全部接通
+- **Trigger**: 2026-05-28 提交，18条commit，涵盖报表、期间结账、审批流CRUD、对手方/银行账户CRUD
+- **Impact**: F8财务报表、F10会计期间结账、F9审批流全部功能完成，API路由达99条全部接通
+- **Details**:
+  - 新增 MEMORY.md 架构文档（2026-05-28）
+  - 完成财务报表（试算平衡表+利润表+资产负债表+期间GL合并）
+  - 完成会计期间结账API + 结账凭证自动生成
+  - 完成审批流 Update + Delete + 2条新路由
+  - 完成对手方 GetByID/Create/Update/Delete CRUD
+  - 完成银行账户 GetByID/Update/Delete CRUD
+  - 补全 VoucherTemplate 语义化响应
+  - 集成测试套件今日建立
+- **Corresponding commit**: `980959f Add integration test suite for core API endpoints`
+---
+
 # huihua-finance (Go版) — MEMORY
 
 > AI财务SaaS · Go + PostgreSQL + Fiber v2
