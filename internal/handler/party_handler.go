@@ -25,6 +25,9 @@ func (h *PartyHandler) List(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
+	if parties == nil {
+		parties = []model.Party{}
+	}
 	return c.JSON(fiber.Map{"data": parties})
 }
 

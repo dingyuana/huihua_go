@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"huihua/finance/internal/model"
 	"huihua/finance/internal/service"
 )
 
@@ -22,6 +23,9 @@ func (h *AccountHandler) GetTree(c *fiber.Ctx) error {
 	tree, err := h.svc.GetTree(c.Context(), tenantID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	if tree == nil {
+		tree = []model.Account{}
 	}
 	return c.JSON(fiber.Map{"data": tree})
 }

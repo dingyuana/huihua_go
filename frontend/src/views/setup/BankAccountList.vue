@@ -1,25 +1,27 @@
 <template>
   <div class="bank-account-page">
-    <div class="page-header">
-      <h3>资金账户管理</h3>
-      <el-button type="primary" @click="openCreate">+ 新增账户</el-button>
-    </div>
+    <PageLayout title="资金账户管理" icon="💰" subtitle="管理银行存款和库存现金账户，实时监控余额变动">
+      <template #actions>
+        <el-button type="primary" @click="openCreate">
+          <el-icon><Plus /></el-icon>
+          新增账户
+        </el-button>
+      </template>
 
-    <el-row :gutter="16" class="balance-cards">
-      <el-col v-for="acct in accounts" :key="acct.id" :span="6">
-        <el-card shadow="hover" :class="['balance-card', acct.bank_account_type]">
-          <div class="card-header">
-            <span class="bank-name">{{ acct.bank_name }}</span>
-            <el-tag v-if="!acct.is_active" size="small" type="danger">已停用</el-tag>
-          </div>
-          <p class="account-number">{{ maskAccount(acct.account_number) }}</p>
-          <p class="balance">{{ acct.balance || '0.00' }}</p>
-          <p class="balance-label">{{ acct.currency }} 余额</p>
-        </el-card>
-      </el-col>
-    </el-row>
+      <el-row :gutter="16" class="balance-cards">
+        <el-col v-for="acct in accounts" :key="acct.id" :span="6">
+          <el-card shadow="hover" :class="['balance-card', acct.bank_account_type]">
+            <div class="card-header">
+              <span class="bank-name">{{ acct.bank_name }}</span>
+              <el-tag v-if="!acct.is_active" size="small" type="danger">已停用</el-tag>
+            </div>
+            <p class="account-number">{{ maskAccount(acct.account_number) }}</p>
+            <p class="balance">{{ acct.balance || '0.00' }}</p>
+            <p class="balance-label">{{ acct.currency }} 余额</p>
+          </el-card>
+        </el-col>
+      </el-row>
 
-    <el-card>
       <el-table :data="accounts" border stripe size="small">
         <el-table-column prop="bank_name" label="账户名称" width="140" />
         <el-table-column prop="account_number" label="账号" width="180">
@@ -50,7 +52,7 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </PageLayout>
 
     <el-dialog v-model="showDialog" :title="editingId ? '编辑账户' : '新增资金账户'" width="560px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="120px">
@@ -107,9 +109,11 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import type { Account } from '@/types/models/account'
 import request from '@/api/request'
+import PageLayout from '@/components/app/PageLayout.vue'
 
 interface BankAccountItem {
   id: string
@@ -127,19 +131,15 @@ interface BankAccountItem {
 
 const accounts = ref<BankAccountItem[]>([])
 
-const localAccounts: BankAccountItem[] = [
-  { id: 'ba-1', bank_name: '工商银行-基本户', account_number: '1102021219001234567', bank_account_type: 'bank', clearing_account_code: '1001-01', iban: 'CN1234567890', swift_code: 'ICBKCNBJ', currency: 'CNY', is_active: true, balance: '1,250,000.00' },
-  { id: 'ba-2', bank_name: '建设银行-一般户', account_number: '4302021219007654321', bank_account_type: 'bank', clearing_account_code: '1001-02', iban: 'CN9876543210', swift_code: 'PCBCCNBJ', currency: 'CNY', is_active: true, balance: '680,000.00' },
-  { id: 'ba-3', bank_name: '库存现金', account_number: '-', bank_account_type: 'cash', clearing_account_code: '1001-03', currency: 'CNY', is_active: true, balance: '12,000.00' },
-]
-
 async function loadBankAccounts() {
   try {
     const res: any = await request.get('/bank-accounts')
-    const list = res?.data?.list || res?.data
-    if (Array.isArray(list) && list.length > 0) { accounts.value = list; return }
-  } catch { /* fallback */ }
-  accounts.value = localAccounts
+    const list = res?.data?.list !== undefined && res?.data?.list !== null ? res.data.list : (res?.data !== undefined && res?.data !== null ? res.data : res)
+    accounts.value = Array.isArray(list) ? list : []
+  } catch (e) {
+    console.warn('后端资金账户接口不可用', e)
+    accounts.value = []
+  }
 }
 onMounted(loadBankAccounts)
 
@@ -236,8 +236,12 @@ function toggleActive(item: BankAccountItem) {
 </script>
 
 <style scoped lang="scss">
-.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; h3 { font-size: 18px; } }
-.balance-cards { margin-bottom: 16px; }
+.bank-account-page {
+  padding: 24px;
+
+  .balance-cards { margin-bottom: 16px; }
+}
+
 .balance-card {
   .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .bank-name { font-weight: 600; font-size: 14px; }

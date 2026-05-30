@@ -1,20 +1,23 @@
 <template>
   <div class="party-page">
-    <div class="page-header">
-      <h3>客商档案</h3>
-      <div>
-        <el-button @click="showImportDialog = true">⬇ 批量导入</el-button>
-        <el-button type="primary" @click="openCreate">+ 新建客商</el-button>
-      </div>
-    </div>
+    <PageLayout title="客商档案" icon="🤝" subtitle="管理客户和供应商信息，支持批量导入和税号校验">
+      <template #actions>
+        <el-button @click="showImportDialog = true">
+          <el-icon><Upload /></el-icon>
+          批量导入
+        </el-button>
+        <el-button type="primary" @click="openCreate">
+          <el-icon><Plus /></el-icon>
+          新建客商
+        </el-button>
+      </template>
 
-    <el-card>
-      <el-tabs v-model="activeTab" class="party-tabs">
-        <el-tab-pane label="全部" name="all" />
-        <el-tab-pane label="客户" name="customer" />
-        <el-tab-pane label="供应商" name="supplier" />
-      </el-tabs>
       <div class="toolbar">
+        <el-tabs v-model="activeTab" class="party-tabs">
+          <el-tab-pane label="全部" name="all" />
+          <el-tab-pane label="客户" name="customer" />
+          <el-tab-pane label="供应商" name="supplier" />
+        </el-tabs>
         <el-input v-model="keyword" placeholder="搜索名称或税号" clearable style="width: 260px" />
       </div>
       <el-table :data="filteredParties" border stripe size="small">
@@ -43,9 +46,8 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </PageLayout>
 
-    <!-- 新建/编辑弹窗 -->
     <el-dialog v-model="showDialog" :title="editingId ? '编辑客商' : '新建客商'" width="600px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="100px">
         <el-form-item label="名称" prop="name">
@@ -111,7 +113,6 @@
       </template>
     </el-dialog>
 
-    <!-- 导入结果（放在导入弹窗之前） -->
     <el-dialog v-model="showImportResult" title="导入结果" width="520px">
       <el-alert :title="`共处理 ${importResult.total} 条`" :type="importResult.failed > 0 ? 'warning' : 'success'" :closable="false" show-icon>
         <template #default>
@@ -127,7 +128,6 @@
       </template>
     </el-dialog>
 
-    <!-- 导入弹窗 -->
     <el-dialog v-model="showImportDialog" title="批量导入客商" width="450px">
       <el-upload drag accept=".xlsx,.xls" :auto-upload="false" :on-change="handleFileChange" :limit="1">
         <el-icon class="upload-icon" :size="40"><UploadFilled /></el-icon>
@@ -145,8 +145,10 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Upload, Plus, UploadFilled } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import request from '@/api/request'
+import PageLayout from '@/components/app/PageLayout.vue'
 
 interface PartyItem {
   id: string
@@ -164,22 +166,15 @@ interface PartyItem {
 const nextId = ref(4)
 const parties = ref<PartyItem[]>([])
 
-/** 从后端加载客商列表 */
 async function loadParties() {
   try {
     const res: any = await request.get('/parties')
-    const list = res?.data?.list || res?.data
-    if (Array.isArray(list) && list.length > 0) {
-      parties.value = list
-      return
-    }
-  } catch { /* fallback */ }
-  // 本地降级数据
-  parties.value = [
-  { id: 'p1', name: '上海XX贸易公司', tax_id: '91310000MA7A1B2C3D', party_type: 'customer', bank_name: '中国银行', bank_account: '345678901234567', credit_limit: '500,000.00', payment_terms: 'net30', phone: '021-88886666', address: '上海市浦东新区' },
-  { id: 'p2', name: '北京YY科技有限公司', tax_id: '91110108MA9E5F6G7H', party_type: 'supplier', bank_name: '工商银行', bank_account: '1102021219001234', credit_limit: '200,000.00', payment_terms: 'net45', phone: '010-66668888', address: '北京市海淀区' },
-  { id: 'p3', name: '广州ZZ贸易有限公司', tax_id: '91440101MA8I9J0K1L', party_type: 'customer', bank_name: '建设银行', bank_account: '4302021219005678', credit_limit: '300,000.00', payment_terms: 'net30', phone: '020-88886666', address: '广州市天河区' },
-  ]
+    const list = res?.data?.list !== undefined && res?.data?.list !== null ? res.data.list : (res?.data !== undefined && res?.data !== null ? res.data : res)
+    parties.value = Array.isArray(list) ? list : []
+  } catch (e) {
+    console.warn('后端客商档案接口不可用', e)
+    parties.value = []
+  }
 }
 
 onMounted(loadParties)
@@ -282,9 +277,8 @@ async function saveParty() {
     }
     ElMessage.success(editingId.value ? '客商已更新' : '客商已创建')
     showDialog.value = false
-    loadParties() // 重新加载
+    loadParties()
   } catch {
-    // 后端不可用时本地保存
     if (editingId.value) {
       const idx = parties.value.findIndex(p => p.id === editingId.value)
       if (idx >= 0) Object.assign(parties.value[idx], { name: form.name })
@@ -328,15 +322,25 @@ async function handleImport() {
 </script>
 
 <style scoped lang="scss">
-.page-header {
+.party-page {
+  padding: 24px;
+}
+
+.toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
-  h3 { font-size: 18px; }
+  padding: 16px;
+  background: #f7f8fa;
+  border-radius: 8px;
 }
-.party-tabs { margin-bottom: 12px; }
-.toolbar { margin-bottom: 12px; }
+
+.party-tabs {
+  margin-bottom: 0;
+}
+
 .upload-icon { margin-bottom: 8px; }
 .upload-hint { color: #999; font-size: 12px; margin-top: 4px; }
 .tax-error { color: #ff4d4f; font-size: 12px; margin-top: 4px; display: block; }

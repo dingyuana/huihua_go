@@ -1,21 +1,24 @@
 <template>
   <div class="account-chart">
-    <div class="page-header">
-      <h3>科目表管理</h3>
-      <div class="page-actions">
-        <el-button @click="importStandardChart">📥 导入标准科目表</el-button>
-        <el-button type="primary" @click="openCreateDialog()">+ 新增科目</el-button>
-      </div>
-    </div>
+    <PageLayout title="科目表管理" icon="📋" subtitle="查看和管理会计科目，支持树形结构和导入标准科目表">
+      <template #actions>
+        <el-button @click="importStandardChart">
+          <el-icon><Download /></el-icon>
+          导入标准科目表
+        </el-button>
+        <el-button type="primary" @click="openCreateDialog()">
+          <el-icon><Plus /></el-icon>
+          新增科目
+        </el-button>
+      </template>
 
-    <el-card>
       <div class="toolbar">
         <el-input v-model="searchKeyword" placeholder="搜索科目名称或编码" clearable style="width: 260px" @input="onSearch" />
         <el-select v-model="filterType" placeholder="科目类型" clearable style="width: 140px">
           <el-option label="资产" value="asset" />
           <el-option label="负债" value="liability" />
           <el-option label="权益" value="equity" />
-          <el-option label="成本" value="expense" />
+          <el-option label="成本" value="cost" />
           <el-option label="损益" value="income" />
         </el-select>
         <el-checkbox v-model="showLedgerOnly" style="margin-left: 12px">仅可记账科目</el-checkbox>
@@ -55,7 +58,7 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </PageLayout>
 
     <el-dialog v-model="dialogVisible" :title="isEditing ? '编辑科目' : '新增科目'" width="520px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="dialogForm" :rules="dialogRules" label-width="100px">
@@ -111,11 +114,12 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Download, Plus } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import type { Account } from '@/types/models/account'
 import request from '@/api/request'
+import PageLayout from '@/components/app/PageLayout.vue'
 
-/** 余额方向根据科目类型自动确定 */
 function rootTypeByAccountType(type: string): string {
   if (['asset', 'cost'].includes(type)) return '借方'
   return '贷方'
@@ -126,7 +130,6 @@ function typeLabel(type: string): string {
   return map[type] || type
 }
 
-/** 《小企业会计准则》标准科目表 */
 function buildStandardAccounts(): Account[] {
   const id = (prefix: string) => `std-${prefix}`
   const acc = (code: string, name: string, type: string, isGroup: boolean, children?: Account[]): Account => ({
@@ -278,7 +281,6 @@ const dialogRules = {
   name: [{ required: true, message: '请输入科目名称', trigger: 'blur' }],
 }
 
-/** 过滤数据 */
 const filteredData = computed(() => {
   let data = allAccounts.value
   if (showLedgerOnly.value) {
@@ -294,7 +296,6 @@ const filteredData = computed(() => {
   return data
 })
 
-/** 递归过滤树节点 */
 function deepFilter(nodes: Account[], predicate: (n: Account) => boolean): Account[] {
   return nodes.reduce<Account[]>((acc, node) => {
     const children = node.children ? deepFilter(node.children, predicate) : undefined
@@ -341,7 +342,6 @@ function openEditDialog(account: Account) {
   dialogVisible.value = true
 }
 
-/** 编码自动生成：根据父科目编码+同级最大序号生成下级编码 */
 function previewAutoCode() {
   const parent = dialogForm.parent
   if (!parent) {
@@ -368,7 +368,6 @@ function previewAutoCode() {
 async function handleSave() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
-  // is_group 不能设置错误
   if (!dialogForm.isGroup && !dialogForm.parent) {
     ElMessage.warning('一级科目必须为汇总科目（Group）')
     return
@@ -392,43 +391,49 @@ function handleDelete(row: Account) {
   }).catch(() => {})
 }
 
-/** 页面加载时从后端获取科目表 */
 onMounted(async () => {
   try {
     const res: any = await request.get('/accounts/tree')
-    const data = res?.data || res
-    if (Array.isArray(data) && data.length > 0) {
-      allAccounts.value = data
-      return
-    }
-  } catch {
-    console.warn('后端科目表接口不可用，使用本地数据')
+    const data = res?.data !== undefined && res?.data !== null ? res.data : res
+    allAccounts.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    console.warn('后端科目表接口不可用', e)
+    allAccounts.value = []
   }
-  // 降级：使用本地内置科目表
-  allAccounts.value = buildStandardAccounts()
 })
 
-/** 加载标准科目表（调用后端 seed 接口或本地） */
 async function importStandardChart() {
   try {
     await request.post('/accounts/init-seed', {
       tenant_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       company_id: '12345678-1234-1234-1234-123456789abc',
     })
-    // 重新加载
     const res: any = await request.get('/accounts/tree')
-    allAccounts.value = res?.data || res || buildStandardAccounts()
+    const data = res?.data !== undefined && res?.data !== null ? res.data : res
+    allAccounts.value = Array.isArray(data) ? data : []
     ElMessage.success('已导入《小企业会计准则》标准科目表（5 大类，80+ 科目）')
-  } catch {
-    allAccounts.value = buildStandardAccounts()
-    ElMessage.success('已导入标准科目表（本地模式）')
+  } catch (e) {
+    allAccounts.value = []
+    ElMessage.error('导入标准科目表失败')
   }
 }
 </script>
 
 <style scoped lang="scss">
-.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; h3 { font-size: 18px; } }
-.toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.account-chart {
+  padding: 24px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #f7f8fa;
+  border-radius: 8px;
+}
+
 .group-name { font-style: italic; color: #666; }
 .ledger-name { font-weight: 500; }
 .code-hint { color: #1890ff; font-size: 12px; margin-left: 8px; }

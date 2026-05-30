@@ -24,6 +24,9 @@ func (h *BankHandler) List(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
+	if accounts == nil {
+		accounts = []model.BankAccount{}
+	}
 	return c.JSON(fiber.Map{"data": accounts})
 }
 

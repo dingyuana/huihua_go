@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
@@ -37,32 +38,91 @@ func (s *AccountService) InitFromSeed(ctx context.Context, tenantID, companyID u
 	parentCodeMap := make(map[string]uuid.UUID)
 
 	for rows.Next() {
-		var code, name, accountType, rootType, parentCode string
-		var isGroup bool
-		var lft, rgt int
+		var code, name, accountType, rootType string
+		var parentCode *string
+		var isGroup *bool
+		var lft, rgt *int
 		if err := rows.Scan(&code, &name, &accountType, &rootType, &parentCode, &isGroup, &lft, &rgt); err != nil {
-			return err
+			return fmt.Errorf("scan seed account %s: %w", code, err)
 		}
+
+		ig := false
+		if isGroup != nil {
+			ig = *isGroup
+		}
+
 		acc := &model.Account{
 			ID:          uuid.New(),
 			Code:        code,
 			Name:        name,
 			AccountType: utils.StrPtr(accountType),
 			RootType:    utils.StrPtr(rootType),
-			IsGroup:     isGroup,
+			IsGroup:     ig,
 			CompanyID:   companyID,
 			TenantID:    tenantID,
 			Currency:    "CNY",
 			IsActive:    true,
 		}
-		if parentCode != "" {
-			if pid, ok := parentCodeMap[parentCode]; ok {
+		if parentCode != nil && *parentCode != "" {
+			if pid, ok := parentCodeMap[*parentCode]; ok {
 				acc.ParentID = &pid
 			}
 		}
 		parentCodeMap[code] = acc.ID
 
 		if _, err := s.repo.Create(ctx, tenantID, acc); err != nil {
+			return fmt.Errorf("create account %s: %w", code, err)
+		}
+	}
+	return nil
+}
+
+// InitFromSeedWithTx initializes accounts from the standard_accounts_seed table within a transaction.
+func (s *AccountService) InitFromSeedWithTx(ctx context.Context, tx pgx.Tx, tenantID, companyID uuid.UUID) error {
+	rows, err := tx.Query(ctx, `
+		SELECT code, name, account_type, root_type, parent_code, is_group, lft, rgt
+		FROM standard_accounts_seed ORDER BY lft`)
+	if err != nil {
+		return fmt.Errorf("fetch seed accounts: %w", err)
+	}
+	defer rows.Close()
+
+	parentCodeMap := make(map[string]uuid.UUID)
+
+	for rows.Next() {
+		var code, name, accountType, rootType string
+		var parentCode *string
+		var isGroup *bool
+		var lft, rgt *int
+		if err := rows.Scan(&code, &name, &accountType, &rootType, &parentCode, &isGroup, &lft, &rgt); err != nil {
+			return fmt.Errorf("scan seed account %s: %w", code, err)
+		}
+
+		ig := false
+		if isGroup != nil {
+			ig = *isGroup
+		}
+
+		acc := &model.Account{
+			ID:          uuid.New(),
+			Code:        code,
+			Name:        name,
+			AccountType: utils.StrPtr(accountType),
+			RootType:    utils.StrPtr(rootType),
+			IsGroup:     ig,
+			CompanyID:   companyID,
+			TenantID:    tenantID,
+			Currency:    "CNY",
+			IsActive:    true,
+		}
+		if parentCode != nil && *parentCode != "" {
+			if pid, ok := parentCodeMap[*parentCode]; ok {
+				acc.ParentID = &pid
+			}
+		}
+		parentCodeMap[code] = acc.ID
+
+		if _, err := s.repo.CreateWithTx(ctx, tx, tenantID, acc); err != nil {
 			return fmt.Errorf("create account %s: %w", code, err)
 		}
 	}

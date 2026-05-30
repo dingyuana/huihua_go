@@ -1,11 +1,13 @@
 <template>
   <div class="rule-library">
-    <div class="page-header">
-      <h3>智能分类规则库</h3>
-      <el-button type="primary" @click="openCreate">+ 新建规则</el-button>
-    </div>
+    <PageLayout title="智能分类规则库" icon="⚙️" subtitle="配置银行流水自动分类规则，支持正则和关键词匹配">
+      <template #actions>
+        <el-button type="primary" @click="openCreate">
+          <el-icon><Plus /></el-icon>
+          新建规则
+        </el-button>
+      </template>
 
-    <el-card>
       <el-table :data="rules" border stripe size="small" row-key="name" @row-drop="handleDrop">
         <el-table-column label="优先级" width="70">
           <template #default="{ $index }">
@@ -44,9 +46,8 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </PageLayout>
 
-    <!-- 正则测试弹窗 -->
     <el-dialog v-model="showTestDialog" :title="`测试规则: ${testRule?.name}`" width="480px">
       <p class="test-label">输入测试文本：</p>
       <el-input v-model="testInput" type="textarea" :rows="3" placeholder="输入摘要或对方户名进行匹配测试" />
@@ -61,7 +62,6 @@
       </template>
     </el-dialog>
 
-    <!-- 新建/编辑弹窗 -->
     <el-dialog v-model="showDialog" :title="editingIndex >= 0 ? '编辑规则' : '新建规则'" width="520px">
       <el-form :model="form" label-width="100px">
         <el-form-item label="规则名称" required>
@@ -116,7 +116,9 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import request from '@/api/request'
+import PageLayout from '@/components/app/PageLayout.vue'
 
 interface Rule {
   name: string
@@ -134,21 +136,17 @@ const defaultForm = {
   direction: '', classification: 'business_receipt', priority: 10,
 }
 
-const localRules: Rule[] = [
-  { name: '手续费匹配', pattern: '手续费|管理费|年费|账户管理', matchType: 'regex', matchField: 'description', direction: 'out', classification: 'bank_fee', priority: 1, is_active: true },
-  { name: '利息收入', pattern: '利息|结息', matchType: 'keyword', matchField: 'description', direction: 'in', classification: 'interest_income', priority: 2, is_active: true },
-  { name: '内部转账', pattern: '同行.*划转|内部.*调拨', matchType: 'regex', matchField: 'description', direction: '', classification: 'internal_transfer', priority: 3, is_active: true },
-  { name: '上海XX回款', pattern: '上海XX贸易公司', matchType: 'keyword', matchField: 'counterparty', direction: 'in', classification: 'business_receipt', priority: 4, is_active: true },
-]
 const rules = ref<Rule[]>([])
 
 async function loadRules() {
   try {
     const res: any = await request.get('/classification-rules')
-    const list = res?.data?.list || res?.data
-    if (Array.isArray(list) && list.length > 0) { rules.value = list; return }
-  } catch { /* fallback */ }
-  rules.value = [...localRules]
+    const list = res?.data?.list !== undefined && res?.data?.list !== null ? res.data.list : (res?.data !== undefined && res?.data !== null ? res.data : res)
+    rules.value = Array.isArray(list) ? list : []
+  } catch (e) {
+    console.warn('后端智能分类规则接口不可用', e)
+    rules.value = []
+  }
 }
 onMounted(loadRules)
 
@@ -156,7 +154,6 @@ const showDialog = ref(false)
 const editingIndex = ref(-1)
 const form = reactive({ ...defaultForm })
 
-// 正则测试
 const showTestDialog = ref(false)
 const testRule = ref<Rule | null>(null)
 const testInput = ref('')
@@ -239,7 +236,10 @@ function handleDrop() {
 </script>
 
 <style scoped lang="scss">
-.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; h3 { font-size: 18px; } }
+.rule-library {
+  padding: 24px;
+}
+
 .pattern-code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 12px; color: #cf1322; }
 .form-hint { font-size: 12px; color: #999; margin-top: 4px; code { background: #f5f5f5; padding: 1px 4px; border-radius: 2px; } }
 .test-label { font-size: 13px; color: #666; margin-bottom: 8px; }

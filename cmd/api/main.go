@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"huihua/finance/internal/config"
@@ -30,13 +31,19 @@ func main() {
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			log.Printf("[ERROR] %v", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": err.Error(),
+				"error": "internal server error",
 			})
 		},
 	})
 
 	// Global middleware
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "http://localhost:3002,http://localhost:3003,http://localhost:5173",
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
+	}))
 	app.Use(logger.New())
 	app.Use(recover.New())
 
@@ -49,6 +56,12 @@ func main() {
 func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg *config.Config) {
 	// Health check (public)
 	app.Get("/health", handler.HealthCheck)
+
+	// Auth routes (public)
+	userRepo := repository.NewUserRepository(db.GetPool())
+	authSvc := service.NewAuthService(userRepo, cfg)
+	authHandler := handler.NewAuthHandler(authSvc)
+	app.Post("/api/v1/auth/login", authHandler.Login)
 
 	// Protected routes
 	api := app.Group("/api/v1", middleware.Auth(cfg))
@@ -100,7 +113,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Account setup routes
 	companyRepo := repository.NewCompanyRepository(db.GetPool())
 	periodRepo := repository.NewPeriodRepository(db.GetPool())
-	setupSvc := service.NewSetupService(companyRepo, periodRepo, accountSvc)
+	setupSvc := service.NewSetupService(companyRepo, periodRepo, accountSvc, db.GetPool())
 	setupHandler := handler.NewSetupHandler(setupSvc)
 	api.Get("/account-setup/status", setupHandler.GetStatus)
 	api.Post("/account-setup/wizard", setupHandler.CreateCompany)
@@ -194,11 +207,14 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Accounting period routes
 	periodRepo = repository.NewPeriodRepository(db.GetPool())
-	periodSvc := service.NewPeriodService(periodRepo, journalRepo, glEntryRepo, accountRepo)
+	periodSvc := service.NewPeriodService(periodRepo, journalRepo, glEntryRepo, accountRepo, depreciationRepo)
 	periodHandler := handler.NewPeriodHandler(periodSvc)
 	api.Get("/periods", periodHandler.List)
 	api.Get("/periods/current", periodHandler.GetCurrent)
+	api.Get("/periods/voucher-gaps", periodHandler.VoucherGaps)
+	api.Get("/periods/pre-close-check", periodHandler.PreCloseCheck)
 	api.Post("/periods/:period_no/close", periodHandler.Close)
+	api.Post("/periods/:period_no/unclose", periodHandler.Unclose)
 
 	// Reconciliation (核销) routes
 	reconRepo := repository.NewReconciliationRepository(db.GetPool())
@@ -224,6 +240,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/reports/trial-balance", reportHandler.GetTrialBalance)
 	api.Get("/reports/income-statement", reportHandler.GetIncomeStatement)
 	api.Get("/reports/balance-sheet", reportHandler.GetBalanceSheet)
+	api.Get("/reports/cash-flow", reportHandler.GetCashFlowStatement)
 
 	// Approval workflow routes
 	approvalRepo := repository.NewApprovalRepository(db.GetPool())
@@ -244,9 +261,10 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Placed after approvalSvc is initialized so it can be injected
 	autoGenSvc := service.NewVoucherAutoGenerateService(
 		journalRepo, glEntryRepo, bankTransactionRepo,
-		invoiceRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
+		invoiceRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
 	)
 	autoGenHandler := handler.NewVoucherAutoGenerateHandler(autoGenSvc)
 	api.Post("/bank-transactions/:id/generate-voucher", autoGenHandler.GenerateFromBankTxn)
 	api.Post("/bank-transactions/batch-generate", autoGenHandler.BatchGenerate)
+	api.Post("/invoices/:id/generate-voucher", autoGenHandler.GenerateFromInvoice)
 }

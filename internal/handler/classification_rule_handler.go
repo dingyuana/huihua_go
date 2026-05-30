@@ -20,17 +20,20 @@ func NewClassificationRuleHandler(svc *service.ClassificationRuleService) *Class
 
 // List returns all classification rules for the tenant.
 func (h *ClassificationRuleHandler) List(c *fiber.Ctx) error {
-	tenantID := middleware.GetTenantID(c)
+	tenantID := middleware.MustGetTenantID(c)
 	rules, err := h.svc.ListRules(c.Context(), tenantID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(rules)
+	if rules == nil {
+		rules = []model.ClassificationRule{}
+	}
+	return c.JSON(fiber.Map{"data": rules})
 }
 
 // Create handles POST /api/v1/classification-rules.
 func (h *ClassificationRuleHandler) Create(c *fiber.Ctx) error {
-	tenantID := middleware.GetTenantID(c)
+	tenantID := middleware.MustGetTenantID(c)
 
 	var req model.CreateRuleRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -46,7 +49,7 @@ func (h *ClassificationRuleHandler) Create(c *fiber.Ctx) error {
 
 // Update handles PUT /api/v1/classification-rules/:id.
 func (h *ClassificationRuleHandler) Update(c *fiber.Ctx) error {
-	tenantID := middleware.GetTenantID(c)
+	tenantID := middleware.MustGetTenantID(c)
 
 	idStr := c.Params("id")
 	id, err := uuid.Parse(idStr)
@@ -67,7 +70,7 @@ func (h *ClassificationRuleHandler) Update(c *fiber.Ctx) error {
 
 // Delete handles DELETE /api/v1/classification-rules/:id.
 func (h *ClassificationRuleHandler) Delete(c *fiber.Ctx) error {
-	tenantID := middleware.GetTenantID(c)
+	tenantID := middleware.MustGetTenantID(c)
 
 	idStr := c.Params("id")
 	id, err := uuid.Parse(idStr)
@@ -83,7 +86,7 @@ func (h *ClassificationRuleHandler) Delete(c *fiber.Ctx) error {
 
 // Reorder handles POST /api/v1/classification-rules/reorder.
 func (h *ClassificationRuleHandler) Reorder(c *fiber.Ctx) error {
-	tenantID := middleware.GetTenantID(c)
+	tenantID := middleware.MustGetTenantID(c)
 
 	var req model.ReorderPriorityRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -107,7 +110,7 @@ func (h *ClassificationRuleHandler) Reorder(c *fiber.Ctx) error {
 
 // Match handles POST /api/v1/classification-rules/match.
 func (h *ClassificationRuleHandler) Match(c *fiber.Ctx) error {
-	tenantID := middleware.GetTenantID(c)
+	tenantID := middleware.MustGetTenantID(c)
 
 	var req model.RuleMatchRequest
 	if err := c.BodyParser(&req); err != nil {
