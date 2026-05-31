@@ -38,10 +38,30 @@ func Auth(cfg *config.Config) fiber.Handler {
 	}
 }
 
-func GetUserID(c *fiber.Ctx) uuid.UUID {
-	return c.Locals("user_id").(uuid.UUID)
+func GetUserID(c *fiber.Ctx) (uuid.UUID, bool) {
+	id, ok := c.Locals("user_id").(uuid.UUID)
+	return id, ok
 }
 
-func GetTenantID(c *fiber.Ctx) uuid.UUID {
-	return c.Locals("tenant_id").(uuid.UUID)
+func GetTenantID(c *fiber.Ctx) (uuid.UUID, bool) {
+	id, ok := c.Locals("tenant_id").(uuid.UUID)
+	return id, ok
+}
+
+// MustGetTenantID returns tenantID or panics if not set (use only in protected routes).
+func MustGetTenantID(c *fiber.Ctx) uuid.UUID {
+	id, ok := c.Locals("tenant_id").(uuid.UUID)
+	if !ok {
+		panic("tenant_id not set in context")
+	}
+	return id
+}
+
+// MustGetUserID returns userID or panics if not set (use only in protected routes).
+func MustGetUserID(c *fiber.Ctx) uuid.UUID {
+	id, ok := c.Locals("user_id").(uuid.UUID)
+	if !ok {
+		panic("user_id not set in context")
+	}
+	return id
 }

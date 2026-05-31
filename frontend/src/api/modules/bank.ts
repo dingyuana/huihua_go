@@ -12,6 +12,19 @@ export function createBankAccount(data: Partial<BankAccount>): Promise<ApiRespon
   return request.post('/bank-accounts', data)
 }
 
+/** 预览Excel文件列名和样本数据 */
+export function previewExcelFile(file: File): Promise<ApiResponse<{
+  columns: string[]
+  sample: string[][]
+  total_rows: number
+}>> {
+  const form = new FormData()
+  form.append('file', file)
+  return request.post('/bank-transactions/preview', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
 /** 上传并解析银行对账单 */
 export function importBankFile(file: File, bankAccountId: string, format?: string): Promise<ApiResponse<ImportResult>> {
   const form = new FormData()
@@ -23,9 +36,9 @@ export function importBankFile(file: File, bankAccountId: string, format?: strin
   })
 }
 
-/** 执行智能分类 */
-export function classifyBatch(batchId: string): Promise<ApiResponse<{ classifications: Record<string, number> }>> {
-  return request.post('/bank-transactions/classify', { batch_id: batchId })
+/** 执行单笔智能分类 */
+export function classifyTransaction(id: string): Promise<ApiResponse<{ classification: string; account_id: string }>> {
+  return request.post(`/bank-transactions/${id}/classify`)
 }
 
 /** 查询银行流水列表 */
@@ -41,12 +54,12 @@ export function fetchBankTransactions(params: PageQuery & {
   return request.get('/bank-transactions', { params })
 }
 
-/** 确认单条流水 */
-export function confirmTransaction(id: string): Promise<ApiResponse<void>> {
-  return request.post(`/bank-transactions/${id}/confirm`)
+/** 标记单条流水为已匹配 */
+export function markMatched(id: string): Promise<ApiResponse<void>> {
+  return request.post(`/bank-transactions/${id}/mark-matched`)
 }
 
 /** 修正分类 */
 export function updateClassification(id: string, data: { classification: string; counterparty_id?: string; remark?: string }): Promise<ApiResponse<void>> {
-  return request.put(`/bank-transactions/${id}/classify`, data)
+  return request.post(`/bank-transactions/${id}/classify`, data)
 }

@@ -140,6 +140,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '结账体检', roles: ['admin'] },
       },
       {
+        path: 'period/voucher-gaps',
+        name: 'VoucherGaps',
+        component: () => import('@/views/period/VoucherGapView.vue'),
+        meta: { title: '断号检测', roles: ['admin'] },
+      },
+      {
         path: 'period/reports',
         name: 'FinancialReports',
         component: () => import('@/views/period/FinancialReports.vue'),

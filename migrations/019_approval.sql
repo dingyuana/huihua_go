@@ -68,7 +68,7 @@ CREATE POLICY "approval_tasks_tenant_policy" ON approval_tasks
     FOR ALL USING (tenant_id = current_setting('app.tenant_id', true)::UUID);
 
 -- Grant permissions
-GRANT SELECT, INSERT, UPDATE, DELETE ON approval_flows TO app_user;
-GRANT SELECT, INSERT, UPDATE, DELETE ON approval_tasks TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON approval_flows TO huihua_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON approval_tasks TO huihua_app;
 
 COMMIT;

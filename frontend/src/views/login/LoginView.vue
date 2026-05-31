@@ -37,7 +37,7 @@ import { useRouter, useRoute } from 'vue-router'
 import type { FormInstance } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth.store'
-import { generateToken, verifyTokenAndFetchUser } from '@/utils/jwt'
+import { login } from '@/api/modules/auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -64,33 +64,34 @@ async function handleLogin() {
   errorMsg.value = ''
 
   try {
-    // 签发 JWT（与后端校验算法一致）
-    const result = await generateToken(form.account, form.password)
-    if (!result) {
+    const result = await login(form.account, form.password)
+    
+    // 后端直接返回 { token, user_id, tenant_id, role, expires_at }
+    if (!result?.token) {
       errorMsg.value = '账号或密码错误'
       loading.value = false
       return
     }
 
-    // 存入 Store + localStorage
-    authStore.setAuth(result.token, result.user)
-
-    // 验证：调用后端 API 测试 token 是否有效
-    try {
-      const resp = await fetch('/api/v1/accounts/tree', {
-        headers: { Authorization: `Bearer ${result.token}` },
-      })
-      if (resp.ok) {
-        ElMessage.success('已连接后端服务')
-      }
-    } catch {
-      // 后端不可用时仍可继续（Mock 模式兜底）
+    const userData = {
+      id: result.user_id,
+      name: form.account,
+      email: '',
+      role: result.role as any,
+      permissions: [],
+      tenant_id: result.tenant_id,
     }
 
-    const redirect = (route.query.redirect as string) || '/dashboard'
-    router.push(redirect)
-  } catch (e) {
-    errorMsg.value = '登录失败，请重试'
+    authStore.setAuth(result.token, userData)
+
+    const redirect = route.query.redirect
+    const targetPath = typeof redirect === 'string' ? redirect : '/dashboard'
+    await router.push(targetPath)
+    
+    ElMessage.success('登录成功')
+  } catch (e: any) {
+    console.error('Login error:', e)
+    errorMsg.value = e?.response?.data?.error || e?.response?.data?.message || '登录失败，请检查网络连接'
   } finally {
     loading.value = false
   }

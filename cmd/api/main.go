@@ -143,7 +143,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Classification rule routes
 	classificationRuleRepo := repository.NewClassificationRuleRepository(db.GetPool())
-	classificationRuleSvc := service.NewClassificationRuleService(classificationRuleRepo, accountRepo)
+	classificationRuleSvc := service.NewClassificationRuleService(classificationRuleRepo)
 	classificationRuleHandler := handler.NewClassificationRuleHandler(classificationRuleSvc)
 	api.Get("/classification-rules", classificationRuleHandler.List)
 	api.Post("/classification-rules", classificationRuleHandler.Create)
@@ -151,12 +151,14 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Delete("/classification-rules/:id", classificationRuleHandler.Delete)
 	api.Post("/classification-rules/reorder", classificationRuleHandler.Reorder)
 	api.Post("/classification-rules/match", classificationRuleHandler.Match)
+	api.Post("/classification-rules/seed", classificationRuleHandler.Seed)
 
 	// Bank transaction routes
 	bankTransactionRepo := repository.NewBankTransactionRepository(db.GetPool())
 	bankTxnSvc := service.NewBankTransactionService(bankTransactionRepo, classificationRuleSvc, bankRepo)
 	bankTxnHandler := handler.NewBankTransactionHandler(bankTxnSvc)
 	api.Get("/bank-transactions", bankTxnHandler.List)
+	api.Post("/bank-transactions/preview", bankTxnHandler.PreviewExcel)
 	api.Post("/bank-transactions/import", bankTxnHandler.Import)
 	api.Post("/bank-transactions/:id/classify", bankTxnHandler.Classify)
 	api.Post("/bank-transactions/:id/mark-matched", bankTxnHandler.MarkMatched)

@@ -36,3 +36,8 @@ export function fetchExpiringInvoices(): Promise<ApiResponse<{ list: SalesInvoic
 export function deleteInvoice(id: string): Promise<ApiResponse<void>> {
   return request.delete(`/invoices/${id}`)
 }
+
+/** 根据发票生成凭证 */
+export function generateVoucherFromInvoice(id: string): Promise<ApiResponse<any>> {
+  return request.post(`/invoices/${id}/generate-voucher`)
+}

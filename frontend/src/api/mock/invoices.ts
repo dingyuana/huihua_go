@@ -32,4 +32,14 @@ export const invoiceHandlers = [
   http.get('/api/v1/invoices/expiring', () => {
     return HttpResponse.json({ code: 0, data: { list: mockInvoices.slice(0, 3), total_expiring: 3 } })
   }),
+  http.post('/api/v1/invoices/:id/generate-voucher', () => {
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        voucher_no: 'INV-202605-001',
+        journal_entry_id: 'je-gen-001',
+        status: 'draft',
+      },
+    })
+  }),
 ]

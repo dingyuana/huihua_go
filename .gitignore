@@ -1,33 +1,59 @@
-# Binaries
-/api
-*.exe
-*.dll
-*.so
-*.dylib
+# Logs
+*.log
+api.log
+frontend.log
+npm-debug.log*
 
 # Environment
 .env
 .env.local
 .env.*.local
 
+# Binary
+api
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test coverage
+coverage.out
+*.cover
+
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Test
-coverage.out
-*.prof
+# Node
+node_modules/
+dist/
+.pnp
+.pnp.js
 
-# Docker volumes
-data/
+# Test results
+test-results/
+playwright-report/
+frontend/test-results/
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/pnpm-lock.yaml
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Excel files (user uploaded)
+"7月对账单.xlsx"
+
+# Build outputs
+.next/
+out/
+
+# Debug
+.omo/
+.codegraph/

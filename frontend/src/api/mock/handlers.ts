@@ -4,6 +4,7 @@ import { accountHandlers } from './accounts'
 import { bankHandlers } from './bank-transactions'
 import { invoiceHandlers } from './invoices'
 import { voucherHandlers } from './vouchers'
+import { periodHandlers } from './periods'
 
 /** 所有 Mock handlers */
 export const handlers = [
@@ -12,4 +13,5 @@ export const handlers = [
   ...bankHandlers,
   ...invoiceHandlers,
   ...voucherHandlers,
+  ...periodHandlers,
 ]

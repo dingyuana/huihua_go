@@ -6,6 +6,7 @@ export interface User {
   email: string
   role: Role
   permissions: string[]
+  tenant_id?: string
 }
 
 export type RoleType = Role

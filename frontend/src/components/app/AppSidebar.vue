@@ -1,8 +1,11 @@
 <template>
   <div :class="['sidebar', { collapsed: appStore.sidebarCollapsed }]">
     <div class="sidebar-logo">
-      <span v-if="!appStore.sidebarCollapsed">慧财财务</span>
-      <span v-else>慧</span>
+      <div v-if="!appStore.sidebarCollapsed" class="logo-content">
+        <span class="logo-brand">慧财财务</span>
+        <span v-if="companyName" class="logo-company">{{ companyName }}</span>
+      </div>
+      <span v-else class="logo-icon">慧</span>
     </div>
     <el-menu
       :default-active="route.path"
@@ -30,21 +33,38 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app.store'
 import { useAuthStore } from '@/stores/auth.store'
 import { roleMenuMap } from '@/config/menu.config'
 import type { Role } from '@/types/enums'
+import request from '@/api/request'
 
 const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
+const companyName = ref('')
+
 const menuItems = computed(() => {
   const role = (authStore.user?.role || 'admin') as Role
   return roleMenuMap[role] || []
 })
+
+async function loadCompany() {
+  try {
+    const res = await request.get('/account-setup/status')
+    const data = res.data || res
+    if (data.company?.company_name) {
+      companyName.value = data.company.company_name
+    }
+  } catch {
+    // Ignore errors
+  }
+}
+
+onMounted(loadCompany)
 </script>
 
 <style scoped lang="scss">
@@ -65,9 +85,33 @@ const menuItems = computed(() => {
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-size: 16px;
-    font-weight: 600;
     background: rgba(0, 0, 0, 0.2);
+
+    .logo-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1.2;
+
+      .logo-brand {
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .logo-company {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.65);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 160px;
+      }
+    }
+
+    .logo-icon {
+      font-size: 18px;
+      font-weight: 600;
+    }
   }
 
   .sidebar-menu {

@@ -63,6 +63,25 @@ func (r *PeriodRepository) BatchCreate(ctx context.Context, tenantID uuid.UUID, 
 	return nil
 }
 
+// BatchCreateWithTx inserts multiple periods within a transaction.
+func (r *PeriodRepository) BatchCreateWithTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, periods []model.AccountingPeriod) error {
+	for i, p := range periods {
+		p.ID = uuid.New()
+		p.TenantID = tenantID
+		p.CreatedAt = time.Now()
+		if p.Status == "" {
+			p.Status = "open"
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods (id, tenant_id, period_no, period_name, start_date, end_date, status, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
+			p.ID, p.TenantID, p.PeriodNo, p.PeriodName, p.StartDate, p.EndDate, p.Status, p.CreatedAt); err != nil {
+			return err
+		}
+		periods[i] = p
+	}
+	return nil
+}
+
 // ListByTenant retrieves all periods for a tenant.
 func (r *PeriodRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]model.AccountingPeriod, error) {
 	rows, err := r.pool.Query(ctx, `

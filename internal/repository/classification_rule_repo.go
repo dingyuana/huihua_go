@@ -2,12 +2,11 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 )
 
@@ -26,19 +25,15 @@ func (r *ClassificationRuleRepository) Create(ctx context.Context, tenantID uuid
 	rule.ID = uuid.New()
 	rule.TenantID = tenantID
 
-	keywordsJSON, err := json.Marshal(rule.Keywords)
-	if err != nil {
-		return nil, fmt.Errorf("marshal keywords: %w", err)
-	}
-
 	query := `
-		INSERT INTO classification_rules (id, tenant_id, rule_name, priority, keywords, account_id, party_type, debit_direction, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+		INSERT INTO classification_rules (id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
 		RETURNING created_at, updated_at`
 
-	err = r.pool.QueryRow(ctx, query,
-		rule.ID, tenantID, rule.RuleName, rule.Priority, keywordsJSON, rule.AccountID,
-		rule.PartyType, rule.DebitDirection, rule.IsActive,
+	err := r.pool.QueryRow(ctx, query,
+		rule.ID, tenantID, rule.Name, rule.RuleType, rule.Pattern,
+		rule.MatchField, rule.Direction, rule.Classification,
+		rule.Priority, rule.IsActive,
 	).Scan(&rule.CreatedAt, &rule.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create classification rule: %w", err)
@@ -49,7 +44,7 @@ func (r *ClassificationRuleRepository) Create(ctx context.Context, tenantID uuid
 // ListByTenant retrieves all classification rules for a tenant ordered by priority ASC.
 func (r *ClassificationRuleRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]model.ClassificationRule, error) {
 	query := `
-		SELECT id, tenant_id, rule_name, priority, keywords, account_id, party_type, debit_direction, is_active, created_at, updated_at
+		SELECT id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, created_at, updated_at
 		FROM classification_rules
 		WHERE tenant_id = $1
 		ORDER BY priority ASC`
@@ -64,9 +59,9 @@ func (r *ClassificationRuleRepository) ListByTenant(ctx context.Context, tenantI
 	for rows.Next() {
 		var rule model.ClassificationRule
 		if err := rows.Scan(
-			&rule.ID, &rule.TenantID, &rule.RuleName, &rule.Priority, &rule.Keywords,
-			&rule.AccountID, &rule.PartyType, &rule.DebitDirection, &rule.IsActive,
-			&rule.CreatedAt, &rule.UpdatedAt,
+			&rule.ID, &rule.TenantID, &rule.Name, &rule.RuleType, &rule.Pattern,
+			&rule.MatchField, &rule.Direction, &rule.Classification, &rule.Priority,
+			&rule.IsActive, &rule.CreatedAt, &rule.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan classification rule: %w", err)
 		}
@@ -78,15 +73,15 @@ func (r *ClassificationRuleRepository) ListByTenant(ctx context.Context, tenantI
 // GetByID retrieves a classification rule by ID.
 func (r *ClassificationRuleRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.ClassificationRule, error) {
 	query := `
-		SELECT id, tenant_id, rule_name, priority, keywords, account_id, party_type, debit_direction, is_active, created_at, updated_at
+		SELECT id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, created_at, updated_at
 		FROM classification_rules
 		WHERE tenant_id = $1 AND id = $2`
 
 	rule := &model.ClassificationRule{}
 	err := r.pool.QueryRow(ctx, query, tenantID, id).Scan(
-		&rule.ID, &rule.TenantID, &rule.RuleName, &rule.Priority, &rule.Keywords,
-		&rule.AccountID, &rule.PartyType, &rule.DebitDirection, &rule.IsActive,
-		&rule.CreatedAt, &rule.UpdatedAt,
+		&rule.ID, &rule.TenantID, &rule.Name, &rule.RuleType, &rule.Pattern,
+		&rule.MatchField, &rule.Direction, &rule.Classification, &rule.Priority,
+		&rule.IsActive, &rule.CreatedAt, &rule.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get classification rule by id: %w", err)
@@ -96,23 +91,14 @@ func (r *ClassificationRuleRepository) GetByID(ctx context.Context, tenantID, id
 
 // Update updates a classification rule.
 func (r *ClassificationRuleRepository) Update(ctx context.Context, tenantID, id uuid.UUID, rule *model.ClassificationRule) error {
-	var keywordsJSON []byte
-	var err error
-	if rule.Keywords != nil {
-		keywordsJSON, err = json.Marshal(rule.Keywords)
-		if err != nil {
-			return fmt.Errorf("marshal keywords: %w", err)
-		}
-	}
-
 	query := `
 		UPDATE classification_rules
-		SET rule_name = $3, priority = $4, keywords = $5, account_id = $6, party_type = $7, debit_direction = $8, is_active = $9, updated_at = NOW()
+		SET name = $3, rule_type = $4, pattern = $5, match_field = $6, direction = $7, classification = $8, priority = $9, is_active = $10, updated_at = NOW()
 		WHERE tenant_id = $1 AND id = $2`
 
-	_, err = r.pool.Exec(ctx, query,
-		tenantID, id, rule.RuleName, rule.Priority, keywordsJSON, rule.AccountID,
-		rule.PartyType, rule.DebitDirection, rule.IsActive,
+	_, err := r.pool.Exec(ctx, query,
+		tenantID, id, rule.Name, rule.RuleType, rule.Pattern,
+		rule.MatchField, rule.Direction, rule.Classification, rule.Priority, rule.IsActive,
 	)
 	if err != nil {
 		return fmt.Errorf("update classification rule: %w", err)
@@ -120,94 +106,14 @@ func (r *ClassificationRuleRepository) Update(ctx context.Context, tenantID, id 
 	return nil
 }
 
-// Delete soft-deletes a classification rule by setting is_active = false.
+// Delete removes a classification rule.
 func (r *ClassificationRuleRepository) Delete(ctx context.Context, tenantID, id uuid.UUID) error {
-	query := `UPDATE classification_rules SET is_active = FALSE, updated_at = NOW() WHERE tenant_id = $1 AND id = $2`
+	query := `DELETE FROM classification_rules WHERE tenant_id = $1 AND id = $2`
 	_, err := r.pool.Exec(ctx, query, tenantID, id)
-	return err
-}
-
-// FindMatch finds the first matching rule for a given keywords text and amount.
-// keywords: the transaction description text to match against
-// amount: the transaction amount
-// direction: "debit" or "credit"
-func (r *ClassificationRuleRepository) FindMatch(ctx context.Context, tenantID uuid.UUID, keywords string, amount decimal.Decimal, direction string) (*model.ClassificationRule, error) {
-	query := `
-		SELECT id, tenant_id, rule_name, priority, keywords, account_id, party_type, debit_direction, is_active, created_at, updated_at
-		FROM classification_rules
-		WHERE tenant_id = $1 AND is_active = TRUE
-		ORDER BY priority ASC
-		LIMIT 1`
-
-	rows, err := r.pool.Query(ctx, query, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("find match: %w", err)
+		return fmt.Errorf("delete classification rule: %w", err)
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var rule model.ClassificationRule
-		if err := rows.Scan(
-			&rule.ID, &rule.TenantID, &rule.RuleName, &rule.Priority, &rule.Keywords,
-			&rule.AccountID, &rule.PartyType, &rule.DebitDirection, &rule.IsActive,
-			&rule.CreatedAt, &rule.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan rule for match: %w", err)
-		}
-
-		// Check direction filter
-		if rule.DebitDirection != nil && *rule.DebitDirection != "both" && *rule.DebitDirection != direction {
-			continue
-		}
-
-		// Parse keywords JSON array and check OR matching
-		var kwArray []string
-		if err := json.Unmarshal(rule.Keywords, &kwArray); err != nil {
-			continue // skip invalid JSON
-		}
-
-		matched := false
-		for _, kw := range kwArray {
-			if kw != "" && containsKeyword(keywords, kw) {
-				matched = true
-				break
-			}
-		}
-		if matched {
-			return &rule, nil
-		}
-	}
-
-	return nil, nil // no match found
-}
-
-// FindMatchBatch returns all rules ordered by priority for a tenant (caller filters in service).
-func (r *ClassificationRuleRepository) FindMatchBatch(ctx context.Context, tenantID uuid.UUID) ([]model.ClassificationRule, error) {
-	query := `
-		SELECT id, tenant_id, rule_name, priority, keywords, account_id, party_type, debit_direction, is_active, created_at, updated_at
-		FROM classification_rules
-		WHERE tenant_id = $1 AND is_active = TRUE
-		ORDER BY priority ASC`
-
-	rows, err := r.pool.Query(ctx, query, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("find match batch: %w", err)
-	}
-	defer rows.Close()
-
-	var rules []model.ClassificationRule
-	for rows.Next() {
-		var rule model.ClassificationRule
-		if err := rows.Scan(
-			&rule.ID, &rule.TenantID, &rule.RuleName, &rule.Priority, &rule.Keywords,
-			&rule.AccountID, &rule.PartyType, &rule.DebitDirection, &rule.IsActive,
-			&rule.CreatedAt, &rule.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan rule: %w", err)
-		}
-		rules = append(rules, rule)
-	}
-	return rules, rows.Err()
+	return nil
 }
 
 // ReorderPriority updates priorities based on ordered rule IDs.
@@ -246,30 +152,85 @@ func (r *ClassificationRuleRepository) GetMaxPriority(ctx context.Context, tenan
 	return maxPriority, nil
 }
 
-// containsKeyword checks if keyword is contained in text (case-insensitive substring match).
-func containsKeyword(text, keyword string) bool {
-	if len(keyword) == 0 {
+// ListActiveRules retrieves all active rules ordered by priority.
+func (r *ClassificationRuleRepository) ListActiveRules(ctx context.Context, tenantID uuid.UUID) ([]model.ClassificationRule, error) {
+	query := `
+		SELECT id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, created_at, updated_at
+		FROM classification_rules
+		WHERE tenant_id = $1 AND is_active = TRUE
+		ORDER BY priority ASC`
+
+	rows, err := r.pool.Query(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list active rules: %w", err)
+	}
+	defer rows.Close()
+
+	var rules []model.ClassificationRule
+	for rows.Next() {
+		var rule model.ClassificationRule
+		if err := rows.Scan(
+			&rule.ID, &rule.TenantID, &rule.Name, &rule.RuleType, &rule.Pattern,
+			&rule.MatchField, &rule.Direction, &rule.Classification, &rule.Priority,
+			&rule.IsActive, &rule.CreatedAt, &rule.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan active rule: %w", err)
+		}
+		rules = append(rules, rule)
+	}
+	return rules, rows.Err()
+}
+
+// MatchRule tests if a rule matches given criteria.
+func (r *ClassificationRuleRepository) MatchRule(rule *model.ClassificationRule, description, counterparty, direction string) bool {
+	// Check direction filter if specified
+	if rule.Direction != "" && rule.Direction != direction {
 		return false
 	}
-	// Simple substring match (case-insensitive)
-	textLower := toLower(text)
-	keywordLower := toLower(keyword)
-	for i := 0; i <= len(textLower)-len(keywordLower); i++ {
-		if textLower[i:i+len(keywordLower)] == keywordLower {
+
+	// Get the text to match based on match_field
+	var matchText string
+	if rule.MatchField == "counterparty" {
+		matchText = counterparty
+	} else {
+		matchText = description
+	}
+
+	// Perform matching based on rule_type
+	switch rule.RuleType {
+	case "keyword_regex":
+		return regexMatch(matchText, rule.Pattern)
+	case "counterparty_match":
+		return containsString(matchText, rule.Pattern)
+	case "keyword":
+		fallthrough
+	default:
+		return containsString(matchText, rule.Pattern)
+	}
+}
+
+func containsString(text, pattern string) bool {
+	if text == "" || pattern == "" {
+		return false
+	}
+	textLower := strings.ToLower(text)
+	patternLower := strings.ToLower(pattern)
+	return strings.Contains(textLower, patternLower)
+}
+
+func regexMatch(text, pattern string) bool {
+	if text == "" || pattern == "" {
+		return false
+	}
+	// Simple implementation - split by | and check any match
+	patterns := strings.Split(pattern, "|")
+	for _, p := range patterns {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		if containsString(text, strings.TrimSpace(p)) {
 			return true
 		}
 	}
 	return false
-}
-
-func toLower(s string) string {
-	b := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		b[i] = c
-	}
-	return string(b)
 }

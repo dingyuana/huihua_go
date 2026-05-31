@@ -87,12 +87,12 @@ func (h *BankReconciliationHandler) GetReport(c *fiber.Ctx) error {
 	}
 
 	var periodNo int
-	if _, err := parsePeriodNo(periodNoStr); err != nil {
+	var pErr error
+	if periodNo, pErr = parsePeriodNo(periodNoStr); pErr != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "invalid period_no",
 		})
 	}
-	periodNo, _ = parsePeriodNo(periodNoStr)
 
 	report, err := h.svc.GetReconciliationReport(c.Context(), tenantID, bankAccountID, periodNo)
 	if err != nil {

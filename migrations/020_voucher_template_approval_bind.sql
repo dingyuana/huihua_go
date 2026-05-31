@@ -17,6 +17,6 @@ ALTER TABLE approval_flows ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT
 UPDATE approval_flows SET threshold_amount_level2 = 1000000, threshold_amount_level3 = 5000000, currency = 'CNY' WHERE id IN (SELECT id FROM approval_flows LIMIT 1);
 
 -- 4. Grant permissions
-GRANT SELECT, INSERT, UPDATE ON voucher_templates TO app_user;
+GRANT SELECT, INSERT, UPDATE ON voucher_templates TO huihua_app;
 
 COMMIT;

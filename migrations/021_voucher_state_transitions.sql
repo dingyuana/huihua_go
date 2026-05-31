@@ -3,7 +3,10 @@
 
 -- Voucher State Transitions: records all status changes for audit and tracing
 -- This migration ensures the table exists with the correct schema
-CREATE TABLE IF NOT EXISTS voucher_state_transitions (
+-- Drop existing table to ensure correct schema
+DROP TABLE IF EXISTS voucher_state_transitions;
+
+CREATE TABLE voucher_state_transitions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
     voucher_id UUID NOT NULL,
@@ -18,7 +21,8 @@ CREATE TABLE IF NOT EXISTS voucher_state_transitions (
 ALTER TABLE voucher_state_transitions ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policy: tenant isolation
-CREATE POLICY IF NOT EXISTS tenant_isolation ON voucher_state_transitions
+DROP POLICY IF EXISTS tenant_isolation ON voucher_state_transitions;
+CREATE POLICY tenant_isolation ON voucher_state_transitions
     USING (tenant_id = current_setting('app.current_tenant')::uuid);
 
 -- Indexes

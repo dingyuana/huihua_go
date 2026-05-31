@@ -50,22 +50,12 @@ export function fetchVoucherDetail(id: string): Promise<ApiResponse<JournalEntry
   return request.get(`/vouchers/${id}`)
 }
 
-/** 预览下一个凭证编号 */
-export function fetchNextVoucherNo(date: string): Promise<ApiResponse<{ next_voucher_no: string }>> {
-  return request.get('/vouchers/next-no', { params: { date } })
+/** 审核单个凭证 */
+export function approveVoucher(id: string): Promise<ApiResponse<JournalEntry>> {
+  return request.post(`/vouchers/${id}/approve`)
 }
 
-/** 获取待审核凭证 */
-export function fetchPendingReviewVouchers(params: PageQuery): Promise<ApiResponse<PageResult<JournalEntry>>> {
-  return request.get('/vouchers/pending-review', { params })
-}
-
-/** 批量审核 */
-export function batchApproveVouchers(ids: string[], remark?: string): Promise<ApiResponse<void>> {
-  return request.post('/vouchers/batch-review', { ids, action: 'approve', remark })
-}
-
-/** 批量驳回 */
-export function batchRejectVouchers(ids: string[], reason: string): Promise<ApiResponse<void>> {
-  return request.post('/vouchers/batch-reject', { ids, reason })
+/** 驳回单个凭证 */
+export function rejectVoucher(id: string, reason: string): Promise<ApiResponse<void>> {
+  return request.post(`/vouchers/${id}/reject`, { reason })
 }

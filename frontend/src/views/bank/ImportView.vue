@@ -7,8 +7,7 @@
     <el-card class="step-card">
       <div class="step-title">1. 选择银行账户</div>
       <el-select v-model="bankAccountId" placeholder="选择银行账户" style="width: 320px">
-        <el-option label="工商银行-基本户 (1102****4567)" value="ba-1" />
-        <el-option label="建设银行-一般户 (4302****4321)" value="ba-2" />
+        <el-option v-for="acct in bankAccounts" :key="acct.id" :label="`${acct.bank_name} (${maskAccount(acct.account_number)})`" :value="acct.id" />
       </el-select>
       <el-button v-if="bankAccountId" style="margin-left:8px" @click="fetchOnline">📡 银企直连抓取</el-button>
     </el-card>
@@ -25,32 +24,48 @@
         <span class="file-name">{{ uploadedFile.name }}</span>
         <span class="file-size">({{ (uploadedFile.size / 1024).toFixed(1) }} KB)</span>
         <el-tag :type="formatTagType" size="small" style="margin:0 8px">{{ detectedFormat }}</el-tag>
-        <el-button text type="primary" size="small" @click="handleParse">解析文件</el-button>
+        <el-button text type="primary" size="small" @click="handlePreview">预览并解析文件</el-button>
       </div>
-      <!-- 异常记录摘要 -->
-      <el-alert v-if="parseErrors.length" :title="`解析完成，发现 ${parseErrors.length} 条异常记录`" type="warning" :closable="false" show-icon style="margin-top:12px" />
     </el-card>
 
     <!-- 字段映射 -->
     <el-card v-if="showMapping" class="step-card">
       <div class="step-title">3. 字段映射确认</div>
-      <p class="step-hint">系统已自动识别以下映射关系，请确认或修正</p>
+      <p class="step-hint">系统已从文件中读取列名，请确认映射关系（自动匹配相似列名）</p>
       <el-table :data="fieldMappings" size="small" border>
-        <el-table-column prop="field" label="内部字段" width="120" />
-        <el-table-column label="匹配状态" width="100">
+        <el-table-column prop="field" label="系统字段" width="160" />
+        <el-table-column prop="required" label="必填" width="60">
           <template #default="{ row }">
-            <el-tag :type="row.matched ? 'success' : 'danger'" size="small">{{ row.matched ? '已匹配' : '未匹配' }}</el-tag>
+            <el-tag v-if="row.required" type="danger" size="small">*</el-tag>
+            <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="文件列名">
+        <el-table-column label="匹配状态" width="100">
           <template #default="{ row }">
-            <el-select v-model="row.mappedColumn" :placeholder="row.matched ? row.mappedColumn : '请选择'" style="width: 100%">
+            <el-tag :type="row.matched ? 'success' : 'warning'" size="small">{{ row.matched ? '已匹配' : '待确认' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="文件列名" min-width="200">
+          <template #default="{ row }">
+            <el-select v-model="row.mappedColumn" placeholder="请选择对应的列" style="width: 100%" filterable allow-create clearable>
               <el-option v-for="col in fileColumns" :key="col" :label="col" :value="col" />
             </el-select>
           </template>
         </el-table-column>
+        <el-table-column label="样本数据" min-width="150">
+          <template #default="{ row }">
+            <span v-if="row.mappedColumn && row.sampleValue" class="sample-value">{{ row.sampleValue }}</span>
+            <span v-else class="no-sample">-</span>
+          </template>
+        </el-table-column>
       </el-table>
-      <el-button type="primary" size="small" style="margin-top:8px" @click="showPreview = true; showMapping = false">确认映射，预览数据</el-button>
+      <div v-if="parseErrors.length" style="margin-top:12px">
+        <el-alert :title="`解析完成，发现 ${parseErrors.length} 条异常记录`" type="warning" :closable="false" show-icon />
+      </div>
+      <div style="margin-top:12px; display:flex; gap:8px;">
+        <el-button type="primary" size="small" @click="showPreview = true; showMapping = false">确认映射，预览数据</el-button>
+        <el-button size="small" @click="showMapping = false">重新上传</el-button>
+      </div>
     </el-card>
 
     <!-- 预览 -->
@@ -78,12 +93,15 @@
             <el-table-column prop="counterparty" label="对方户名" width="140" />
             <el-table-column prop="description" label="摘要" min-width="180" show-overflow-tooltip />
             <el-table-column prop="ref" label="流水号" width="130" />
+            <el-table-column prop="transaction_type" label="交易类型" width="80" />
+            <el-table-column prop="payer_account" label="付款人账号" width="130" />
+            <el-table-column prop="payer_bank" label="付款人开户行" min-width="140" />
           </el-table>
         </el-tab-pane>
         <el-tab-pane :label="`异常记录 (${parseErrors.length})`" name="errors">
           <el-table :data="parseErrors" size="small" border stripe>
             <el-table-column prop="row" label="行号" width="60" />
-            <el-table-column prop="field" label="字段" width="80" />
+            <el-table-column prop="field" label="字段" width="100" />
             <el-table-column prop="value" label="原始值" width="140" />
             <el-table-column prop="issue" label="问题" min-width="200" />
             <el-table-column label="操作" width="100">
@@ -108,7 +126,7 @@
         <el-descriptions :column="3" size="small" border>
           <el-descriptions-item label="批次号">BATCH-{{ Date.now().toString(36).toUpperCase() }}</el-descriptions-item>
           <el-descriptions-item label="导入时间">{{ new Date().toLocaleString() }}</el-descriptions-item>
-          <el-descriptions-item label="银行账户">{{ bankAccountId === 'ba-1' ? '工商银行-基本户' : '建设银行-一般户' }}</el-descriptions-item>
+          <el-descriptions-item label="银行账户">{{ selectedBankName }}</el-descriptions-item>
           <el-descriptions-item label="总条数">{{ importResult.total }}</el-descriptions-item>
           <el-descriptions-item label="成功">{{ importResult.imported }}</el-descriptions-item>
           <el-descriptions-item label="重复">{{ importResult.duplicated }}</el-descriptions-item>
@@ -125,58 +143,95 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import request from '@/api/request'
+import { previewExcelFile } from '@/api/modules/bank'
 
+interface BankAccount {
+  id: string
+  bank_name: string
+  account_number: string
+}
+
+const bankAccounts = ref<BankAccount[]>([])
 const bankAccountId = ref('')
 const uploadedFile = ref<File | null>(null)
 const showMapping = ref(false)
 const showPreview = ref(false)
 const previewTab = ref('all')
+const loading = ref(false)
 const importing = ref(false)
 const importDone = ref(false)
 
 const importResult = ref({ total: 0, imported: 0, duplicated: 0, failed: 0 })
 
-// 格式自动检测
+async function loadBankAccounts() {
+  try {
+    const res: any = await fetch('/api/v1/bank-accounts')
+    const data = await res.json()
+    const list = data?.data?.list !== undefined && data?.data?.list !== null ? data.data.list : (data?.data !== undefined && data?.data !== null ? data.data : data)
+    bankAccounts.value = Array.isArray(list) ? list : []
+  } catch (e) {
+    console.warn('后端资金账户接口不可用', e)
+    bankAccounts.value = []
+  }
+}
+
+const selectedBankName = computed(() => {
+  const acct = bankAccounts.value.find(a => a.id === bankAccountId.value)
+  return acct ? `${acct.bank_name} (${maskAccount(acct.account_number)})` : '-'
+})
+
+function maskAccount(num: string) {
+  if (!num || num === '-' || num.length < 8) return num || '-'
+  return num.slice(0, 4) + ' **** **** ' + num.slice(-4)
+}
+
+onMounted(loadBankAccounts)
+
 const detectedFormat = ref('')
 const formatTagType = computed(() => {
   const map: Record<string, string> = { 'CSV': '', 'Excel': 'success', 'CAMT053': 'warning', 'MT940': 'info' }
   return map[detectedFormat.value] || ''
 })
 
-const fileColumns = ['交易日期', '收入金额', '支出金额', '对方户名', '摘要', '流水号', '余额', '对方账号']
+const fileColumns = ref<string[]>([])
+const sampleData = ref<string[][]>([])
+const totalRows = ref(0)
 
-const fieldMappings = ref([
-  { field: '交易日期', matched: true, mappedColumn: '交易日期' },
-  { field: '金额', matched: true, mappedColumn: '收入金额' },
-  { field: '收支方向', matched: false, mappedColumn: '' },
-  { field: '对方户名', matched: false, mappedColumn: '' },
-  { field: '摘要', matched: true, mappedColumn: '摘要' },
-  { field: '流水号', matched: true, mappedColumn: '流水号' },
-  { field: '余额', matched: true, mappedColumn: '余额' },
-])
+interface FieldMapping {
+  field: string
+  fieldKey: string
+  required: boolean
+  matched: boolean
+  mappedColumn: string
+  sampleValue: string
+}
 
-const previewData = ref([
-  { date: '2026-05-20', amount: '12,000.00', direction: 'in', counterparty: '上海XX贸易公司', description: '网银转账-B2B收款-货款', ref: 'B20260520001', balance: '500,000.00' },
-  { date: '2026-05-20', amount: '50.00', direction: 'out', counterparty: '', description: '账户管理费', ref: 'B20260520002', balance: '499,950.00' },
-  { date: '2026-05-21', amount: '3,500.00', direction: 'in', counterparty: '北京YY科技', description: '转账收入', ref: 'B20260521001', balance: '503,450.00' },
-  { date: '2026-05-21', amount: '5,000.00', direction: 'out', counterparty: '广州ZZ贸易', description: '货款支付', ref: 'B20260521002', balance: '498,450.00' },
-  { date: '2026-05-22', amount: '150.00', direction: 'in', counterparty: '', description: '存款利息', ref: 'B20260522001', balance: '498,600.00' },
-])
+const defaultMappings: FieldMapping[] = [
+  { field: '交易日期', fieldKey: 'date', required: true, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '金额', fieldKey: 'amount', required: true, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '收入金额', fieldKey: 'income', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '支出金额', fieldKey: 'expense', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '收支方向', fieldKey: 'direction', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '对方户名', fieldKey: 'counterparty', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '对方账号', fieldKey: 'counterparty_account', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '摘要', fieldKey: 'description', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '流水号', fieldKey: 'ref', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '余额', fieldKey: 'balance', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '交易类型', fieldKey: 'transaction_type', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '付款人账号', fieldKey: 'payer_account', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '付款人户名', fieldKey: 'payer_name', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '付款人开户行号', fieldKey: 'payer_bank_code', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '付款人开户行名', fieldKey: 'payer_bank', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '收款人账号', fieldKey: 'payee_account', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '收款人户名', fieldKey: 'payee_name', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '收款人开户行号', fieldKey: 'payee_bank_code', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '收款人开户行名', fieldKey: 'payee_bank', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+]
 
-// 异常记录（模拟有字段缺失或不规范的行）
-const parseErrors = ref([
-  { row: 3, field: '对方户名', value: '(空)', issue: '对方户名为空，无法自动匹配客商' },
-  { row: 7, field: '金额', value: '12,0.00', issue: '金额格式异常，可能缺少位数' },
-  { row: 12, field: '日期', value: '2026/05/32', issue: '日期不存在' },
-])
-
-const totalRows = ref(150)
-const normalCount = computed(() => totalRows.value - parseErrors.value.length)
+const fieldMappings = ref<FieldMapping[]>([...defaultMappings])
 
 function handleFileChange(file: any) {
   uploadedFile.value = file.raw
-  // 模拟格式检测
   const name = file.name.toLowerCase()
   if (name.endsWith('.csv')) detectedFormat.value = 'CSV'
   else if (name.endsWith('.xlsx') || name.endsWith('.xls')) detectedFormat.value = 'Excel'
@@ -184,15 +239,176 @@ function handleFileChange(file: any) {
   else detectedFormat.value = 'MT940'
 }
 
-function handleParse() {
-  if (!uploadedFile.value) return
-  showMapping.value = true
-  ElMessage.success(`文件解析成功，格式：${detectedFormat.value}，共识别 ${totalRows.value} 条记录`)
+async function handlePreview() {
+  if (!uploadedFile.value) {
+    ElMessage.warning('请先上传文件')
+    return
+  }
+
+  loading.value = true
+  try {
+    const res = await previewExcelFile(uploadedFile.value)
+    console.log('API响应原始数据:', res)
+
+    // 正确处理响应数据，考虑可能的包装结构
+    let actualData = res as any
+    // 检查是否有 data 包装
+    if (actualData?.data?.columns) {
+      actualData = actualData.data
+    }
+
+    console.log('解析后的 columns:', actualData?.columns)
+    console.log('解析后的 sample:', actualData?.sample)
+
+    if (actualData?.columns && Array.isArray(actualData.columns)) {
+      fileColumns.value = actualData.columns
+      sampleData.value = actualData.sample || []
+      totalRows.value = actualData.total_rows || 0
+
+      console.log('设置 fileColumns:', fileColumns.value)
+
+      // Auto-match columns
+      autoMatchColumns()
+      showMapping.value = true
+      showPreview.value = false
+      ElMessage.success(`文件解析成功，共识别 ${totalRows.value} 条记录，${fileColumns.value.length} 个列`)
+    } else {
+      ElMessage.error('文件解析失败：列名数据格式不正确')
+      console.error('列名数据异常:', actualData)
+    }
+  } catch (e) {
+    console.error('Preview failed:', e)
+    ElMessage.error('预览文件失败，请检查文件格式')
+  }
+  loading.value = false
+}
+
+function autoMatchColumns() {
+  const columns = fileColumns.value.map(c => c.toLowerCase().trim())
+
+  fieldMappings.value.forEach(mapping => {
+    const fieldLower = mapping.field.toLowerCase()
+
+    // Try exact match first
+    let matchIdx = columns.findIndex(col => col === fieldLower)
+
+    // Try contains match
+    if (matchIdx === -1) {
+      matchIdx = columns.findIndex(col =>
+        col.includes(fieldLower) || fieldLower.includes(col)
+      )
+    }
+
+    // Try common synonyms
+    if (matchIdx === -1) {
+      const synonyms: Record<string, string[]> = {
+        date: ['transaction date', '交易日期', '记账日期', '发生日期', '交易时间'],
+        amount: ['金额', 'transaction amount', '发生金额'],
+        income: ['收入金额', '贷方金额', '收入', 'credit'],
+        expense: ['支出金额', '借方金额', '支出', 'debit'],
+        direction: ['收支方向', '方向', '借贷方向'],
+        counterparty: ['对方户名', '对方名称', '收款人', '付款人', '交易对方'],
+        counterparty_account: ['对方账号', '对方账户', '收款账号', '付款账号'],
+        description: ['摘要', 'description', '备注', '用途', '附言'],
+        ref: ['流水号', 'ref', 'reference', '交易流水号', '交易编号'],
+        balance: ['余额', 'balance', '账户余额'],
+        transaction_type: ['交易类型', 'transaction type', '业务类型'],
+        payer_account: ['付款人账号', 'payer account', '转出账号'],
+        payer_name: ['付款人户名', 'payer name', '转出户名'],
+        payer_bank: ['付款人开户行名', 'payer bank', '转出行'],
+        payer_bank_code: ['付款人开户行号', 'payer bank code', '转出行号'],
+        payee_account: ['收款人账号', 'payee account', '转入账号'],
+        payee_name: ['收款人户名', 'payee name', '转入户名'],
+        payee_bank: ['收款人开户行名', 'payee bank', '转入行'],
+        payee_bank_code: ['收款人开户行号', 'payee bank code', '转入行号'],
+      }
+
+      const syns = synonyms[mapping.fieldKey] || []
+      matchIdx = columns.findIndex(col =>
+        syns.some(syn => col === syn.toLowerCase() || col.includes(syn.toLowerCase()))
+      )
+    }
+
+    if (matchIdx !== -1) {
+      mapping.matched = true
+      mapping.mappedColumn = fileColumns.value[matchIdx]
+      if (sampleData.value.length > 0 && sampleData.value[0][matchIdx]) {
+        mapping.sampleValue = sampleData.value[0][matchIdx]
+      }
+    } else {
+      mapping.matched = false
+      mapping.mappedColumn = ''
+      mapping.sampleValue = ''
+    }
+  })
 }
 
 function fetchOnline() {
   ElMessage.success('银企直连抓取成功，获取到 125 条最新流水')
 }
+
+const parseErrors = ref([
+  { row: 3, field: '对方户名', value: '(空)', issue: '对方户名为空，无法自动匹配客商' },
+  { row: 7, field: '金额', value: '12,0.00', issue: '金额格式异常，可能缺少位数' },
+  { row: 12, field: '日期', value: '2026/05/32', issue: '日期不存在' },
+])
+
+const normalCount = computed(() => totalRows.value - parseErrors.value.length)
+
+const previewData = computed(() => {
+  if (sampleData.value.length === 0) return []
+
+  const dateIdx = fieldMappings.value.find(m => m.fieldKey === 'date')?.mappedColumn
+    ? fileColumns.value.indexOf(fieldMappings.value.find(m => m.fieldKey === 'date')!.mappedColumn)
+    : -1
+  const incomeIdx = fieldMappings.value.find(m => m.fieldKey === 'income')?.mappedColumn
+    ? fileColumns.value.indexOf(fieldMappings.value.find(m => m.fieldKey === 'income')!.mappedColumn)
+    : -1
+  const expenseIdx = fieldMappings.value.find(m => m.fieldKey === 'expense')?.mappedColumn
+    ? fileColumns.value.indexOf(fieldMappings.value.find(m => m.fieldKey === 'expense')!.mappedColumn)
+    : -1
+  const directionIdx = fieldMappings.value.find(m => m.fieldKey === 'direction')?.mappedColumn
+    ? fileColumns.value.indexOf(fieldMappings.value.find(m => m.fieldKey === 'direction')!.mappedColumn)
+    : -1
+  const counterpartyIdx = fieldMappings.value.find(m => m.fieldKey === 'counterparty')?.mappedColumn
+    ? fileColumns.value.indexOf(fieldMappings.value.find(m => m.fieldKey === 'counterparty')!.mappedColumn)
+    : -1
+  const descriptionIdx = fieldMappings.value.find(m => m.fieldKey === 'description')?.mappedColumn
+    ? fileColumns.value.indexOf(fieldMappings.value.find(m => m.fieldKey === 'description')!.mappedColumn)
+    : -1
+  const refIdx = fieldMappings.value.find(m => m.fieldKey === 'ref')?.mappedColumn
+    ? fileColumns.value.indexOf(fieldMappings.value.find(m => m.fieldKey === 'ref')!.mappedColumn)
+    : -1
+  const transactionTypeIdx = fieldMappings.value.find(m => m.fieldKey === 'transaction_type')?.mappedColumn
+    ? fileColumns.value.indexOf(fieldMappings.value.find(m => m.fieldKey === 'transaction_type')!.mappedColumn)
+    : -1
+  const payerAccountIdx = fieldMappings.value.find(m => m.fieldKey === 'payer_account')?.mappedColumn
+    ? fileColumns.value.indexOf(fieldMappings.value.find(m => m.fieldKey === 'payer_account')!.mappedColumn)
+    : -1
+  const payerBankIdx = fieldMappings.value.find(m => m.fieldKey === 'payer_bank')?.mappedColumn
+    ? fileColumns.value.indexOf(fieldMappings.value.find(m => m.fieldKey === 'payer_bank')!.mappedColumn)
+    : -1
+
+  return sampleData.value.map((row, idx) => {
+    const income = incomeIdx !== -1 && row[incomeIdx] ? parseFloat(row[incomeIdx].replace(/,/g, '')) : 0
+    const expense = expenseIdx !== -1 && row[expenseIdx] ? parseFloat(row[expenseIdx].replace(/,/g, '')) : 0
+    const direction = directionIdx !== -1 && row[directionIdx]
+      ? (row[directionIdx].includes('收') || row[directionIdx].includes('贷') ? 'in' : 'out')
+      : (income > 0 ? 'in' : 'out')
+
+    return {
+      date: dateIdx !== -1 ? row[dateIdx] : '-',
+      amount: (income > 0 ? income : expense).toFixed(2),
+      direction,
+      counterparty: counterpartyIdx !== -1 ? row[counterpartyIdx] : '-',
+      description: descriptionIdx !== -1 ? row[descriptionIdx] : '-',
+      ref: refIdx !== -1 ? row[refIdx] : `AUTO-${idx + 1}`,
+      transaction_type: transactionTypeIdx !== -1 ? row[transactionTypeIdx] : '-',
+      payer_account: payerAccountIdx !== -1 ? row[payerAccountIdx] : '-',
+      payer_bank: payerBankIdx !== -1 ? row[payerBankIdx] : '-',
+    }
+  })
+})
 
 function skipRow(idx: number) {
   parseErrors.value.splice(idx, 1)
@@ -209,9 +425,12 @@ function resetImport() {
   showMapping.value = false
   showPreview.value = false
   importDone.value = false
-  bankAccountId.value = ''
   parseErrors.value = []
   detectedFormat.value = ''
+  fileColumns.value = []
+  sampleData.value = []
+  totalRows.value = 0
+  fieldMappings.value = [...defaultMappings]
 }
 
 function detectDuplicates(rows: any[]): { unique: any[]; duplicates: number } {
@@ -245,6 +464,8 @@ async function handleImport() {
 .upload-area { text-align: center; .upload-text { font-size: 14px; margin: 8px 0; em { color: #1890ff; font-style: normal; } } .upload-hint { color: #999; font-size: 12px; } }
 .file-info { margin-top: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; .file-name { font-weight: 500; } .file-size { color: #999; font-size: 12px; } }
 .preview-stats { display: flex; gap: 20px; margin-bottom: 12px; font-size: 13px; .success { color: #52c41a; } .danger { color: #ff4d4f; } }
+.sample-value { font-size: 12px; color: #666; }
+.no-sample { color: #999; }
 .import-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; }
 .import-result { margin-top: 24px; p { margin-bottom: 16px; color: #666; } }
 </style>

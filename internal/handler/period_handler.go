@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strconv"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"huihua/finance/internal/service"
@@ -75,4 +77,92 @@ func (h *PeriodHandler) GetCurrent(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"period": period})
+}
+
+// Unclose handles POST /api/v1/periods/:period_no/unclose
+func (h *PeriodHandler) Unclose(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	periodNoStr := c.Params("period_no")
+	periodNo, err := strconv.Atoi(periodNoStr)
+	if err != nil || periodNo <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid period_no"})
+	}
+
+	if err := h.svc.UnclosePeriod(c.Context(), tenantID, periodNo); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "period unclosed successfully"})
+}
+
+// PreCloseCheck handles GET /api/v1/periods/pre-close-check?year=2026&month=5
+func (h *PeriodHandler) PreCloseCheck(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	yearStr := c.Query("year")
+	monthStr := c.Query("month")
+
+	year, err := strconv.Atoi(yearStr)
+	if err != nil || year < 2000 || year > 2100 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid year"})
+	}
+
+	month, err := strconv.Atoi(monthStr)
+	if err != nil || month < 1 || month > 12 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid month"})
+	}
+
+	result, err := h.svc.PreCloseCheck(c.Context(), tenantID, year, month)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(result)
+}
+
+// VoucherGaps handles GET /api/v1/periods/voucher-gaps?year=2026&month=5
+func (h *PeriodHandler) VoucherGaps(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	yearStr := c.Query("year")
+	monthStr := c.Query("month")
+
+	year, err := strconv.Atoi(yearStr)
+	if err != nil || year < 2000 || year > 2100 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid year"})
+	}
+
+	month, err := strconv.Atoi(monthStr)
+	if err != nil || month < 1 || month > 12 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid month"})
+	}
+
+	gaps, err := h.svc.ScanVoucherGaps(c.Context(), tenantID, year, month)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if gaps == nil {
+		gaps = []service.VoucherGap{}
+	}
+
+	// Count gaps by type
+	missingCount := 0
+	voidedCount := 0
+	for _, g := range gaps {
+		if g.GapType == "missing" {
+			missingCount++
+		} else if g.GapType == "voided" {
+			voidedCount++
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"voucher_gaps":  gaps,
+		"missing_count": missingCount,
+		"voided_count":  voidedCount,
+		"total_gaps":    len(gaps),
+		"has_missing":   missingCount > 0,
+	})
 }

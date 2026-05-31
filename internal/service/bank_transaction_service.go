@@ -193,26 +193,26 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 			descStr = *description
 		}
 
-		var amount decimal.Decimal
+		counterpartyStr := ""
+		if counterparty != nil {
+			counterpartyStr = *counterparty
+		}
+
+		txnDirection := ""
 		if debit.GreaterThan(decimal.Zero) {
-			amount = debit
+			txnDirection = "out"
 		} else {
-			amount = credit
+			txnDirection = "in"
 		}
 
-		dirStr := "credit"
-		if debit.GreaterThan(decimal.Zero) {
-			dirStr = "debit"
-		}
-
-		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, amount, dirStr)
+		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, counterpartyStr, txnDirection)
 		if err == nil && matchResult != nil && matchResult.Matched && matchResult.RuleID != nil {
 			txn.Matched = true
 			// Store match info in RawData
 			rawData, _ := json.Marshal(map[string]interface{}{
-				"rule_id":   matchResult.RuleID,
-				"rule_name": matchResult.RuleName,
-				"account_id": matchResult.AccountID,
+				"rule_id":        matchResult.RuleID,
+				"rule_name":      matchResult.RuleName,
+				"classification": matchResult.Classification,
 			})
 			txn.RawData = rawData
 		}
@@ -244,19 +244,19 @@ func (s *BankTransactionService) ClassifyTransaction(ctx context.Context, tenant
 		descStr = *txn.Description
 	}
 
-	var amount decimal.Decimal
+	counterpartyStr := ""
+	if txn.CounterpartyName != nil {
+		counterpartyStr = *txn.CounterpartyName
+	}
+
+	txnDirection := ""
 	if txn.Debit.GreaterThan(decimal.Zero) {
-		amount = txn.Debit
+		txnDirection = "out"
 	} else {
-		amount = txn.Credit
+		txnDirection = "in"
 	}
 
-	dirStr := "credit"
-	if txn.Debit.GreaterThan(decimal.Zero) {
-		dirStr = "debit"
-	}
-
-	matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, amount, dirStr)
+	matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, counterpartyStr, txnDirection)
 	if err != nil {
 		return nil, fmt.Errorf("match transaction: %w", err)
 	}
@@ -286,19 +286,19 @@ func (s *BankTransactionService) ClassifyAllPending(ctx context.Context, tenantI
 			descStr = *txn.Description
 		}
 
-		var amount decimal.Decimal
+		counterpartyStr := ""
+		if txn.CounterpartyName != nil {
+			counterpartyStr = *txn.CounterpartyName
+		}
+
+		txnDirection := ""
 		if txn.Debit.GreaterThan(decimal.Zero) {
-			amount = txn.Debit
+			txnDirection = "out"
 		} else {
-			amount = txn.Credit
+			txnDirection = "in"
 		}
 
-		dirStr := "credit"
-		if txn.Debit.GreaterThan(decimal.Zero) {
-			dirStr = "debit"
-		}
-
-		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, amount, dirStr)
+		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, counterpartyStr, txnDirection)
 		if err != nil || matchResult == nil || !matchResult.Matched {
 			continue
 		}

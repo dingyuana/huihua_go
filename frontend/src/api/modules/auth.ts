@@ -1,18 +1,26 @@
 import request from '@/api/request'
-import type { ApiResponse } from '@/types/api'
+
+/** 登录响应（后端直接返回，无 code/data 包装） */
+export interface LoginResponse {
+  token: string
+  user_id: string
+  tenant_id: string
+  role: string
+  expires_at: string
+}
 
 /** 登录 */
-export function login(account: string, password: string): Promise<ApiResponse<{ token: string; expires_at: string }>> {
-  return request.post('/auth/login', { account, password })
+export function login(username: string, password: string): Promise<LoginResponse> {
+  return request.post('/auth/login', { username, password })
 }
 
 /** 登出 */
-export function logout(): Promise<ApiResponse<null>> {
+export function logout(): Promise<void> {
   return request.post('/auth/logout')
 }
 
 /** 获取当前用户 */
-export function fetchMe(): Promise<ApiResponse<{
+export function fetchMe(): Promise<{
   id: string
   name: string
   email: string
@@ -20,11 +28,11 @@ export function fetchMe(): Promise<ApiResponse<{
   permissions: string[]
   tenant_id: string
   tenant_name: string
-}>> {
+}> {
   return request.get('/auth/me')
 }
 
 /** 刷新 token（切换租户时） */
-export function refreshToken(newTenantId: string): Promise<ApiResponse<{ token: string; expires_at: string }>> {
+export function refreshToken(newTenantId: string): Promise<{ token: string; expires_at: string }> {
   return request.post('/auth/refresh', { new_tenant_id: newTenantId })
 }

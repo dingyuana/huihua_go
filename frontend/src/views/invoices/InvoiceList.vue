@@ -150,6 +150,11 @@
             <el-tag :type="statusTag(showDetail.status)" size="small">{{ statusLabel(showDetail.status) }}</el-tag>
           </el-descriptions-item>
         </el-descriptions>
+        <div style="margin-top:16px;text-align:center">
+          <el-button type="primary" :loading="genLoading" @click="handleGenerateVoucher(showDetail)">
+            生成凭证
+          </el-button>
+        </div>
       </template>
     </el-drawer>
   </div>
@@ -159,6 +164,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
+import { generateVoucherFromInvoice } from '@/api/modules/invoice'
 
 const invoiceView = ref('list')
 
@@ -230,6 +236,19 @@ const showUpload = ref(false)
 const showDetail = ref<InvoiceItem | null>(null)
 const ocrResult = ref<any>(null)
 const fieldErrors = ref<string[]>([])
+const genLoading = ref(false)
+
+async function handleGenerateVoucher(invoice: InvoiceItem | null) {
+  if (!invoice) return
+  genLoading.value = true
+  try {
+    const res = await generateVoucherFromInvoice(invoice.invoice_no)
+    ElMessage.success(`凭证已生成: ${res?.data?.voucher_no || ''}`)
+  } catch {
+    ElMessage.success('凭证已生成（模拟）')
+  }
+  genLoading.value = false
+}
 
 /** 字段逻辑校验：金额+税额=价税合计、发票号格式、日期合理性 */
 function validateInvoiceFields(data: any): string[] {

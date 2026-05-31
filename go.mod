@@ -1,12 +1,12 @@
 module huihua/finance
 
-go 1.25.0
+go 1.24.0
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.6.0
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/shopspring/decimal v1.4.0
 	github.com/spf13/viper v1.21.0

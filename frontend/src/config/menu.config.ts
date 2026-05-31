@@ -65,14 +65,15 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
         { path: '/vouchers/batch-generate', title: '批量生成' },
       ],
     },
-    {
-      path: '/period', title: '期末处理', icon: 'Timer',
-      children: [
-        { path: '/period/health-check', title: '结账体检' },
-        { path: '/period/depreciation', title: '折旧处理' },
-        { path: '/period/reports', title: '财务报表' },
-      ],
-    },
+      {
+        path: '/period', title: '期末处理', icon: 'Timer',
+        children: [
+          { path: '/period/health-check', title: '结账体检' },
+          { path: '/period/voucher-gaps', title: '断号检测' },
+          { path: '/period/depreciation', title: '折旧处理' },
+          { path: '/period/reports', title: '财务报表' },
+        ],
+      },
     { path: '/bank-reconciliation/match', title: '银企对账', icon: 'BalanceTwo' },
   ],
   boss: [

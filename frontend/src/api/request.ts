@@ -33,8 +33,8 @@ request.interceptors.response.use(
         ElMessage.error('权限不足，请联系管理员')
         return Promise.reject(error)
       }
-      // 业务错误
-      const msg = (data as ApiResponse)?.message || '请求失败'
+      // 业务错误：兼容后端 { error: "..." } 和 { code, message } 格式
+      const msg = (data as ApiResponse)?.message || (data as any)?.error || '请求失败'
       ElMessage.error(msg)
     } else {
       ElMessage.error('网络异常，请检查连接')

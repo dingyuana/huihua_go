@@ -44,7 +44,7 @@ func (h *ClassificationRuleHandler) Create(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.Status(fiber.StatusCreated).JSON(rule)
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"data": rule})
 }
 
 // Update handles PUT /api/v1/classification-rules/:id.
@@ -65,7 +65,7 @@ func (h *ClassificationRuleHandler) Update(c *fiber.Ctx) error {
 	if err := h.svc.UpdateRule(c.Context(), tenantID, id, &req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"status": "updated"})
+	return c.JSON(fiber.Map{"message": "updated"})
 }
 
 // Delete handles DELETE /api/v1/classification-rules/:id.
@@ -81,14 +81,16 @@ func (h *ClassificationRuleHandler) Delete(c *fiber.Ctx) error {
 	if err := h.svc.DeleteRule(c.Context(), tenantID, id); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"status": "deleted"})
+	return c.JSON(fiber.Map{"message": "deleted"})
 }
 
 // Reorder handles POST /api/v1/classification-rules/reorder.
 func (h *ClassificationRuleHandler) Reorder(c *fiber.Ctx) error {
 	tenantID := middleware.MustGetTenantID(c)
 
-	var req model.ReorderPriorityRequest
+	var req struct {
+		RuleIDs []string `json:"rule_ids"`
+	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
@@ -105,7 +107,17 @@ func (h *ClassificationRuleHandler) Reorder(c *fiber.Ctx) error {
 	if err := h.svc.ReorderPriority(c.Context(), tenantID, ruleIDs); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(fiber.Map{"status": "reordered"})
+	return c.JSON(fiber.Map{"message": "reordered"})
+}
+
+// Seed handles POST /api/v1/classification-rules/seed.
+func (h *ClassificationRuleHandler) Seed(c *fiber.Ctx) error {
+	tenantID := middleware.MustGetTenantID(c)
+
+	if err := h.svc.SeedRules(c.Context(), tenantID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"message": "seeded"})
 }
 
 // Match handles POST /api/v1/classification-rules/match.
@@ -117,9 +129,9 @@ func (h *ClassificationRuleHandler) Match(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	result, err := h.svc.MatchTransaction(c.Context(), tenantID, req.Keywords, req.Amount, req.Direction)
+	result, err := h.svc.MatchTransaction(c.Context(), tenantID, req.Description, req.Counterparty, req.Direction)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.JSON(result)
+	return c.JSON(fiber.Map{"data": result})
 }

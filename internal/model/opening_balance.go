@@ -103,6 +103,22 @@ type BalanceSheetAccountEntry struct {
 	Balance     decimal.Decimal `json:"balance"`
 }
 
+// CashFlowItem is a single line item in the cash flow statement.
+type CashFlowItem struct {
+	Category  string          `json:"category"`
+	Item      string          `json:"item"`
+	Current   decimal.Decimal `json:"current"`
+	Last      decimal.Decimal `json:"last"`
+	Level     int             `json:"level"`
+}
+
+// CashFlowStatement represents the full cash flow statement for a period.
+type CashFlowStatement struct {
+	PeriodNo   int            `json:"period_no"`
+	PeriodName string         `json:"period_name"`
+	Items      []CashFlowItem `json:"items"`
+}
+
 // BalanceSheet represents the balance sheet as of a period end.
 type BalanceSheet struct {
 	PeriodNo         int                       `json:"period_no"`

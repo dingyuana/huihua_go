@@ -61,7 +61,8 @@ func (s *VoucherStateMachine) ValidateTransition(currentStatus int16, action mod
 	}
 }
 
-// ExecuteTransition performs a state transition on a voucher.
+// ExecuteTransition performs a state transition on a voucher within a single database transaction.
+// This ensures atomicity: status update, GL entries, and audit log either all succeed or all fail.
 func (s *VoucherStateMachine) ExecuteTransition(ctx context.Context, tenantID uuid.UUID, journalID uuid.UUID, action model.VoucherAction, userID uuid.UUID, userName string, reason string) error {
 	// Get current status
 	currentStatus, err := s.journalRepo.GetStatus(ctx, tenantID, journalID)
@@ -99,8 +100,15 @@ func (s *VoucherStateMachine) ExecuteTransition(ctx context.Context, tenantID uu
 		userNamePtr = &userName
 	}
 
-	// Update status in repository
-	if err := s.journalRepo.UpdateStatus(ctx, tenantID, journalID, newStatus, userID, userNamePtr, action, reasonPtr); err != nil {
+	// Begin a single database transaction for all operations
+	tx, err := s.journalRepo.BeginTx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Update status within the transaction
+	if err := s.journalRepo.UpdateStatusTx(ctx, tx, tenantID, journalID, newStatus, userID, userNamePtr, action, reasonPtr); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
 
@@ -115,19 +123,19 @@ func (s *VoucherStateMachine) ExecuteTransition(ctx context.Context, tenantID uu
 			return fmt.Errorf("get journal entry for GL: %w", err)
 		}
 		voucherType := je.VoucherType
-		if err := s.glRepo.WriteGLEntries(ctx, tenantID, journalID, lines, je.PostingDate, voucherType, je.CompanyID); err != nil {
+		if err := s.glRepo.WriteGLEntriesTx(ctx, tx, tenantID, journalID, lines, je.PostingDate, voucherType, je.CompanyID); err != nil {
 			return fmt.Errorf("write GL entries: %w", err)
 		}
 	}
 
 	// Cancel GL entries on reverse/cancel
 	if (action == model.VoucherActionReverse || action == model.VoucherActionCancel) && s.glRepo != nil {
-		if err := s.glRepo.CancelGLEntriesByVoucher(ctx, tenantID, journalID); err != nil {
+		if err := s.glRepo.CancelGLEntriesByVoucherTx(ctx, tx, tenantID, journalID); err != nil {
 			return fmt.Errorf("cancel GL entries: %w", err)
 		}
 	}
 
-	// Record audit log
+	// Record audit log within the transaction
 	changedFields, _ := json.Marshal(map[string][]interface{}{
 		"docstatus": {currentStatus, newStatus},
 	})
@@ -145,18 +153,23 @@ func (s *VoucherStateMachine) ExecuteTransition(ctx context.Context, tenantID uu
 		metadata, _ := json.Marshal(map[string]string{"reason": *reasonPtr})
 		auditLog.Metadata = metadata
 	}
-	if err := s.auditRepo.Create(ctx, tenantID, auditLog); err != nil {
+	if err := s.auditRepo.CreateTx(ctx, tx, tenantID, auditLog); err != nil {
 		return fmt.Errorf("record audit log: %w", err)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil
 }
 
-// ReverseVoucher creates a reversal voucher (red letter) for the given voucher.
+// ReverseVoucher creates a reversal voucher (red letter) for the given voucher within a single transaction.
 // It swaps debit and credit amounts for each line, sets reversal_id on the original,
 // and marks the new voucher with action='reversal' and original_voucher_id.
 func (s *VoucherStateMachine) ReverseVoucher(ctx context.Context, tenantID uuid.UUID, journalID uuid.UUID, userID uuid.UUID, userName string) (*model.JournalEntry, error) {
-	// Get original voucher
+	// Get original voucher (read-only, no transaction needed yet)
 	original, err := s.journalRepo.GetByID(ctx, tenantID, journalID)
 	if err != nil {
 		return nil, fmt.Errorf("get original voucher: %w", err)
@@ -167,13 +180,19 @@ func (s *VoucherStateMachine) ReverseVoucher(ctx context.Context, tenantID uuid.
 		return nil, errors.New("voucher is already reversed")
 	}
 
-	// Get lines
+	// Get lines (read-only, needed to build reversal lines)
 	lines, err := s.journalRepo.GetLines(ctx, tenantID, journalID)
 	if err != nil {
 		return nil, fmt.Errorf("get lines: %w", err)
 	}
 
-	// Create reversal voucher
+	// Create reversal voucher within a single transaction
+	tx, err := s.journalRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	now := time.Now()
 	reversal := &model.JournalEntry{
 		ID:            uuid.New(),
@@ -191,8 +210,8 @@ func (s *VoucherStateMachine) ReverseVoucher(ctx context.Context, tenantID uuid.
 		UpdatedAt:     now,
 	}
 
-	// Insert reversal voucher
-	reversal, err = s.journalRepo.Create(ctx, tenantID, reversal)
+	// Insert reversal voucher within transaction
+	reversal, err = s.journalRepo.CreateTx(ctx, tx, tenantID, reversal)
 	if err != nil {
 		return nil, fmt.Errorf("create reversal voucher: %w", err)
 	}
@@ -220,17 +239,25 @@ func (s *VoucherStateMachine) ReverseVoucher(ctx context.Context, tenantID uuid.
 		}
 	}
 
-	_, err = s.journalRepo.AddLines(ctx, tenantID, reversal.ID, reversalLines)
+	// Insert reversal lines within transaction
+	_, err = s.journalRepo.AddLinesTx(ctx, tx, tenantID, reversal.ID, reversalLines)
 	if err != nil {
 		return nil, fmt.Errorf("add reversal lines: %w", err)
 	}
 
-	// Mark original as reversed
-	if err := s.journalRepo.UpdateStatus(ctx, tenantID, journalID, 3, userID, &userName, model.VoucherActionReverse, nil); err != nil {
+	// Write GL entries for reversal voucher
+	if s.glRepo != nil {
+		if err := s.glRepo.WriteGLEntriesTx(ctx, tx, tenantID, reversal.ID, reversalLines, now, original.VoucherType, original.CompanyID); err != nil {
+			return nil, fmt.Errorf("write GL entries for reversal: %w", err)
+		}
+	}
+
+	// Mark original as reversed within transaction
+	if err := s.journalRepo.UpdateStatusTx(ctx, tx, tenantID, journalID, 3, userID, &userName, model.VoucherActionReverse, nil); err != nil {
 		return nil, fmt.Errorf("mark original as reversed: %w", err)
 	}
 
-	// Record audit log for reversal
+	// Record audit log for reversal within transaction
 	userNamePtr := &userName
 	metadata, _ := json.Marshal(map[string]interface{}{
 		"original_voucher_id": journalID.String(),
@@ -246,8 +273,13 @@ func (s *VoucherStateMachine) ReverseVoucher(ctx context.Context, tenantID uuid.
 		ActorName:     userNamePtr,
 		Metadata:      metadata,
 	}
-	if err := s.auditRepo.Create(ctx, tenantID, auditLog); err != nil {
+	if err := s.auditRepo.CreateTx(ctx, tx, tenantID, auditLog); err != nil {
 		return nil, fmt.Errorf("record audit log: %w", err)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return reversal, nil

@@ -77,19 +77,20 @@ func (s *VoucherService) CreateVoucher(ctx context.Context, tenantID, createdBy 
 		UpdatedAt:   time.Now(),
 	}
 
-	created, err := s.journalRepo.Create(ctx, tenantID, je)
-	if err != nil {
-		return nil, fmt.Errorf("create journal entry: %w", err)
-	}
-
-	// Build lines
+	// Build lines first (validate amounts before transaction)
 	lines := make([]model.JournalEntryLine, 0, len(req.Lines))
 	for _, lr := range req.Lines {
-		debit, _ := decimal.NewFromString(lr.Debit)
-		credit, _ := decimal.NewFromString(lr.Credit)
+		debit, err := decimal.NewFromString(lr.Debit)
+		if err != nil {
+			return nil, fmt.Errorf("invalid debit amount %q: %w", lr.Debit, err)
+		}
+		credit, err := decimal.NewFromString(lr.Credit)
+		if err != nil {
+			return nil, fmt.Errorf("invalid credit amount %q: %w", lr.Credit, err)
+		}
 		line := model.JournalEntryLine{
 			ID:             uuid.New(),
-			JournalEntryID: created.ID,
+			JournalEntryID: je.ID,
 			AccountID:      lr.AccountID,
 			Debit:          debit,
 			Credit:         credit,
@@ -107,9 +108,24 @@ func (s *VoucherService) CreateVoucher(ctx context.Context, tenantID, createdBy 
 		lines = append(lines, line)
 	}
 
-	_, err = s.journalRepo.AddLines(ctx, tenantID, created.ID, lines)
+	// Use transaction to ensure atomicity of header + lines creation
+	tx, err := s.journalRepo.BeginTx(ctx)
 	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	created, err := s.journalRepo.CreateTx(ctx, tx, tenantID, je)
+	if err != nil {
+		return nil, fmt.Errorf("create journal entry: %w", err)
+	}
+
+	if _, err = s.journalRepo.AddLinesTx(ctx, tx, tenantID, created.ID, lines); err != nil {
 		return nil, fmt.Errorf("add lines: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return created, nil
@@ -197,21 +213,34 @@ func (s *VoucherService) UpdateVoucher(ctx context.Context, tenantID, voucherID,
 	}
 	je.UpdatedAt = time.Now()
 
-	if err := s.journalRepo.Update(ctx, tenantID, je); err != nil {
+	// Use transaction for header + lines update
+	tx, err := s.journalRepo.BeginTx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.journalRepo.UpdateTx(ctx, tx, tenantID, je); err != nil {
 		return fmt.Errorf("update journal entry: %w", err)
 	}
 
 	if len(req.Lines) > 0 {
 		// Delete existing lines
-		if err := s.journalRepo.DeleteLines(ctx, tenantID, voucherID); err != nil {
+		if err := s.journalRepo.DeleteLinesTx(ctx, tx, tenantID, voucherID); err != nil {
 			return fmt.Errorf("delete existing lines: %w", err)
 		}
 
 		// Insert new lines
 		lines := make([]model.JournalEntryLine, 0, len(req.Lines))
 		for _, lr := range req.Lines {
-			debit, _ := decimal.NewFromString(lr.Debit)
-			credit, _ := decimal.NewFromString(lr.Credit)
+			debit, err := decimal.NewFromString(lr.Debit)
+			if err != nil {
+				return fmt.Errorf("invalid debit amount %q: %w", lr.Debit, err)
+			}
+			credit, err := decimal.NewFromString(lr.Credit)
+			if err != nil {
+				return fmt.Errorf("invalid credit amount %q: %w", lr.Credit, err)
+			}
 			line := model.JournalEntryLine{
 				ID:             uuid.New(),
 				JournalEntryID: voucherID,
@@ -232,9 +261,13 @@ func (s *VoucherService) UpdateVoucher(ctx context.Context, tenantID, voucherID,
 			lines = append(lines, line)
 		}
 
-		if _, err := s.journalRepo.AddLines(ctx, tenantID, voucherID, lines); err != nil {
+		if _, err := s.journalRepo.AddLinesTx(ctx, tx, tenantID, voucherID, lines); err != nil {
 			return fmt.Errorf("add lines: %w", err)
 		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil
@@ -251,5 +284,24 @@ func (s *VoucherService) DeleteVoucher(ctx context.Context, tenantID, voucherID,
 		return errors.New("only draft vouchers can be deleted")
 	}
 
-	return s.journalRepo.DeleteVoucher(ctx, tenantID, voucherID)
+	// Use transaction for atomic deletion of header + lines
+	tx, err := s.journalRepo.BeginTx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.journalRepo.DeleteLinesTx(ctx, tx, tenantID, voucherID); err != nil {
+		return fmt.Errorf("delete lines: %w", err)
+	}
+
+	if err := s.journalRepo.DeleteVoucherTx(ctx, tx, tenantID, voucherID); err != nil {
+		return fmt.Errorf("delete voucher: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
 }

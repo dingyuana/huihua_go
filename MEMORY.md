@@ -1,5 +1,16 @@
 ---
-## 📌 Changelog (2026-05-28)
+## 📌 Changelog
+
+### 🔴 Major Change — 2026-05-30
+- **Change type**: documentation update / build fix / testing + assessment
+- **Summary**: 
+  - 修复 2 个 handler 中 `GetTenantID` 签名不匹配问题（`audit_handler.go`, `classification_rule_handler.go`）
+  - 修复 `SetupWizard.vue` 中 `instanceof Date` 类型错误（初始值 `''` → `null as Date | null`）
+  - 前端构建通过：`vue-tsc --noEmit` ✅ → `vite build` ✅
+  - 后端构建通过：`go build ./...` ✅ → `go test ./...` ✅（7/7 PASS）
+  - 更新 MEMORY.md 技术栈文档（版本号、文件计数、API 路由表）
+  - 创建 `docs/01-项目总览/功能完成度矩阵-Go版.md` — 基于 Go 版源码的完整评估
+  - 标注 3 个 P0 开发缺口（经营分析仪表盘、费用报销、结账向导后端聚合端点）
 
 ### 🔴 Major Change — 2026-05-28
 - **Change type**: architecture adjustment / scope expansion
@@ -32,62 +43,75 @@
 
 | Layer | Tech |
 |-------|------|
-| Language | Go 1.22+ |
-| HTTP Framework | Fiber v2.52 |
-| DB Driver | pgx / pgxpool v5 |
-| ORM | 原生 SQL（无 GORM GEN 代码生成） |
-| Config | Viper（`.env` 嵌套格式） |
-| Cache | Redis 7 |
-| Deploy | Docker Compose |
-| Database | PostgreSQL 15 + RLS 多租户隔离 |
+| Language | **Go 1.24** (`go.mod: go 1.24.0`) |
+| HTTP Framework | **Fiber v2.52** (`github.com/gofiber/fiber/v2 v2.52.0`) |
+| DB Driver | **pgx v5 / pgxpool** (`github.com/jackc/pgx/v5 v5.6.0`) |
+| ORM | **原生 SQL**（无 ORM，全部手写 SQL） |
+| Amount Type | **shopspring/decimal v1.4**（`.CoefficientInt64()` 传前端） |
+| Config | **Viper v1.21**（`.env` 嵌套格式 `database.host=...`） |
+| Cache | **Redis 7** via go-redis v9 (`github.com/redis/go-redis/v9 v9.19.0`) |
+| JWT | **golang-jwt v5** (HS256) |
+| Auth Middleware | Fiber middleware.Auth(cfg) — JWT 验证 + Tenant 上下文注入 |
+| Multi-tenant | **PostgreSQL RLS** — `SET app.current_tenant` 策略 |
+| Deploy | **Docker Compose** — PostgreSQL 15 + Redis 7-alpine |
+| Database | **PostgreSQL 15** + RLS 多租户隔离 |
+| Excel | **xuri/excelize v2.10** — 发票/流水 Excel 导入 |
 
 ## 项目结构
 
 ```
 huihua-finance/
-├── cmd/api/main.go          # 入口，142 handlers，路由注册
+├── cmd/api/main.go          # 入口，90+ API 路由，Fiber 注册
 ├── internal/
 │   ├── config/config.go     # Viper 配置加载
 │   ├── middleware/
 │   │   ├── auth.go          # JWT 验证（HS256）
 │   │   ├── tenant.go        # RLS: SET app.current_tenant
 │   │   └── log.go
-│   ├── model/               # 24 个数据模型
-│   ├── handler/             # 20 个 HTTP Handler
-│   ├── service/             # 20 个业务逻辑 Service
-│   └── repository/          # 17 个数据访问 Repository
+│   ├── model/               # 22 个数据模型
+│   ├── handler/             # 21 个 HTTP Handler（不含 health）
+│   ├── service/             # 21 个业务逻辑 Service
+│   └── repository/          # 18 个数据访问 Repository
 ├── pkg/database/postgres.go  # pgxpool 连接管理
-├── migrations/               # 21 个 SQL 迁移文件
-└── docs/plans/              # 任务计划文档
+├── pkg/jwt/                 # JWT 签发与验证
+├── pkg/utils/               # 通用工具
+├── migrations/               # 23 个 SQL 迁移文件（含种子数据）
+├── tests/test_api.py        # Python 集成测试（807行）
+├── frontend/                # Vue 3 SPA
+│   └── src/
+│       ├── api/             # Axios + 9 个业务模块
+│       ├── components/check/# 4 个检测通用组件
+│       └── views/           # 23 个页面
+└── docs/                    # 需求/设计/开发计划/API 文档
 ```
 
-## API 路由（99条，全部接通）
+## API 路由（90+条，全部接通）
 
-| 路由前缀 | Handler | 说明 |
-|---------|---------|------|
-| `/api/v1/health` | HealthHandler | 健康检查 |
-| `/api/v1/setup` | SetupHandler | 公司注册/账套初始化 |
-| `/api/v1/tenants` | TenantHandler | 租户管理 |
-| `/api/v1/users` | UserHandler | 应用用户管理 |
-| `/api/v1/accounts` | AccountHandler | 科目管理（GetTree 等） |
-| `/api/v1/parties` | PartyHandler | 往来单位 CRUD |
-| `/api/v1/bank-accounts` | BankAccountHandler | 银行账户 CRUD |
-| `/api/v1/bank-transactions` | BankTxnHandler | 银行流水（导入/分类/匹配） |
-| `/api/v1/vouchers` | VoucherHandler | 手工凭证 CRUD |
-| `/api/v1/voucher-templates` | VoucherTemplateHandler | 凭证模板 CRUD |
-| `/api/v1/auto-generate` | VoucherAutoGenerateHandler | 银行流水→凭证 自动生成 |
-| `/api/v1/reconciliation` | ReconciliationHandler | 银行对账 |
-| `/api/v1/invoices` | InvoiceHandler | 发票 CRUD + Excel 解析 |
-| `/api/v1/classification-rules` | ClassificationRuleHandler | 分类规则 CRUD |
-| `/api/v1/approval-flows` | ApprovalFlowHandler | 审批流程 CRUD |
-| `/api/v1/approval-tasks` | ApprovalTaskHandler | 审批任务 |
-| `/api/v1/reports` | ReportHandler | 财务报表（试算/利润/资产负债） |
-| `/api/v1/periods` | PeriodHandler | 会计期间管理 |
-| `/api/v1/fixed-assets` | FixedAssetHandler | 固定资产 CRUD |
-| `/api/v1/depreciation` | DepreciationHandler | 折旧计提/执行 |
-| `/api/v1/exchange-rates` | ExchangeRateHandler | 汇率 CRUD |
+| 路由前缀 | Handler 文件 | 说明 |
+|---------|-------------|------|
+| `/health` | `health.go` | 健康检查（公开） |
+| `/api/v1/auth` | `auth_handler.go` | 登录（公开） |
+| `/api/v1/audit-logs` | `audit_handler.go` | 审计日志查询 |
+| `/api/v1/accounts` | `account_handler.go` | 科目树 / 种子数据 |
+| `/api/v1/exchange-rates` | `exchange_rate_handler.go` | 汇率 CRUD + 换算 |
+| `/api/v1/bank-accounts` | `bank_handler.go` | 银行账户 CRUD |
+| `/api/v1/parties` | `party_handler.go` | 往来单位 CRUD + Excel 导入 |
+| `/api/v1/account-setup` | `setup_handler.go` | 账套初始状态 / 创建公司 |
+| `/api/v1/assets` + `/depreciation` | `asset_depreciation_handler.go` | 折旧计划 / 运行 |
+| `/api/v1/invoices` | `invoice_handler.go` | 发票 CRUD + Excel 导入 + 解析 |
+| `/api/v1/classification-rules` | `classification_rule_handler.go` | 分类规则 CRUD + 排序 + 匹配 |
+| `/api/v1/bank-transactions` | `bank_transaction_handler.go` | 流水导入/分类/匹配/查询 |
+| `/api/v1/voucher-templates` | `voucher_template_handler.go` | 模板 CRUD + 编号规则 |
+| `/api/v1/vouchers` | `voucher_handler.go` | 凭证 CRUD + 状态机 |
+| `/api/v1/opening-balances` | `opening_balance_handler.go` | 开办余额导入/试算/校验 |
+| `/api/v1/periods` | `period_handler.go` | 期间管理 + 断号检测 + 结账 |
+| `/api/v1/reconciliation` | `reconciliation_handler.go` | 核销配对/确认 |
+| `/api/v1/bank-reconciliation` | `bank_reconciliation_handler.go` | 银企对账/报告/状态 |
+| `/api/v1/reports` | `report_handler.go` | 试算/利润/资产负债表 |
+| `/api/v1/approval-flows` + `/approvals` | `approval_handler.go` | 审批流 CRUD + 审批任务 |
+| `/api/v1/bank-transactions/:id/generate-voucher` | `voucher_auto_generate_handler.go` | 流水→凭证 自动生成 |
 
-## 数据库（21个 Migration）
+## 数据库（23个 Migration）
 
 | 文件 | 内容 |
 |------|------|
@@ -102,8 +126,8 @@ huihua-finance/
 | 009 | app_user — 应用用户 |
 | 010 | account_setup — 科目初始数据 |
 | 011 | depreciation_run — 折旧 |
-| 012 | classification_rules — 银行流水分类规则 |
-| 012 | voucher_template — 凭证模板 |
+| 012a | classification_rules — 银行流水分类规则 |
+| 012b | voucher_template — 凭证模板 |
 | 013 | voucher_state_machine — 凭证状态机 |
 | 014 | bank_transactions — 银行流水 |
 | 015 | opening_balance — 开办余额 |
@@ -112,6 +136,8 @@ huihua-finance/
 | 018 | reconciliation — 对账记录 |
 | 019 | approval — 审批流 + 审批任务 |
 | 020 | voucher_template_approval_bind — 模板绑定审批流 |
+| 021 | voucher_state_transitions — 状态转换日志 |
+| 022 | seed_data — 种子数据（测试用户 + 科目初始数据） |
 
 ## 核心模块进度
 
@@ -120,25 +146,26 @@ huihua-finance/
 | F0 基础设施 | ✅ | JWT/RLS/审计日志/应用用户 |
 | F1 账套初始化 | ✅ | 科目/客商/会计期间/开办余额/试算平衡 |
 | F2 发票管理 | ✅ | 发票CRUD+Excel解析+分类规则引擎 |
-| F3 银行流水 | ✅ | 导入+智能分类+标记匹配 |
-| F4 凭证状态机 | ✅ | 提交/核准/驳回/取消/红冲+GL过账 |
+| F3 银行流水 | ✅ | 导入（CSV/Excel）+智能分类（规则引擎）+匹配 |
+| F4 凭证状态机 | ✅ | 提交/核准/驳回/取消/红冲+GL过账+审计追踪 |
 | F5 凭证自动生成 | ✅ | 银行流水→凭证+批量生成+auto-submit审批 |
-| F6 固定资产折旧 | ✅ | 折旧计划+运行执行 |
-| F7 银行对账 | ✅ | 5级匹配策略+UnmatchedItem |
-| F8 财务报表 | ✅ | 试算平衡表+利润表+资产负债表 |
-| F9 审批流 | ✅ | 审批流/任务+阈值DB化+模板绑定 |
-| F10 会计期间结账 | ✅ | 期间关闭+结账凭证生成 |
-| 银行账户 CRUD | ✅ | GetByID/Update/Delete |
-| 对手方 CRUD | ✅ | GetByID/Create/Update/Delete |
-| SetupHandler | ✅ | GetStatus+CreateCompany |
+| F6 固定资产折旧 | ✅ | 折旧计划生成+运行执行+凭证生成 |
+| F7 银行对账 | ✅ | 5级匹配策略+余额调节表+未达账项 |
+| F8 财务报表 | ✅ | 试算平衡表+利润表+资产负债表（3个端点） |
+| F9 审批流 | ✅ | 审批流CRUD+审批任务+金额阈值DB化+模板绑定 |
+| F10 会计期间结账 | ✅ | 期间开启/关闭+结账凭证生成+断号检测 |
+| 前端检测组件 | ✅ | CheckResultPanel/CheckSummaryCard/BlockingGuard/StatusBadge |
+| 前端结账向导 | ✅ | 7区域布局：基础检查+风险预警+关键指标+人工确认+损益结转+结账操作 |
 
-**完成度：~83%**
+**构建状态（2026-05-30）：** `go build ./...` ✅ | `go test ./...` ✅（7/7 PASS）| `vue-tsc --noEmit` ✅ | `vite build` ✅
 
-剩余低优先功能：
+**剩余低优功能：**
 - 凭证模板 Clone
 - 银行交易 Update
 - 银行对账 AutoMatch 入口
-- E2E 集成测试套件
+- E2E Playwright 测试套件
+- 经营分析仪表盘（Dashboard）
+- 费用报销模块
 
 ## 关键实现细节
 
@@ -188,11 +215,12 @@ CREATE POLICY tenant_isolation ON <table> FOR ALL
 - 存储在 `approval_flows.threshold_amount_level2/level3`
 - 币种：`approval_flows.currency`
 
-## 当前状态
+## 当前状态（2026-05-30）
 
-- API 运行在 `localhost:8080`（非 Docker，直接二进制）
-- 数据库：Docker PostgreSQL (`huihua-finance_postgres_1`)
-- 测试 token 有效期至 2026-05-29
+- 全栈构建通过：Go 后端 + Vue 前端均正常编译
+- 后端测试：**7 个单元测试全部 PASS**（middleware 4 个 + jwt 3 个）
+- 前端测试：**vitest 无配置文件**，**Playwright 无配置文件**（测试框架已安装但未配置）
+- 测试 token 有效期至 2026-05-29（已过期，需重新生成或替换硬编码 Token）
 
 ## 本地启动
 
