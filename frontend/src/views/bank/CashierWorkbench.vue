@@ -205,7 +205,9 @@ onMounted(async () => {
     const bankRes: any = await request.get('/bank-accounts')
     const accounts = bankRes?.data?.list || bankRes?.data
     if (Array.isArray(accounts) && accounts.length > 0) {
-      bankAccountId.value = accounts[0].id
+      // Prefer active bank accounts (non-cash)
+      const bankAccount = accounts.find((a: any) => !a.is_cash && a.is_active) || accounts[0]
+      bankAccountId.value = bankAccount.id
     }
   } catch { /* no bank accounts */ }
 
