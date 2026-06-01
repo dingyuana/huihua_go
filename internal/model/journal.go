@@ -31,7 +31,7 @@ const (
 // VoucherStateTransition records a state transition for audit purposes.
 type VoucherStateTransition struct {
 	ID           uuid.UUID     `json:"id" db:"id"`
-	JournalID    uuid.UUID     `json:"journal_id" db:"journal_id"`
+	VoucherID    uuid.UUID     `json:"voucher_id" db:"voucher_id"`
 	TenantID     uuid.UUID     `json:"tenant_id" db:"tenant_id"`
 	FromStatus   VoucherStatus `json:"from_status" db:"from_status"`
 	ToStatus     VoucherStatus `json:"to_status" db:"to_status"`

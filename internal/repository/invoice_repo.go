@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -131,6 +132,43 @@ func (r *InvoiceRepository) UpdateStatus(ctx context.Context, tenantID, id uuid.
 		UPDATE sales_invoices SET status = $3
 		WHERE tenant_id = $1 AND id = $2`,
 		tenantID, id, status)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("invoice not found")
+	}
+	return nil
+}
+
+func (r *InvoiceRepository) Delete(ctx context.Context, tenantID, id uuid.UUID) error {
+	result, err := r.pool.Exec(ctx, `
+		DELETE FROM sales_invoices WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("invoice not found")
+	}
+	return nil
+}
+
+// UpdateFields partially updates an invoice. Only non-nil pointers are written.
+func (r *InvoiceRepository) UpdateFields(ctx context.Context, tenantID, id uuid.UUID, fields map[string]interface{}) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	setClauses := make([]string, 0, len(fields))
+	args := []interface{}{tenantID, id}
+	idx := 3
+	for col, val := range fields {
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, idx))
+		args = append(args, val)
+		idx++
+	}
+	query := fmt.Sprintf("UPDATE sales_invoices SET %s WHERE tenant_id = $1 AND id = $2", strings.Join(setClauses, ", "))
+	result, err := r.pool.Exec(ctx, query, args...)
 	if err != nil {
 		return err
 	}

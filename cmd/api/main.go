@@ -142,6 +142,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/invoices/import-excel", invoiceHandler.ImportExcelFile)
 	api.Post("/invoices/parse", invoiceHandler.Parse)
 	api.Get("/invoices/:id", invoiceHandler.GetByID)
+	api.Put("/invoices/:id", invoiceHandler.Update)
+	api.Delete("/invoices/:id", invoiceHandler.Delete)
 	api.Put("/invoices/:id/status", invoiceHandler.UpdateStatus)
 
 	// Classification rule routes

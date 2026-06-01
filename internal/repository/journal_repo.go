@@ -218,7 +218,7 @@ func (r *JournalRepository) UpdateStatusTx(ctx context.Context, tx pgx.Tx, tenan
 	// Record state transition
 	transition := &model.VoucherStateTransition{
 		ID:             uuid.New(),
-		JournalID:      journalID,
+		VoucherID:      journalID,
 		TenantID:       tenantID,
 		FromStatus:     model.VoucherStatus(fmt.Sprintf("%d", oldStatus)),
 		ToStatus:       model.VoucherStatus(fmt.Sprintf("%d", newStatus)),
@@ -228,9 +228,9 @@ func (r *JournalRepository) UpdateStatusTx(ctx context.Context, tx pgx.Tx, tenan
 		Reason:         reason,
 		CreatedAt:      time.Now(),
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO voucher_state_transitions (id, journal_id, tenant_id, from_status, to_status, action, changed_by, changed_by_name, reason, created_at)
+	_, err = tx.Exec(ctx, `INSERT INTO voucher_state_transitions (id, voucher_id, tenant_id, from_status, to_status, action, changed_by, changed_by_name, reason, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		transition.ID, transition.JournalID, transition.TenantID, transition.FromStatus, transition.ToStatus,
+		transition.ID, transition.VoucherID, transition.TenantID, transition.FromStatus, transition.ToStatus,
 		transition.Action, transition.ChangedBy, transition.ChangedByName, transition.Reason, transition.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("record state transition: %w", err)
@@ -264,7 +264,7 @@ func (r *JournalRepository) UpdateStatus(ctx context.Context, tenantID uuid.UUID
 	// Record state transition
 	transition := &model.VoucherStateTransition{
 		ID:             uuid.New(),
-		JournalID:      journalID,
+		VoucherID:      journalID,
 		TenantID:       tenantID,
 		FromStatus:     model.VoucherStatus(fmt.Sprintf("%d", oldStatus)),
 		ToStatus:       model.VoucherStatus(fmt.Sprintf("%d", newStatus)),
@@ -274,9 +274,9 @@ func (r *JournalRepository) UpdateStatus(ctx context.Context, tenantID uuid.UUID
 		Reason:         reason,
 		CreatedAt:      time.Now(),
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO voucher_state_transitions (id, journal_id, tenant_id, from_status, to_status, action, changed_by, changed_by_name, reason, created_at)
+	_, err = tx.Exec(ctx, `INSERT INTO voucher_state_transitions (id, voucher_id, tenant_id, from_status, to_status, action, changed_by, changed_by_name, reason, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		transition.ID, transition.JournalID, transition.TenantID, transition.FromStatus, transition.ToStatus,
+		transition.ID, transition.VoucherID, transition.TenantID, transition.FromStatus, transition.ToStatus,
 		transition.Action, transition.ChangedBy, transition.ChangedByName, transition.Reason, transition.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("record state transition: %w", err)
@@ -309,7 +309,7 @@ func (r *JournalRepository) DeleteLinesTx(ctx context.Context, tx pgx.Tx, tenant
 
 // DeleteVoucherTx deletes a journal entry and its transitions within an existing transaction.
 func (r *JournalRepository) DeleteVoucherTx(ctx context.Context, tx pgx.Tx, tenantID, journalEntryID uuid.UUID) error {
-	_, err := tx.Exec(ctx, `DELETE FROM voucher_state_transitions WHERE journal_id = $1 AND tenant_id = $2`, journalEntryID, tenantID)
+	_, err := tx.Exec(ctx, `DELETE FROM voucher_state_transitions WHERE voucher_id = $1 AND tenant_id = $2`, journalEntryID, tenantID)
 	if err != nil {
 		return fmt.Errorf("delete transitions: %w", err)
 	}
@@ -561,7 +561,7 @@ func (r *JournalRepository) DeleteVoucher(ctx context.Context, tenantID, journal
 	if err != nil {
 		return fmt.Errorf("delete lines: %w", err)
 	}
-	_, err = tx.Exec(ctx, `DELETE FROM voucher_state_transitions WHERE journal_id = $1 AND tenant_id = $2`, journalEntryID, tenantID)
+	_, err = tx.Exec(ctx, `DELETE FROM voucher_state_transitions WHERE voucher_id = $1 AND tenant_id = $2`, journalEntryID, tenantID)
 	if err != nil {
 		return fmt.Errorf("delete transitions: %w", err)
 	}
@@ -576,9 +576,9 @@ func (r *JournalRepository) DeleteVoucher(ctx context.Context, tenantID, journal
 // GetTransitions retrieves all state transitions for a given journal entry.
 func (r *JournalRepository) GetTransitions(ctx context.Context, tenantID uuid.UUID, journalID uuid.UUID) ([]model.VoucherStateTransition, error) {
 	query := `
-		SELECT id, journal_id, tenant_id, from_status, to_status, action, changed_by, changed_by_name, reason, created_at
+		SELECT id, voucher_id, tenant_id, from_status, to_status, action, changed_by, changed_by_name, reason, created_at
 		FROM voucher_state_transitions
-		WHERE journal_id = $1 AND tenant_id = $2
+		WHERE voucher_id = $1 AND tenant_id = $2
 		ORDER BY created_at ASC`
 
 	rows, err := r.pool.Query(ctx, query, journalID, tenantID)
@@ -591,7 +591,7 @@ func (r *JournalRepository) GetTransitions(ctx context.Context, tenantID uuid.UU
 	for rows.Next() {
 		var t model.VoucherStateTransition
 		if err := rows.Scan(
-			&t.ID, &t.JournalID, &t.TenantID, &t.FromStatus, &t.ToStatus,
+			&t.ID, &t.VoucherID, &t.TenantID, &t.FromStatus, &t.ToStatus,
 			&t.Action, &t.ChangedBy, &t.ChangedByName, &t.Reason, &t.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan transition: %w", err)

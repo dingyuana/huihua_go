@@ -223,6 +223,18 @@ func (h *InvoiceHandler) ImportExcelFile(c *fiber.Ctx) error {
 	return c.JSON(result)
 }
 
+func (h *InvoiceHandler) Delete(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid invoice id"})
+	}
+	if err := h.svc.Delete(c.Context(), tenantID, id); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "deleted"})
+}
+
 // Parse handles OCR parsing of invoices.
 // POST /api/v1/invoices/parse
 func (h *InvoiceHandler) Parse(c *fiber.Ctx) error {
@@ -237,6 +249,41 @@ func (h *InvoiceHandler) Parse(c *fiber.Ctx) error {
 		"error":   "OCR not implemented, use manual import",
 		"message": "Invoice parsing via OCR is not yet available. Please use manual entry or Excel import.",
 	})
+}
+
+// Update updates mutable fields of an invoice (amounts, dates, etc).
+// PUT /api/v1/invoices/:id
+func (h *InvoiceHandler) Update(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid invoice id"})
+	}
+
+	var body map[string]interface{}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	allowed := map[string]bool{
+		"total_amount": true, "tax_amount": true, "net_amount": true,
+		"outstanding_amount": true, "posting_date": true, "due_date": true,
+		"status": true, "remark": true, "tax_id": true,
+	}
+	fields := make(map[string]interface{}, len(body))
+	for k, v := range body {
+		if allowed[k] {
+			fields[k] = v
+		}
+	}
+	if len(fields) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "no updatable fields provided"})
+	}
+
+	if err := h.svc.Update(c.Context(), tenantID, id, fields); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "updated"})
 }
 
 // UpdateStatus updates the status of an invoice.

@@ -78,6 +78,21 @@ func (s *InvoiceService) UpdateStatus(ctx context.Context, tenantID, id uuid.UUI
 	return s.repo.UpdateStatus(ctx, tenantID, id, status)
 }
 
+func (s *InvoiceService) Update(ctx context.Context, tenantID, id uuid.UUID, fields map[string]interface{}) error {
+	inv, err := s.repo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if inv == nil {
+		return errors.New("invoice not found")
+	}
+	return s.repo.UpdateFields(ctx, tenantID, id, fields)
+}
+
+func (s *InvoiceService) Delete(ctx context.Context, tenantID, id uuid.UUID) error {
+	return s.repo.Delete(ctx, tenantID, id)
+}
+
 // ValidateInvoice validates invoice data.
 func (s *InvoiceService) ValidateInvoice(inv *model.SalesInvoice) error {
 	if inv.InvoiceNo == "" {
