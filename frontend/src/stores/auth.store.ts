@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
 import type { User } from '@/types/models/user'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -22,8 +21,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     localStorage.removeItem('huihua_token')
     localStorage.removeItem('huihua_user')
-    const router = useRouter()
-    router.push('/login')
+    window.location.href = '/login'
   }
 
   function hasPermission(perm: string): boolean {

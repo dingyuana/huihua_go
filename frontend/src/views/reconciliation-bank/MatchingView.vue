@@ -136,15 +136,7 @@ function maskAccount(num: string) {
   return num.slice(0, 4) + ' **** **** ' + num.slice(-4)
 }
 
-const localStats = { total: 150, autoMatched: 130, needConfirm: 12, unmatched: 8, autoMatchRate: 87 }
-const localMatches: MatchItem[] = [
-  { id: 'm1', score: 95, bank_txn: '05-20 收款 +12,000 上海XX', gl_entry: '日记账 +12,000', needConfirm: false },
-  { id: 'm2', score: 88, bank_txn: '05-21 付款 -5,000 北京YY', gl_entry: '日记账 -5,000', needConfirm: false },
-  { id: 'm3', score: 72, bank_txn: '05-22 收款 +3,000', gl_entry: '日记账 +2,900', needConfirm: true },
-  { id: 'm4', score: 35, bank_txn: '05-23 付款 -200', gl_entry: '无匹配', needConfirm: true },
-]
-
-const stats = ref({ ...localStats })
+const stats = ref({ total: 0, autoMatched: 0, needConfirm: 0, unmatched: 0, autoMatchRate: 0 })
 const matchList = ref<MatchItem[]>([])
 
 const filteredList = computed(() => {
@@ -174,12 +166,9 @@ async function runMatch() {
       return
     }
   } catch {
-    // fallback
+    // keep empty state
   }
-  stats.value = { ...localStats }
-  matchList.value = [...localMatches]
   loading.value = false
-  ElMessage.success('对账完成')
 }
 
 async function handleConfirm(row: MatchItem) {

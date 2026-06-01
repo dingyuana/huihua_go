@@ -310,10 +310,7 @@ async function handleImport() {
   await new Promise(r => setTimeout(r, 1500))
   importing.value = false
 
-  importErrors.value = [
-    { row: 5, msg: '税号格式不正确（91110108MA12345 长度不足18位）' },
-    { row: 23, msg: '已存在的客商（税号 91110108MA... 与"北京YY科技"重复）' },
-  ]
+  importErrors.value = []
   importResult.value = { total: 50, imported: 48, failed: 2 }
   showImportResult.value = true
   showImportDialog.value = false

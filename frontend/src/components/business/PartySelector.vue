@@ -53,10 +53,7 @@ function handleSearch(query: string) {
   loading.value = true
   // 实际从 API 搜索
   setTimeout(() => {
-    options.value = [
-      { id: 'p1', name: '上海XX贸易公司', tax_id: '91310000MA...', party_type: PartyType.Customer, bank_name: '中国银行', bank_account: '', credit_limit: '', payment_terms: '', phone: '', address: '', is_active: true },
-      { id: 'p2', name: '北京YY科技有限公司', tax_id: '91110108MA...', party_type: PartyType.Supplier, bank_name: '工商银行', bank_account: '', credit_limit: '', payment_terms: '', phone: '', address: '', is_active: true },
-    ]
+    options.value = []
     loading.value = false
   }, 300)
 }

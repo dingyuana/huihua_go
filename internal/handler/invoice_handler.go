@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"io"
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -190,6 +192,35 @@ func (h *InvoiceHandler) ImportFromExcel(c *fiber.Ctx) error {
 		"imported": len(invoices),
 		"invoices": invoices,
 	})
+}
+
+// ImportExcelFile handles file-upload-based invoice import.
+// POST /api/v1/invoices/import-excel
+func (h *InvoiceHandler) ImportExcelFile(c *fiber.Ctx) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "file required: " + err.Error()})
+	}
+
+	f, err := file.Open()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "open file error: " + err.Error()})
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "read file error: " + err.Error()})
+	}
+
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	result, err := h.svc.ImportFromExcelFile(c.Context(), tenantID, data)
+	if err != nil {
+		log.Printf("Invoice import error: %v", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(result)
 }
 
 // Parse handles OCR parsing of invoices.

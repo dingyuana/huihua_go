@@ -150,25 +150,59 @@ interface TxnItem {
   confirmed: boolean
 }
 
-const localTxns: TxnItem[] = [
-  { id: 't1', date: '05-20', amount: '12,000.00', direction: 'in', counterparty: '上海XX贸易公司', description: '网银转账-收款-上海XX', classification: 'business_receipt', confirmed: true },
-  { id: 't2', date: '05-20', amount: '50.00', direction: 'out', counterparty: '', description: '账户管理费', classification: 'bank_fee', confirmed: true },
-  { id: 't3', date: '05-21', amount: '3,500.00', direction: 'in', counterparty: '北京YY科技', description: '转账收入', classification: 'business_receipt', confirmed: false },
-  { id: 't4', date: '05-21', amount: '5,000.00', direction: 'out', counterparty: '广州ZZ贸易', description: '货款支付', classification: 'business_payment', confirmed: false },
-  { id: 't5', date: '05-22', amount: '150.00', direction: 'in', counterparty: '', description: '存款利息', classification: 'interest_income', confirmed: false },
-  { id: 't6', date: '05-22', amount: '10,000.00', direction: 'out', counterparty: '上海XX贸易公司', description: '网银转账', classification: 'pending', confirmed: false },
-  { id: 't7', date: '05-23', amount: '200.00', direction: 'out', counterparty: '', description: '跨行转账手续费', classification: 'bank_fee', confirmed: false },
-  { id: 't8', date: '05-23', amount: '8,000.00', direction: 'in', counterparty: '未知', description: '来账-摘要不明', classification: 'pending', confirmed: false },
-]
+interface BankTxnAPI {
+  id: string
+  txn_date: string
+  debit: number | string
+  credit: number | string
+  direction: string
+  counterparty_name: string | null
+  description: string | null
+  classification: string | null
+  matched: boolean
+}
 
 const allTxns = ref<TxnItem[]>([])
+const bankAccountId = ref('')
+
+function apiToTxnItem(t: BankTxnAPI): TxnItem {
+  const debit = Number(t.debit) || 0
+  const credit = Number(t.credit) || 0
+  const direction = t.direction || (debit > 0 ? 'in' : 'out')
+  const amount = (debit > 0 ? debit : credit).toFixed(2)
+  const date = t.txn_date ? t.txn_date.slice(5, 10) : ''
+  return {
+    id: t.id,
+    date,
+    amount: Number(amount).toLocaleString('en', { minimumFractionDigits: 2 }),
+    direction,
+    counterparty: t.counterparty_name || '',
+    description: t.description || '',
+    classification: t.classification || (t.matched ? 'business_receipt' : 'pending'),
+    confirmed: t.matched,
+  }
+}
+
 onMounted(async () => {
   try {
-    const res: any = await request.get('/bank-transactions', { params: { page: 1, pageSize: 50 } })
-    const list = res?.data?.list || res?.data
-    if (Array.isArray(list) && list.length > 0) { allTxns.value = list; return }
-  } catch { /* fallback */ }
-  allTxns.value = localTxns
+    const bankRes: any = await request.get('/bank-accounts')
+    const accounts = bankRes?.data?.list || bankRes?.data
+    if (Array.isArray(accounts) && accounts.length > 0) {
+      bankAccountId.value = accounts[0].id
+    }
+  } catch { /* no bank accounts */ }
+
+  if (bankAccountId.value) {
+    try {
+      const res: any = await request.get('/bank-transactions', {
+        params: { bank_account_id: bankAccountId.value, page: 1, pageSize: 50 },
+      })
+      const list = res?.data?.list || res?.data
+      if (Array.isArray(list)) {
+        allTxns.value = list.map(apiToTxnItem)
+      }
+    } catch { /* no transactions yet */ }
+  }
 })
 
 const viewMode = ref('list')
@@ -177,7 +211,7 @@ const activeTab = ref('all')
 const selectedIds = ref<string[]>([])
 const selectAll = ref(false)
 const showClassifyDialog = ref(false)
-let docCounter = ref(3) // 已生成单据数量统计
+const docCounter = ref(0) // 已生成单据数量统计
 
 const classifyForm = reactive({
   classification: 'business_receipt',

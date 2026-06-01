@@ -4,9 +4,9 @@
     <el-card>
       <div class="payment-info">
         <el-descriptions :column="3" size="small" border>
-          <el-descriptions-item label="收款单">SK-2026-05-0001</el-descriptions-item>
-          <el-descriptions-item label="对方">上海XX贸易公司</el-descriptions-item>
-          <el-descriptions-item label="金额">¥12,000.00</el-descriptions-item>
+          <el-descriptions-item label="收款单">{{ paymentInfo.no || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="对方">{{ paymentInfo.counterparty || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="金额">{{ paymentInfo.amount || '-' }}</el-descriptions-item>
         </el-descriptions>
       </div>
 
@@ -68,26 +68,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 
-const l1Matches = ref([
-  { invoice_no: '12345678', customer: '上海XX贸易公司', amount: '¥12,000', after: '¥0' },
-])
+const paymentInfo = ref<{ no?: string; counterparty?: string; amount?: string }>({})
 
-const l2Matches = ref([
-  { invoice_no: '87654321', date: '05-10', outstanding: '¥8,000', allocated: '¥5,000', after: '¥3,000' },
-  { invoice_no: '11223344', date: '05-15', outstanding: '¥10,000', allocated: '¥7,000', after: '¥3,000' },
-])
-
-const l3Matches = ref([
-  { invoice_no: '99887766', customer: '上海XX(名称相似88%)', amount: '¥3,000', similarity: 88 },
-])
-
-const l4Matches = ref([
-  { invoice_no: '55667788', amount: '¥0.80' },
-])
+const l1Matches = ref<any[]>([])
+const l2Matches = ref<any[]>([])
+const l3Matches = ref<any[]>([])
+const l4Matches = ref<any[]>([])
 </script>
 <style scoped>
 .page-header h3 { font-size: 18px; margin-bottom: 16px; }

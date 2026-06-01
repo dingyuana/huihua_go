@@ -124,13 +124,12 @@
     <el-result v-if="importDone" icon="success" title="导入完成" class="import-result">
       <template #extra>
         <el-descriptions :column="3" size="small" border>
-          <el-descriptions-item label="批次号">BATCH-{{ Date.now().toString(36).toUpperCase() }}</el-descriptions-item>
-          <el-descriptions-item label="导入时间">{{ new Date().toLocaleString() }}</el-descriptions-item>
           <el-descriptions-item label="银行账户">{{ selectedBankName }}</el-descriptions-item>
-          <el-descriptions-item label="总条数">{{ importResult.total }}</el-descriptions-item>
-          <el-descriptions-item label="成功">{{ importResult.imported }}</el-descriptions-item>
-          <el-descriptions-item label="重复">{{ importResult.duplicated }}</el-descriptions-item>
+          <el-descriptions-item label="总条数">{{ importResult.total_rows }}</el-descriptions-item>
+          <el-descriptions-item label="成功">{{ importResult.success_count }}</el-descriptions-item>
+          <el-descriptions-item label="失败">{{ importResult.failed_count }}</el-descriptions-item>
         </el-descriptions>
+        <el-alert v-if="importResult.failed_rows?.length" title="以下行号导入失败" type="warning" :description="importResult.failed_rows.join(', ')" show-icon style="margin-top:12px" />
         <div style="margin-top:16px">
           <el-button type="primary" @click="$router.push('/bank/workbench')">前往核对工作台</el-button>
           <el-button @click="resetImport">继续导入</el-button>
@@ -143,6 +142,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 import { previewExcelFile } from '@/api/modules/bank'
 
 interface BankAccount {
@@ -161,13 +161,12 @@ const loading = ref(false)
 const importing = ref(false)
 const importDone = ref(false)
 
-const importResult = ref({ total: 0, imported: 0, duplicated: 0, failed: 0 })
+const importResult = ref({ total_rows: 0, success_count: 0, failed_count: 0, failed_rows: [] as number[] })
 
 async function loadBankAccounts() {
   try {
-    const res: any = await fetch('/api/v1/bank-accounts')
-    const data = await res.json()
-    const list = data?.data?.list !== undefined && data?.data?.list !== null ? data.data.list : (data?.data !== undefined && data?.data !== null ? data.data : data)
+    const res: any = await request.get('/bank-accounts')
+    const list = res?.data?.list !== undefined && res?.data?.list !== null ? res.data.list : (res?.data !== undefined && res?.data !== null ? res.data : res)
     bankAccounts.value = Array.isArray(list) ? list : []
   } catch (e) {
     console.warn('后端资金账户接口不可用', e)
@@ -347,11 +346,7 @@ function fetchOnline() {
   ElMessage.success('银企直连抓取成功，获取到 125 条最新流水')
 }
 
-const parseErrors = ref([
-  { row: 3, field: '对方户名', value: '(空)', issue: '对方户名为空，无法自动匹配客商' },
-  { row: 7, field: '金额', value: '12,0.00', issue: '金额格式异常，可能缺少位数' },
-  { row: 12, field: '日期', value: '2026/05/32', issue: '日期不存在' },
-])
+const parseErrors = ref<{ row: number; field: string; value: string; issue: string }[]>([])
 
 const normalCount = computed(() => totalRows.value - parseErrors.value.length)
 
@@ -433,27 +428,32 @@ function resetImport() {
   fieldMappings.value = [...defaultMappings]
 }
 
-function detectDuplicates(rows: any[]): { unique: any[]; duplicates: number } {
-  const seen = new Set<string>()
-  let dup = 0
-  const unique = rows.filter(row => {
-    const key = `${bankAccountId.value}|${row.ref}|${row.date}|${row.amount}|${row.direction}`
-    if (seen.has(key)) { dup++; return false }
-    seen.add(key)
-    return true
-  })
-  return { unique, duplicates: dup }
-}
-
 async function handleImport() {
+  if (!uploadedFile.value || !bankAccountId.value) {
+    ElMessage.warning('请选择银行账户和上传文件')
+    return
+  }
   importing.value = true
-  await new Promise(r => setTimeout(r, 1500))
-  importing.value = false
-  const { duplicates } = detectDuplicates(previewData.value)
-  const total = totalRows.value
-  const imported = total - duplicates - parseErrors.value.length
-  importDone.value = true
-  importResult.value = { total, imported, duplicated: duplicates, failed: total - imported - duplicates }
+  try {
+    const formData = new FormData()
+    formData.append('file', uploadedFile.value)
+    const res: any = await request.post(`/bank-transactions/import?bank_account_id=${bankAccountId.value}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    importResult.value = {
+      total_rows: res?.total_rows ?? totalRows.value,
+      success_count: res?.success_count ?? 0,
+      failed_count: res?.failed_count ?? 0,
+      failed_rows: res?.failed_rows ?? [],
+    }
+    importDone.value = true
+    ElMessage.success(`导入完成，成功 ${importResult.value.success_count} 条`)
+  } catch (e: any) {
+    const msg = e?.response?.data?.error || '导入失败'
+    ElMessage.error(msg)
+  } finally {
+    importing.value = false
+  }
 }
 </script>
 

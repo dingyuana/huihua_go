@@ -137,6 +137,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/invoices", invoiceHandler.List)
 	api.Post("/invoices", invoiceHandler.Create)
 	api.Post("/invoices/import", invoiceHandler.ImportFromExcel)
+	api.Post("/invoices/import-excel", invoiceHandler.ImportExcelFile)
 	api.Post("/invoices/parse", invoiceHandler.Parse)
 	api.Get("/invoices/:id", invoiceHandler.GetByID)
 	api.Put("/invoices/:id/status", invoiceHandler.UpdateStatus)
@@ -265,6 +266,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 		journalRepo, glEntryRepo, bankTransactionRepo,
 		invoiceRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
 	)
+	// Wire auto-gen service into bank transaction handler for post-import voucher auto-generation
+	bankTxnHandler.InjectAutoGenSvc(autoGenSvc)
 	autoGenHandler := handler.NewVoucherAutoGenerateHandler(autoGenSvc)
 	api.Post("/bank-transactions/:id/generate-voucher", autoGenHandler.GenerateFromBankTxn)
 	api.Post("/bank-transactions/batch-generate", autoGenHandler.BatchGenerate)

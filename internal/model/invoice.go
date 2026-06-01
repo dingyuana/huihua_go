@@ -98,6 +98,14 @@ type InvoiceMatchBankRequest struct {
 	BankTxnID string `json:"bank_txn_id"`
 }
 
+// InvoiceFileImportResult represents the result of a file-based invoice import.
+type InvoiceFileImportResult struct {
+	TotalRows   int               `json:"total_rows"`
+	Imported    int               `json:"imported"`
+	Failed      int               `json:"failed"`
+	FailedRows  []FailedRowDetail `json:"failed_rows,omitempty"`
+}
+
 // InvoiceFilter represents query filters for listing invoices.
 type InvoiceFilter struct {
 	CustomerID *uuid.UUID `json:"customer_id,omitempty"`

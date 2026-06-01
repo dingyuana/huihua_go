@@ -54,7 +54,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { Account } from '@/types/models/account'
-import { AccountType, RootType } from '@/types/enums'
+import request from '@/api/request'
 
 const props = withDefaults(defineProps<{
   modelValue?: Account | string | null
@@ -74,6 +74,7 @@ const visible = ref(false)
 const treeRef = ref()
 const searchKeyword = ref('')
 const treeData = ref<Account[]>([])
+const loading = ref(false)
 
 // 过滤：Group or Ledger
 const filteredTree = computed(() => {
@@ -94,27 +95,17 @@ const displayText = computed(() => {
   return `${props.modelValue.code} ${props.modelValue.name}`
 })
 
-function handleShow() {
-  // 加载科目树（实际项目从 API 获取）
-  if (treeData.value.length === 0) {
-    // 临时 Mock
-    treeData.value = [
-      {
-        id: '1', code: '1001', name: '银行存款', account_type: AccountType.Asset, root_type: RootType.Debit,
-        parent_id: null, lft: 1, rgt: 10, is_group: true, company_id: '', currency: 'CNY', created_at: '',
-        children: [
-          { id: '1-1', code: '1001-01', name: '银行存款-工行', account_type: AccountType.Asset, root_type: RootType.Debit, parent_id: '1', lft: 2, rgt: 3, is_group: false, company_id: '', currency: 'CNY', created_at: '' },
-          { id: '1-2', code: '1001-02', name: '银行存款-建行', account_type: AccountType.Asset, root_type: RootType.Debit, parent_id: '1', lft: 4, rgt: 5, is_group: false, company_id: '', currency: 'CNY', created_at: '' },
-        ],
-      },
-      {
-        id: '2', code: '1122', name: '应收账款', account_type: AccountType.Asset, root_type: RootType.Debit,
-        parent_id: null, lft: 11, rgt: 14, is_group: true, company_id: '', currency: 'CNY', created_at: '',
-        children: [
-          { id: '2-1', code: '1122-01', name: '应收账款-A公司', account_type: AccountType.Asset, root_type: RootType.Debit, parent_id: '2', lft: 12, rgt: 13, is_group: false, company_id: '', currency: 'CNY', created_at: '' },
-        ],
-      },
-    ]
+async function handleShow() {
+  if (treeData.value.length > 0) return
+  loading.value = true
+  try {
+    const res: any = await request.get('/accounts/tree')
+    const list = res?.data
+    treeData.value = Array.isArray(list) ? list : []
+  } catch {
+    treeData.value = []
+  } finally {
+    loading.value = false
   }
 }
 

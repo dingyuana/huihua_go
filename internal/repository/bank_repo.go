@@ -80,9 +80,15 @@ func (r *BankRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*
 // Update updates a bank account.
 func (r *BankRepository) Update(ctx context.Context, tenantID, id uuid.UUID, ba *model.BankAccount) error {
 	_, err := r.pool.Exec(ctx, `
-		UPDATE bank_accounts SET bank_name = $3, account_number = $4, swift_code = $5, is_active = $6
+		UPDATE bank_accounts SET
+			bank_name = $3, account_number = $4, currency = $5,
+			iban = $6, swift_code = $7, bank_account_type = $8,
+			clearing_account_id = $9, is_active = $10
 		WHERE tenant_id = $1 AND id = $2`,
-		tenantID, id, ba.BankName, ba.AccountNumber, ba.SwiftCode, ba.IsActive)
+		tenantID, id,
+		ba.BankName, ba.AccountNumber, ba.Currency,
+		ba.IBAN, ba.SwiftCode, ba.BankAccountType,
+		ba.ClearingAccountID, ba.IsActive)
 	return err
 }
 

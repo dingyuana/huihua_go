@@ -102,34 +102,60 @@
     </el-card>
 
     <!-- 上传弹窗 -->
-    <el-dialog v-model="showUpload" title="上传发票" width="450px">
-      <el-upload drag accept=".pdf,.ofd,.jpg,.png" :auto-upload="false" :on-change="handleUpload" class="upload-area">
-        <el-icon :size="40"><UploadFilled /></el-icon>
-        <p>拖拽发票文件或点击上传</p>
-        <p class="upload-hint">支持 PDF / OFD / 图片格式</p>
-      </el-upload>
-      <div v-if="ocrResult" class="ocr-result">
-        <h4>OCR 识别结果</h4>
-        <el-descriptions :column="2" size="small" border>
-          <el-descriptions-item label="发票号">{{ ocrResult.invoice_no }}</el-descriptions-item>
-          <el-descriptions-item label="金额">{{ ocrResult.amount }}</el-descriptions-item>
-          <el-descriptions-item label="开票日期">{{ ocrResult.date }}</el-descriptions-item>
-          <el-descriptions-item label="对方">{{ ocrResult.party }}</el-descriptions-item>
-          <el-descriptions-item label="置信度">
-            <el-tag :type="ocrResult.confidence > 85 ? 'success' : 'warning'" size="small">
-              {{ ocrResult.confidence }}%
-            </el-tag>
-          </el-descriptions-item>
-        </el-descriptions>
-        <el-alert v-if="fieldErrors.length" :title="`发现 ${fieldErrors.length} 个字段问题`" type="warning" :closable="false" show-icon style="margin-top:8px">
-          <ul>
-            <li v-for="(err, i) in fieldErrors" :key="i">{{ err }}</li>
-          </ul>
-        </el-alert>
-      </div>
+    <el-dialog v-model="showUpload" title="上传发票" width="500px">
+      <el-tabs v-model="uploadTab">
+        <el-tab-pane label="OCR识别" name="ocr">
+          <el-upload drag accept=".pdf,.ofd,.jpg,.png" :auto-upload="false" :on-change="handleUpload" class="upload-area">
+            <el-icon :size="40"><UploadFilled /></el-icon>
+            <p>拖拽发票文件或点击上传</p>
+            <p class="upload-hint">支持 PDF / OFD / 图片格式</p>
+          </el-upload>
+          <div v-if="ocrResult" class="ocr-result">
+            <h4>OCR 识别结果</h4>
+            <el-descriptions :column="2" size="small" border>
+              <el-descriptions-item label="发票号">{{ ocrResult.invoice_no }}</el-descriptions-item>
+              <el-descriptions-item label="金额">{{ ocrResult.amount }}</el-descriptions-item>
+              <el-descriptions-item label="开票日期">{{ ocrResult.date }}</el-descriptions-item>
+              <el-descriptions-item label="对方">{{ ocrResult.party }}</el-descriptions-item>
+              <el-descriptions-item label="置信度">
+                <el-tag :type="ocrResult.confidence > 85 ? 'success' : 'warning'" size="small">
+                  {{ ocrResult.confidence }}%
+                </el-tag>
+              </el-descriptions-item>
+            </el-descriptions>
+            <el-alert v-if="fieldErrors.length" :title="`发现 ${fieldErrors.length} 个字段问题`" type="warning" :closable="false" show-icon style="margin-top:8px">
+              <ul>
+                <li v-for="(err, i) in fieldErrors" :key="i">{{ err }}</li>
+              </ul>
+            </el-alert>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="批量导入" name="batch">
+          <el-upload drag accept=".xlsx,.xls,.csv" :auto-upload="false" :on-change="handleBatchUpload" :limit="1" :show-file-list="false" class="upload-area">
+            <el-icon :size="40"><UploadFilled /></el-icon>
+            <p>拖拽 Excel/CSV 文件或点击上传</p>
+            <p class="upload-hint">支持 .xlsx / .xls / .csv 格式</p>
+          </el-upload>
+          <div v-if="importResult" class="import-result">
+            <el-result :icon="importResult.failed === 0 ? 'success' : 'warning'"
+              :title="`导入完成：成功 ${importResult.imported} 条`"
+              :sub-title="importResult.failed > 0 ? `失败 ${importResult.failed} 条` : ''">
+            </el-result>
+            <div v-if="importResult.failed_rows && importResult.failed_rows.length" style="margin-top:8px">
+              <h4 style="color:#e6a23c;margin-bottom:8px;">失败详情</h4>
+              <el-table :data="importResult.failed_rows" size="small" border max-height="200">
+                <el-table-column prop="row" label="行号" width="60" />
+                <el-table-column prop="date" label="发票号" width="140" />
+                <el-table-column prop="reason" label="原因" min-width="160" />
+              </el-table>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
       <template #footer>
-        <el-button @click="showUpload = false">取消</el-button>
-        <el-button type="primary" :disabled="!ocrResult" @click="confirmUpload">确认保存</el-button>
+        <el-button @click="closeUpload">取消</el-button>
+        <el-button v-if="uploadTab === 'ocr'" type="primary" :disabled="!ocrResult" @click="confirmUpload">确认保存</el-button>
+        <el-button v-else type="primary" :loading="batchLoading" :disabled="batchLoading" @click="closeUpload">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -164,7 +190,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
-import { generateVoucherFromInvoice } from '@/api/modules/invoice'
+import { generateVoucherFromInvoice, uploadInvoice, importInvoicesFile } from '@/api/modules/invoice'
 
 const invoiceView = ref('list')
 
@@ -178,11 +204,7 @@ interface TaxPoolItem {
   daysLeft: number
 }
 
-const taxPool = ref<TaxPoolItem[]>([
-  { invoice_no: '11223344', supplier: '北京YY科技', amount: '22,600.00', taxStatus: 'unverified', taxStatusLabel: '未认证', due_date: '2026-06-15', daysLeft: 19 },
-  { invoice_no: '99887766', supplier: '广州ZZ贸易', amount: '45,200.00', taxStatus: 'verified', taxStatusLabel: '已认证待抵扣', due_date: '2026-07-20', daysLeft: 54 },
-  { invoice_no: '55443322', supplier: '深圳AA科技', amount: '11,300.00', taxStatus: 'expired', taxStatusLabel: '已过期', due_date: '2026-04-30', daysLeft: -27 },
-])
+const taxPool = ref<TaxPoolItem[]>([])
 
 function taxStatusTag(s: string) {
   return { unverified: 'warning', verified: 'success', expired: 'danger', deducting: 'primary' }[s] || 'info'
@@ -216,27 +238,27 @@ const filter = reactive({
 
 const invoices = ref<InvoiceItem[]>([])
 
-const localInvoices: InvoiceItem[] = [
-  { invoice_no: '12345678', type: 'sale', customer_name: '上海XX贸易公司', posting_date: '2026-05-10', due_date: '2026-06-10', total_amount: '113,000.00', tax_amount: '13,000.00', net_amount: '100,000.00', outstanding: '0.00', status: 'paid' },
-  { invoice_no: '87654321', type: 'sale', customer_name: '深圳AA科技', posting_date: '2026-05-15', due_date: '2026-06-15', total_amount: '56,500.00', tax_amount: '6,500.00', net_amount: '50,000.00', outstanding: '56,500.00', status: 'unpaid' },
-  { invoice_no: '11223344', type: 'purchase', customer_name: '北京YY科技', posting_date: '2026-05-12', due_date: '2026-05-28', total_amount: '22,600.00', tax_amount: '2,600.00', net_amount: '20,000.00', outstanding: '0.00', status: 'paid' },
-  { invoice_no: '99887766', type: 'purchase', customer_name: '广州ZZ贸易', posting_date: '2026-05-20', due_date: '2026-06-20', total_amount: '45,200.00', tax_amount: '5,200.00', net_amount: '40,000.00', outstanding: '22,600.00', status: 'partially_paid' },
-]
-
 onMounted(async () => {
   try {
     const res: any = await request.get('/invoices')
     const list = res?.data?.list || res?.data
-    if (Array.isArray(list) && list.length > 0) { invoices.value = list; return }
-  } catch { /* fallback */ }
-  invoices.value = localInvoices
+    if (Array.isArray(list)) { invoices.value = list }
+  } catch { /* no data */ }
 })
 
 const showUpload = ref(false)
+const uploadTab = ref('ocr')
 const showDetail = ref<InvoiceItem | null>(null)
 const ocrResult = ref<any>(null)
 const fieldErrors = ref<string[]>([])
 const genLoading = ref(false)
+const batchLoading = ref(false)
+const importResult = ref<{
+  total_rows: number
+  imported: number
+  failed: number
+  failed_rows?: Array<{ row: number; date?: string; reason: string }>
+} | null>(null)
 
 async function handleGenerateVoucher(invoice: InvoiceItem | null) {
   if (!invoice) return
@@ -245,7 +267,7 @@ async function handleGenerateVoucher(invoice: InvoiceItem | null) {
     const res = await generateVoucherFromInvoice(invoice.invoice_no)
     ElMessage.success(`凭证已生成: ${res?.data?.voucher_no || ''}`)
   } catch {
-    ElMessage.success('凭证已生成（模拟）')
+    ElMessage.error('凭证生成失败')
   }
   genLoading.value = false
 }
@@ -289,19 +311,46 @@ function statusLabel(s: string) {
   return map[s] || s
 }
 
-function handleUpload(file: any) {
-  // 模拟 OCR 识别
-  setTimeout(() => {
-    const result = { invoice_no: '12345678', net_amount: '100,000.00', tax_amount: '13,000.00', total_amount: '113,000.00', date: '2026-05-27', party: '上海XX贸易公司', confidence: 96 }
-    ocrResult.value = result
-    fieldErrors.value = validateInvoiceFields(result)
-  }, 1000)
+async function handleUpload(file: any) {
+  try {
+    const res = await uploadInvoice(file.raw || file)
+    ocrResult.value = res?.data
+    fieldErrors.value = ocrResult.value ? validateInvoiceFields(ocrResult.value) : []
+  } catch {
+    ElMessage.warning('OCR 识别暂不可用，请手动输入发票信息')
+  }
 }
 
 function confirmUpload() {
+  if (!ocrResult.value) {
+    ElMessage.warning('请先上传发票文件')
+    return
+  }
   ElMessage.success('发票上传成功')
   showUpload.value = false
   ocrResult.value = null
+}
+
+async function handleBatchUpload(file: any) {
+  if (!file.raw) return
+  batchLoading.value = true
+  importResult.value = null
+  try {
+    const res = await importInvoicesFile(file.raw)
+    importResult.value = res.data
+    ElMessage.success(`成功导入 ${res.data.imported} 条发票`)
+    if (res.data.imported > 0) loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '批量导入失败')
+  }
+  batchLoading.value = false
+}
+
+function closeUpload() {
+  showUpload.value = false
+  uploadTab.value = 'ocr'
+  ocrResult.value = null
+  importResult.value = null
 }
 </script>
 
@@ -321,5 +370,6 @@ function confirmUpload() {
   margin-top: 16px;
   h4 { margin-bottom: 12px; }
 }
+.import-result { margin-top: 16px; }
 .expiring { color: #faad14; font-weight: 600; }
 </style>

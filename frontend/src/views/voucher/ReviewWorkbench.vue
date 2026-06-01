@@ -137,59 +137,14 @@ interface VoucherItem {
   lines?: { account: string; debit: string; credit: string }[]
 }
 
-const localPending: VoucherItem[] = [
-  {
-    id: 'v1', voucher_no: '记-2026-05-0010', date: '05-27',
-    remark: '收款-上海XX贸易公司', amount: '12,000.00', creator: '李四',
-    risk: {
-      level: 'low',
-      items: [],
-    },
-    lines: [
-      { account: '1001-01 银行存款-工行', debit: '12,000.00', credit: '' },
-      { account: '1122  应收账款', debit: '', credit: '12,000.00' },
-    ],
-  },
-  {
-    id: 'v2', voucher_no: '记-2026-05-0011', date: '05-27',
-    remark: '付款-北京YY科技', amount: '5,000.00', creator: '李四',
-    risk: {
-      level: 'medium',
-      items: [
-        { severity: 'warning', message: '摘要含"工资"但借方科目非"应付职工薪酬"', suggestion: '请确认科目选择是否正确' },
-      ],
-    },
-    lines: [
-      { account: '6401  主营业务成本', debit: '5,000.00', credit: '' },
-      { account: '1001-01 银行存款-工行', debit: '', credit: '5,000.00' },
-    ],
-  },
-  {
-    id: 'v3', voucher_no: '记-2026-05-0012', date: '05-26',
-    remark: '大额付款-广州ZZ', amount: '200,000.00', creator: '王五',
-    risk: {
-      level: 'high',
-      items: [
-        { severity: 'error', message: '大额整数无零头，金额异常（¥200,000.00）', suggestion: '请核实交易真实性，附上合同或审批单' },
-        { severity: 'warning', message: '公转私超过限额 ¥50,000', suggestion: '公转私需主管审批' },
-      ],
-    },
-    lines: [
-      { account: '2001  应付账款', debit: '200,000.00', credit: '' },
-      { account: '1001-01 银行存款-工行', debit: '', credit: '200,000.00' },
-    ],
-  },
-]
-
 const pendingCount = ref(0)
 const pendingVouchers = ref<VoucherItem[]>([])
 onMounted(async () => {
   try {
     const res: any = await request.get('/vouchers/pending-review')
     const list = res?.data?.list || res?.data
-    if (Array.isArray(list) && list.length > 0) { pendingVouchers.value = list; pendingCount.value = list.length; return }
-  } catch { /* fallback */ }
-  pendingVouchers.value = localPending; pendingCount.value = localPending.length
+    if (Array.isArray(list)) { pendingVouchers.value = list; pendingCount.value = list.length }
+  } catch { /* silent fail - show empty */ }
 })
 
 const selectAll = ref(false)

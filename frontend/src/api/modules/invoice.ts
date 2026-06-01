@@ -2,11 +2,27 @@ import request from '@/api/request'
 import type { ApiResponse, PageResult, PageQuery } from '@/types/api'
 import type { SalesInvoice } from '@/types/models/invoice'
 
+export interface InvoiceFileImportResult {
+  total_rows: number
+  imported: number
+  failed: number
+  failed_rows?: Array<{ row: number; reason: string; date?: string }>
+}
+
 /** 上传发票 */
 export function uploadInvoice(file: File): Promise<ApiResponse<SalesInvoice>> {
   const form = new FormData()
   form.append('file', file)
   return request.post('/invoices/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+/** Excel/CSV 批量导入发票 */
+export function importInvoicesFile(file: File): Promise<ApiResponse<InvoiceFileImportResult>> {
+  const form = new FormData()
+  form.append('file', file)
+  return request.post('/invoices/import-excel', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }

@@ -143,7 +143,6 @@ async function loadBankAccounts() {
 }
 onMounted(loadBankAccounts)
 
-const nextId = ref(4)
 const showDialog = ref(false)
 const editingId = ref('')
 const formRef = ref<FormInstance>()
@@ -193,45 +192,64 @@ async function saveAccount() {
     return
   }
   saving.value = true
-  await new Promise(r => setTimeout(r, 500))
-  saving.value = false
 
-  if (editingId.value) {
-    const idx = accounts.value.findIndex(a => a.id === editingId.value)
-    if (idx >= 0) {
-      accounts.value[idx] = {
-        ...accounts.value[idx],
+  try {
+    if (editingId.value) {
+      await request.put(`/bank-accounts/${editingId.value}`, {
         bank_name: form.bankName,
         account_number: form.accountNumber,
-        bank_account_type: form.accountType as 'bank' | 'cash',
+        bank_account_type: form.accountType,
         iban: form.iban || undefined,
         swift_code: form.swiftCode || undefined,
         currency: form.currency,
+        clearing_account_id: form.clearingAccount?.id || undefined,
+      })
+      // Reload to get fresh data from backend
+      await loadBankAccounts()
+      ElMessage.success('账户已更新')
+      showDialog.value = false
+    } else {
+      const res: any = await request.post('/bank-accounts', {
+        bank_name: form.bankName,
+        account_number: form.accountNumber,
+        bank_account_type: form.accountType,
+        iban: form.iban || undefined,
+        swift_code: form.swiftCode || undefined,
+        currency: form.currency,
+        clearing_account_id: form.clearingAccount!.id,
+      })
+      const created = res?.data
+      if (created) {
+        accounts.value.push(created)
+      } else {
+        await loadBankAccounts()
       }
+      ElMessage.success('账户已创建')
+      showDialog.value = false
     }
-    ElMessage.success('账户已更新')
-  } else {
-    accounts.value.push({
-      id: `ba-${nextId.value++}`,
-      bank_name: form.bankName,
-      account_number: form.accountNumber,
-      bank_account_type: form.accountType as 'bank' | 'cash',
-      clearing_account_code: form.clearingAccount?.code || '',
-      clearing_account: form.clearingAccount || undefined,
-      iban: form.iban || undefined,
-      swift_code: form.swiftCode || undefined,
-      currency: form.currency,
-      is_active: true,
-      balance: '0.00',
-    })
-    ElMessage.success('账户已创建')
+  } catch (e: any) {
+    const msg = e?.response?.data?.error || '保存失败'
+    ElMessage.error(msg)
+  } finally {
+    saving.value = false
   }
-  showDialog.value = false
 }
 
-function toggleActive(item: BankAccountItem) {
-  item.is_active = !item.is_active
-  ElMessage.success(item.is_active ? '账户已启用' : '账户已停用')
+async function toggleActive(item: BankAccountItem) {
+  const nextActive = !item.is_active
+  try {
+    await request.put(`/bank-accounts/${item.id}`, {
+      is_active: nextActive,
+      bank_name: item.bank_name,
+      account_number: item.account_number,
+      currency: item.currency,
+    })
+    item.is_active = nextActive
+    ElMessage.success(nextActive ? '账户已启用' : '账户已停用')
+  } catch (e: any) {
+    const msg = e?.response?.data?.error || '操作失败'
+    ElMessage.error(msg)
+  }
 }
 </script>
 

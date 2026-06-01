@@ -50,20 +50,14 @@ const router = useRouter()
 
 const filter = reactive({ type: '', status: null as number | null, dateRange: null as any })
 
-const localVouchers = [
-  { id: 'v1', voucher_no: '记-2026-05-0001', posting_date: '2026-05-06', remark: '收款-上海XX贸易公司', debit_total: '12,000.00', credit_total: '12,000.00', docstatus: 1 },
-  { id: 'v2', voucher_no: '记-2026-05-0002', posting_date: '2026-05-07', remark: '付款-北京YY科技有限公司', debit_total: '5,000.00', credit_total: '5,000.00', docstatus: 0 },
-  { id: 'v3', voucher_no: '记-2026-05-0003', posting_date: '2026-05-08', remark: '计提折旧', debit_total: '3,000.00', credit_total: '3,000.00', docstatus: 2 },
-  { id: 'v4', voucher_no: '记-2026-05-0004', posting_date: '2026-05-09', remark: '银行手续费', debit_total: '50.00', credit_total: '50.00', docstatus: 1 },
-]
-const vouchers = ref(localVouchers)
+const vouchers = ref<any[]>([])
 
 onMounted(async () => {
   try {
     const res: any = await request.get('/vouchers')
     const list = res?.data?.list || res?.data
-    if (Array.isArray(list)) { vouchers.value = list; return }
-  } catch { /* fallback */ }
+    if (Array.isArray(list)) { vouchers.value = list }
+  } catch { /* no data */ }
 })
 
 function goDetail(row: any) {

@@ -33,9 +33,9 @@ func (r *BankTransactionRepository) ImportBatch(ctx context.Context, tenantID, b
 	// Use ON CONFLICT DO NOTHING to skip duplicates
 	query := `
 		INSERT INTO bank_transactions (id, tenant_id, bank_account_id, txn_date, description, 
-			debit, credit, direction, reference_no, counterparty_name, matched, company_id, created_at)
+			debit, credit, direction, reference_no, counterparty_name, classification, matched, company_id, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-		ON CONFLICT (tenant_id, bank_account_id, txn_date, description, amount) DO NOTHING`
+		ON CONFLICT (tenant_id, bank_account_id, txn_date, description, debit, credit) DO NOTHING`
 
 	for _, txn := range txns {
 		if txn.ID == uuid.Nil {
@@ -43,18 +43,26 @@ func (r *BankTransactionRepository) ImportBatch(ctx context.Context, tenantID, b
 		}
 
 		var debit, credit decimal.Decimal
-		if txn.Direction != nil && *txn.Direction == "debit" {
+		if txn.Direction != nil && *txn.Direction == "in" {
 			debit = txn.Debit
 			credit = decimal.Zero
-		} else {
+		} else if txn.Direction != nil && *txn.Direction == "out" {
 			debit = decimal.Zero
 			credit = txn.Credit
+		} else {
+			debit = txn.Debit
+			credit = txn.Credit
+		}
+
+		classification := "pending"
+		if txn.Classification != nil && *txn.Classification != "" {
+			classification = *txn.Classification
 		}
 
 		_, err := r.pool.Exec(ctx, query,
 			txn.ID, tenantID, bankAccountID, txn.TxnDate, txn.Description,
 			debit, credit, txn.Direction, txn.ReferenceNo, txn.CounterpartyName,
-			txn.Matched, txn.CompanyID, time.Now())
+			classification, txn.Matched, txn.CompanyID, time.Now())
 		if err != nil {
 			return 0, fmt.Errorf("import batch: %w", err)
 		}
@@ -100,6 +108,11 @@ func (r *BankTransactionRepository) ListByBankAccount(ctx context.Context, tenan
 		args = append(args, "%"+*filter.Search+"%")
 		argIdx++
 	}
+	if filter.Classification != nil && *filter.Classification != "" {
+		conditions = append(conditions, fmt.Sprintf("classification = $%d", argIdx))
+		args = append(args, *filter.Classification)
+		argIdx++
+	}
 
 	whereClause := strings.Join(conditions, " AND ")
 
@@ -125,7 +138,7 @@ func (r *BankTransactionRepository) ListByBankAccount(ctx context.Context, tenan
 	// Query with pagination
 	query := fmt.Sprintf(`
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction, 
-			reference_no, counterparty_name, matched, matched_payment_entry_id, matched_gl_entry_id,
+			reference_no, counterparty_name, classification, matched, matched_payment_entry_id, matched_gl_entry_id,
 			imported_from, raw_data, company_id, created_at
 		FROM bank_transactions
 		WHERE %s
@@ -145,6 +158,7 @@ func (r *BankTransactionRepository) ListByBankAccount(ctx context.Context, tenan
 		err := rows.Scan(
 			&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
 			&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
+			&txn.Classification,
 			&txn.Matched, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
 			&txn.RawData, &txn.CompanyID, &txn.CreatedAt,
 		)
@@ -161,7 +175,7 @@ func (r *BankTransactionRepository) ListByBankAccount(ctx context.Context, tenan
 func (r *BankTransactionRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.BankTransaction, error) {
 	query := `
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
-			reference_no, counterparty_name, matched, matched_payment_entry_id, matched_gl_entry_id,
+			reference_no, counterparty_name, classification, matched, matched_payment_entry_id, matched_gl_entry_id,
 			imported_from, raw_data, company_id, created_at
 		FROM bank_transactions
 		WHERE tenant_id = $1 AND id = $2`
@@ -170,6 +184,7 @@ func (r *BankTransactionRepository) GetByID(ctx context.Context, tenantID, id uu
 	err := r.pool.QueryRow(ctx, query, tenantID, id).Scan(
 		&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
 		&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
+		&txn.Classification,
 		&txn.Matched, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
 		&txn.RawData, &txn.CompanyID, &txn.CreatedAt,
 	)
@@ -216,7 +231,7 @@ func (r *BankTransactionRepository) MarkAsReconciled(ctx context.Context, tenant
 func (r *BankTransactionRepository) ListUnmatched(ctx context.Context, tenantID uuid.UUID) ([]model.BankTransaction, error) {
 	query := `
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
-		       reference_no, counterparty_name, matched, matched_payment_entry_id, matched_gl_entry_id,
+		       reference_no, counterparty_name, classification, matched, matched_payment_entry_id, matched_gl_entry_id,
 		       imported_from, raw_data, company_id, created_at
 		FROM bank_transactions
 		WHERE tenant_id = $1 AND matched = FALSE
@@ -231,6 +246,7 @@ func (r *BankTransactionRepository) ListUnmatched(ctx context.Context, tenantID 
 		var t model.BankTransaction
 		if err := rows.Scan(&t.ID, &t.TenantID, &t.BankAccountID, &t.TxnDate, &t.Description,
 			&t.Debit, &t.Credit, &t.Direction, &t.ReferenceNo, &t.CounterpartyName,
+			&t.Classification,
 			&t.Matched, &t.MatchedPaymentEntryID, &t.MatchedGLEntryID, &t.ImportedFrom,
 			&t.RawData, &t.CompanyID, &t.CreatedAt); err != nil {
 			return nil, err
@@ -244,7 +260,7 @@ func (r *BankTransactionRepository) ListUnmatched(ctx context.Context, tenantID 
 func (r *BankTransactionRepository) GetUnmatched(ctx context.Context, tenantID, bankAccountID uuid.UUID) ([]model.BankTransaction, error) {
 	query := `
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
-			reference_no, counterparty_name, matched, matched_payment_entry_id, matched_gl_entry_id,
+			reference_no, counterparty_name, classification, matched, matched_payment_entry_id, matched_gl_entry_id,
 			imported_from, raw_data, company_id, created_at
 		FROM bank_transactions
 		WHERE tenant_id = $1 AND bank_account_id = $2 AND matched = FALSE
@@ -262,6 +278,7 @@ func (r *BankTransactionRepository) GetUnmatched(ctx context.Context, tenantID, 
 		err := rows.Scan(
 			&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
 			&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
+			&txn.Classification,
 			&txn.Matched, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
 			&txn.RawData, &txn.CompanyID, &txn.CreatedAt,
 		)
@@ -278,7 +295,7 @@ func (r *BankTransactionRepository) GetUnmatched(ctx context.Context, tenantID, 
 func (r *BankTransactionRepository) GetByIDSimple(ctx context.Context, id uuid.UUID) (*model.BankTransaction, error) {
 	query := `
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
-			reference_no, counterparty_name, matched, matched_payment_entry_id, matched_gl_entry_id,
+			reference_no, counterparty_name, classification, matched, matched_payment_entry_id, matched_gl_entry_id,
 			imported_from, raw_data, company_id, created_at
 		FROM bank_transactions WHERE id = $1`
 
@@ -286,6 +303,7 @@ func (r *BankTransactionRepository) GetByIDSimple(ctx context.Context, id uuid.U
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
 		&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
+		&txn.Classification,
 		&txn.Matched, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
 		&txn.RawData, &txn.CompanyID, &txn.CreatedAt,
 	)
@@ -309,7 +327,7 @@ func (r *BankTransactionRepository) UpdateMatchedInfo(ctx context.Context, tenan
 func (r *BankTransactionRepository) GetMatchedByPeriod(ctx context.Context, tenantID, bankAccountID uuid.UUID, startDate, endDate time.Time) ([]model.BankTransaction, error) {
 	query := `
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
-		       reference_no, counterparty_name, matched, matched_payment_entry_id, matched_gl_entry_id,
+		       reference_no, counterparty_name, classification, matched, matched_payment_entry_id, matched_gl_entry_id,
 		       imported_from, raw_data, company_id, created_at
 		FROM bank_transactions
 		WHERE tenant_id = $1 AND bank_account_id = $2 AND matched = TRUE AND txn_date >= $3 AND txn_date <= $4
@@ -327,6 +345,7 @@ func (r *BankTransactionRepository) GetMatchedByPeriod(ctx context.Context, tena
 		err := rows.Scan(
 			&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
 			&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
+			&txn.Classification,
 			&txn.Matched, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
 			&txn.RawData, &txn.CompanyID, &txn.CreatedAt,
 		)
@@ -336,6 +355,13 @@ func (r *BankTransactionRepository) GetMatchedByPeriod(ctx context.Context, tena
 		txns = append(txns, txn)
 	}
 	return txns, rows.Err()
+}
+
+// UpdateClassification updates the classification of a bank transaction.
+func (r *BankTransactionRepository) UpdateClassification(ctx context.Context, tenantID, id uuid.UUID, classification string) error {
+	query := `UPDATE bank_transactions SET classification = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2`
+	_, err := r.pool.Exec(ctx, query, tenantID, id, classification)
+	return err
 }
 
 // GetPool returns the underlying connection pool.

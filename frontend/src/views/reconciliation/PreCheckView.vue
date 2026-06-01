@@ -8,8 +8,6 @@
         <el-card shadow="never">
           <template #header>选择收款单</template>
           <el-select v-model="selectedPayment" placeholder="搜索收款单" filterable style="width: 100%">
-            <el-option label="SK-2026-05-0001 上海XX ¥12,000" value="p1" />
-            <el-option label="SK-2026-05-0002 深圳AA ¥56,500" value="p2" />
           </el-select>
         </el-card>
       </el-col>
@@ -17,8 +15,6 @@
         <el-card shadow="never">
           <template #header>选择发票</template>
           <el-select v-model="selectedInvoice" placeholder="搜索发票" filterable style="width: 100%">
-            <el-option label="12345678 上海XX ¥12,000" value="i1" />
-            <el-option label="87654321 深圳AA ¥56,500" value="i2" />
           </el-select>
         </el-card>
       </el-col>
@@ -103,15 +99,6 @@ const loading = ref(false)
 const showForcePassDialog = ref(false)
 const forcePassReason = ref('')
 
-const localCheckItems: CheckItem[] = [
-  { id: 'r1', name: '对方单位匹配', status: 'passed', message: '上海XX ↔ 发票购方税号一致' },
-  { id: 'r2', name: '金额超限检查', status: 'passed', message: '¥12,000 ≤ ¥12,000' },
-  { id: 'r3', name: '重复核销检查', status: 'passed', message: '未重复核销' },
-  { id: 'r4', name: '跨账套检查', status: 'passed', message: '同一租户' },
-  { id: 'r5', name: '业务类型一致性', status: 'passed', message: '收款单匹配销项发票' },
-  { id: 'r6', name: '到期日检查', status: 'blocked', message: '发票已过期（2026-04-20），需人工确认', action: { label: '查看发票' } },
-]
-
 const checks = ref<CheckItem[]>([])
 
 const checkResults = computed(() => checks.value)
@@ -141,12 +128,13 @@ async function runPrecheck() {
     const items = res?.data?.checks || res?.data
     if (Array.isArray(items) && items.length > 0) {
       checks.value = items
+      loading.value = false
       return
     }
   } catch {
     // fallback
   }
-  checks.value = localCheckItems
+  checks.value = []
   loading.value = false
   ElMessage.success('预检完成')
 }

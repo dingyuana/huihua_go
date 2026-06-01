@@ -38,6 +38,7 @@ type BankTxnFilter struct {
 	MinAmount      *decimal.Decimal       `json:"min_amount,omitempty"`
 	MaxAmount      *decimal.Decimal       `json:"max_amount,omitempty"`
 	Status         *BankTransactionStatus `json:"status,omitempty"`
+	Classification *string                `json:"classification,omitempty"` // filter by business type
 	Search         *string                `json:"search,omitempty"` // description/counterparty search
 	Page           int                     `json:"page,omitempty"`   // default 1
 	PageSize       int                    `json:"page_size,omitempty"` // default 50
@@ -45,11 +46,21 @@ type BankTxnFilter struct {
 
 // ImportResult represents the result of an Excel import operation.
 type ImportResult struct {
-	TotalRows    int    `json:"total_rows"`
-	SuccessCount int    `json:"success_count"`
-	FailedCount  int    `json:"failed_count"`
-	FailedRows   []int  `json:"failed_rows,omitempty"` // row numbers that failed
-	ErrorMsg     string `json:"error_message,omitempty"`
+	TotalRows      int              `json:"total_rows"`
+	SuccessCount   int              `json:"success_count"`
+	FailedCount    int              `json:"failed_count"`
+	FailedRows     []int            `json:"failed_rows,omitempty"`     // row numbers that failed
+	FailedReasons  []FailedRowDetail `json:"failed_reasons,omitempty"` // per-row failure details
+	ErrorMsg       string           `json:"error_message,omitempty"`
+}
+
+// FailedRowDetail stores info about a single failed row during import.
+type FailedRowDetail struct {
+	Row     int    `json:"row"`
+	Date    string `json:"date,omitempty"`
+	Amount  string `json:"amount,omitempty"`
+	Desc    string `json:"desc,omitempty"`
+	Reason  string `json:"reason"`
 }
 
 // MatchResult represents the result of marking transactions as matched.
@@ -85,6 +96,7 @@ type BankTransaction struct {
 	Direction              *string         `json:"direction,omitempty" db:"direction"`
 	ReferenceNo            *string         `json:"reference_no,omitempty" db:"reference_no"`
 	CounterpartyName       *string         `json:"counterparty_name,omitempty" db:"counterparty_name"`
+	Classification         *string         `json:"classification,omitempty" db:"classification"`
 	Matched                bool            `json:"matched" db:"matched"`
 	MatchedPaymentEntryID  *uuid.UUID      `json:"matched_payment_entry_id,omitempty" db:"matched_payment_entry_id"`
 	MatchedGLEntryID       *uuid.UUID      `json:"matched_gl_entry_id,omitempty" db:"matched_gl_entry_id"`

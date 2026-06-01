@@ -38,6 +38,9 @@ func (h *BankHandler) Create(c *fiber.Ctx) error {
 		AccountNumber     string `json:"account_number"`
 		ClearingAccountID string `json:"clearing_account_id"`
 		Currency          string `json:"currency"`
+		BankAccountType   string `json:"bank_account_type"`
+		IBAN              string `json:"iban"`
+		SwiftCode         string `json:"swift_code"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
@@ -48,6 +51,9 @@ func (h *BankHandler) Create(c *fiber.Ctx) error {
 		AccountNumber:     req.AccountNumber,
 		ClearingAccountID: &clearingID,
 		Currency:          req.Currency,
+		BankAccountType:   strPtr(req.BankAccountType),
+		IBAN:              strPtr(req.IBAN),
+		SwiftCode:         strPtr(req.SwiftCode),
 	}
 	account, err := h.svc.Create(c.Context(), tenantID, bankAcc)
 	if err != nil {
@@ -82,21 +88,42 @@ func (h *BankHandler) Update(c *fiber.Ctx) error {
 		AccountNumber     string `json:"account_number"`
 		ClearingAccountID string `json:"clearing_account_id"`
 		Currency          string `json:"currency"`
+		BankAccountType   string `json:"bank_account_type"`
+		IBAN              string `json:"iban"`
+		SwiftCode         string `json:"swift_code"`
+		IsActive          *bool  `json:"is_active"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
-	clearingID, _ := uuid.Parse(req.ClearingAccountID)
 	bankAcc := &model.BankAccount{
-		BankName:          req.BankName,
-		AccountNumber:     req.AccountNumber,
-		ClearingAccountID: &clearingID,
-		Currency:          req.Currency,
+		BankName:        req.BankName,
+		AccountNumber:   req.AccountNumber,
+		Currency:        req.Currency,
+		BankAccountType: strPtr(req.BankAccountType),
+		IBAN:            strPtr(req.IBAN),
+		SwiftCode:       strPtr(req.SwiftCode),
+		IsActive:        true,
+	}
+	if req.ClearingAccountID != "" {
+		clearingID, _ := uuid.Parse(req.ClearingAccountID)
+		bankAcc.ClearingAccountID = &clearingID
+	}
+	if req.IsActive != nil {
+		bankAcc.IsActive = *req.IsActive
 	}
 	if err := h.svc.Update(c.Context(), tenantID, id, bankAcc); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"status": "updated"})
+}
+
+// strPtr converts a string to a *string, returning nil for empty strings.
+func strPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // Delete deletes a bank account.

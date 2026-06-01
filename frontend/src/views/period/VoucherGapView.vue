@@ -72,13 +72,6 @@ const loading = ref(false)
 
 const gaps = ref<VoucherGap[]>([])
 
-// 本地 mock 数据（API fallback）
-const localGaps: VoucherGap[] = [
-  { expected_no: 35, is_filled: false, gap_type: 'missing', message: '第 35 号凭证缺失' },
-  { expected_no: 42, is_filled: true, gap_type: 'voided', message: '第 42 号凭证已作废' },
-  { expected_no: 58, is_filled: false, gap_type: 'missing', message: '第 58 号凭证缺失' },
-]
-
 const hasMissing = ref(false)
 
 const gapChecks = computed<CheckItem[]>(() =>
@@ -133,12 +126,9 @@ async function runCheck() {
       return
     }
   } catch {
-    // fallback
+    // keep empty state
   }
-  gaps.value = [...localGaps]
-  hasMissing.value = gaps.value.some(g => g.gap_type === 'missing')
   loading.value = false
-  ElMessage.success('检测完成')
 }
 
 onMounted(runCheck)

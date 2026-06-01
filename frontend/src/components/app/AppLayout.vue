@@ -5,10 +5,9 @@
       <AppHeader />
       <main class="layout-content">
         <router-view v-slot="{ Component: Comp }">
-          <keep-alive>
-            <component :is="Comp" v-if="route.meta.keepAlive" />
+          <keep-alive :include="cachedViews">
+            <component :is="Comp" />
           </keep-alive>
-          <component :is="Comp" v-if="!route.meta.keepAlive" />
         </router-view>
       </main>
     </div>
@@ -16,11 +15,16 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 
 const route = useRoute()
+
+const cachedViews = computed(() => {
+  return route.meta.keepAlive ? [route.name as string] : []
+})
 </script>
 
 <style scoped lang="scss">

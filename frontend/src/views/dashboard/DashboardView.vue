@@ -1,30 +1,30 @@
 <template>
   <div class="dashboard">
     <h2>欢迎使用慧财智能财务平台</h2>
-    <p class="company-name">北京XX科技有限公司</p>
+    <p class="company-name">{{ companyName }}</p>
     <el-row :gutter="16" class="stat-cards">
       <el-col :span="6">
         <el-card shadow="hover">
           <p class="stat-label">本月流水</p>
-          <p class="stat-value">145 笔</p>
+          <p class="stat-value">{{ stats.monthlyTxns }} 笔</p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
           <p class="stat-label">待审核凭证</p>
-          <p class="stat-value warning">12 张</p>
+          <p class="stat-value warning">{{ stats.pendingVouchers }} 张</p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
           <p class="stat-label">本月净利润</p>
-          <p class="stat-value positive">¥123,000</p>
+          <p class="stat-value positive">¥{{ stats.monthlyProfit }}</p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
           <p class="stat-label">待处理流水</p>
-          <p class="stat-value danger">5 条</p>
+          <p class="stat-value danger">{{ stats.pendingTxns }} 条</p>
         </el-card>
       </el-col>
     </el-row>
@@ -42,6 +42,48 @@
 </template>
 
 <script setup lang="ts">
+import { ref, reactive, onMounted } from 'vue'
+import request from '@/api/request'
+
+const companyName = ref('加载中...')
+
+const stats = reactive({
+  monthlyTxns: 0,
+  pendingVouchers: 0,
+  monthlyProfit: '0',
+  pendingTxns: 0,
+})
+
+onMounted(async () => {
+  // Load company name
+  try {
+    const res: any = await request.get('/account-setup/status')
+    const data = res?.data || res
+    if (data?.company?.company_name) {
+      companyName.value = data.company.company_name
+    } else {
+      companyName.value = ''
+    }
+  } catch {
+    companyName.value = ''
+  }
+
+  // Try loading real stats from bank accounts
+  try {
+    const bankRes: any = await request.get('/bank-accounts')
+    const accounts = bankRes?.data?.list || bankRes?.data || bankRes
+    if (Array.isArray(accounts) && accounts.length > 0) {
+      const acctId = accounts[0].id
+      const txnRes: any = await request.get('/bank-transactions', {
+        params: { bank_account_id: acctId, page: 1, pageSize: 1 },
+      })
+      const total = txnRes?.total ?? 0
+      stats.monthlyTxns = total
+    }
+  } catch {
+    // Keep defaults
+  }
+})
 </script>
 
 <style scoped lang="scss">
