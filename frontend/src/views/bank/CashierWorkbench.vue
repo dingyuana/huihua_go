@@ -51,6 +51,8 @@
         <el-tab-pane :label="`银行费用 (${stats.byCategory.bank_fee})`" name="bank_fee" />
         <el-tab-pane :label="`利息收入 (${stats.byCategory.interest_income})`" name="interest_income" />
         <el-tab-pane :label="`内部转账 (${stats.byCategory.internal_transfer})`" name="internal_transfer" />
+        <el-tab-pane :label="`税务缴费 (${stats.byCategory.tax_payment})`" name="tax_payment" />
+        <el-tab-pane :label="`社保缴费 (${stats.byCategory.social_security})`" name="social_security" />
         <el-tab-pane :label="`待处理 (${stats.byCategory.pending})${stats.byCategory.pending > 0 ? ' 🔴' : ''}`" name="pending" />
       </el-tabs>
 
@@ -126,6 +128,7 @@
             <el-option label="银行费用" value="bank_fee" />
             <el-option label="利息收入" value="interest_income" />
             <el-option label="内部转账" value="internal_transfer" />
+            <el-option label="税务缴费" value="tax_payment" />
             <el-option label="待处理" value="pending" />
           </el-select>
         </el-form-item>
@@ -245,6 +248,8 @@ const stats = computed(() => {
     bank_fee: 0,
     interest_income: 0,
     internal_transfer: 0,
+    tax_payment: 0,
+    social_security: 0,
     pending: 0,
   }
   allTxns.value.forEach(t => {
@@ -300,22 +305,41 @@ function docTypeLabel(cls: string): string {
     interest_income: '利息收入单',
     internal_transfer: '银行转账单',
     tax_payment: '税务缴费单',
+    social_security: '社保缴费单',
     pending: '待处理',
   }
   return map[cls] || cls
 }
 
 function classificationTag(val: string) {
-  const map: Record<string, string> = { business_receipt: 'success', business_payment: 'danger', bank_fee: 'warning', interest_income: 'primary', internal_transfer: 'info', tax_payment: 'warning', pending: 'danger' }
+  const map: Record<string, string> = {
+    business_receipt: 'success',
+    business_payment: 'danger',
+    bank_fee: 'warning',
+    interest_income: 'primary',
+    internal_transfer: 'info',
+    tax_payment: 'warning',
+    social_security: 'info',
+    pending: 'danger',
+  }
   return map[val] || 'info'
 }
 
 function classificationLabel(val: string) {
-  const map: Record<string, string> = { business_receipt: '业务收款', business_payment: '业务付款', bank_fee: '银行费用', interest_income: '利息收入', internal_transfer: '内部转账', tax_payment: '税务缴费', pending: '待处理' }
+  const map: Record<string, string> = {
+    business_receipt: '业务收款',
+    business_payment: '业务付款',
+    bank_fee: '银行费用',
+    interest_income: '利息收入',
+    internal_transfer: '内部转账',
+    tax_payment: '税务缴费',
+    social_security: '社保缴费',
+    pending: '待处理',
+  }
   return map[val] || val
 }
 
-const AUTO_VOUCHER_CLASSIFICATIONS = new Set(['bank_fee', 'interest_income', 'tax_payment'])
+const AUTO_VOUCHER_CLASSIFICATIONS = new Set(['bank_fee', 'interest_income', 'tax_payment', 'social_security'])
 const DRAFT_ORDER_CLASSIFICATIONS = new Set(['business_receipt', 'business_payment', 'internal_transfer'])
 
 function isAutoVoucherClassification(cls: string): boolean {

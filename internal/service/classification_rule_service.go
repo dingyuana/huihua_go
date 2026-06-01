@@ -211,6 +211,16 @@ func (s *ClassificationRuleService) SeedRules(ctx context.Context, tenantID uuid
 			Priority:       5,
 			IsActive:       true,
 		},
+		{
+			Name:           "税务缴费",
+			RuleType:       "keyword_regex",
+			Pattern:        "税|社保|公积金|印花税|城建税|教育费附加",
+			MatchField:     "description",
+			Direction:      "out",
+			Classification: "tax_payment",
+			Priority:       6,
+			IsActive:       true,
+		},
 	}
 
 	for i, ruleReq := range defaultRules {

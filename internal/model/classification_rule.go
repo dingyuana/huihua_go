@@ -15,7 +15,7 @@ type ClassificationRule struct {
 	Pattern         string     `json:"pattern" db:"pattern"`
 	MatchField      string     `json:"match_field" db:"match_field"` // description, counterparty
 	Direction       string     `json:"direction" db:"direction"` // in, out, '' (both)
-	Classification  string     `json:"classification" db:"classification"` // business_receipt, business_payment, bank_fee, interest_income, internal_transfer
+	Classification  string     `json:"classification" db:"classification"` // business_receipt, business_payment, bank_fee, interest_income, internal_transfer, tax_payment
 	Priority        int        `json:"priority" db:"priority"`
 	IsActive        bool       `json:"is_active" db:"is_active"`
 	DebitAccountID  *uuid.UUID `json:"debit_account_id,omitempty" db:"debit_account_id"`
