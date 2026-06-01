@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/service"
 )
 
@@ -73,4 +74,50 @@ func (h *ReconciliationHandler) GetUnmatched(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"data": items})
+}
+
+// ManualMatch handles POST /reconciliation/manual.
+func (h *ReconciliationHandler) ManualMatch(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	var req struct {
+		BankTransactionID string `json:"bank_transaction_id"`
+		Allocations       []struct {
+			InvoiceID string `json:"invoice_id"`
+			Amount    string `json:"amount"`
+		} `json:"allocations"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if req.BankTransactionID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "bank_transaction_id is required"})
+	}
+	bankTxnID, err := uuid.Parse(req.BankTransactionID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid bank_transaction_id"})
+	}
+
+	allocations := make([]service.ManualAllocation, 0, len(req.Allocations))
+	for _, a := range req.Allocations {
+		invID, err := uuid.Parse(a.InvoiceID)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid invoice_id: " + a.InvoiceID})
+		}
+		amt, err := decimal.NewFromString(a.Amount)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid amount: " + a.Amount})
+		}
+		allocations = append(allocations, service.ManualAllocation{InvoiceID: invID, Amount: amt})
+	}
+
+	pairs, err := h.svc.ManualMatch(c.Context(), tenantID, userID, &service.ManualMatchRequest{
+		BankTransactionID: bankTxnID,
+		Allocations:       allocations,
+	})
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(201).JSON(fiber.Map{"data": pairs, "count": len(pairs)})
 }

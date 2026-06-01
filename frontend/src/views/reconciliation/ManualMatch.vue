@@ -46,19 +46,37 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 
-const availableInvoices = ref([
-  { id: 'i1', invoice_no: '87654321', outstanding: '8,000.00' },
-  { id: 'i2', invoice_no: '11223344', outstanding: '10,000.00' },
-])
+interface AvailableInvoice { id: string; invoice_no: string; outstanding: string }
+const availableInvoices = ref<AvailableInvoice[]>([])
 
 interface Allocation { invoice_no: string; outstanding: string; amount: string }
 const allocations = ref<Allocation[]>([])
+
+const currentPaymentAmount = ref(0)
+
+async function loadInvoices() {
+  try {
+    const res: any = await request.get('/invoices', { params: { status: 'unpaid' } })
+    const list: any[] = res.data?.items ?? res.data ?? []
+    availableInvoices.value = list.map(inv => ({
+      id: inv.id,
+      invoice_no: inv.invoice_number ?? inv.invoice_no ?? '',
+      outstanding: (inv.outstanding_amount ?? inv.outstanding ?? 0).toString(),
+    }))
+  } catch {
+    availableInvoices.value = []
+  }
+}
+
+onMounted(() => {
+  loadInvoices()
+})
 
 const totalAmount = computed(() => {
   const sum = allocations.value.reduce((a, b) => a + parseFloat(b.amount || '0'), 0)
   return sum.toFixed(2)
 })
-const remaining = computed(() => (5000 - parseFloat(totalAmount.value)).toFixed(2))
+const remaining = computed(() => (currentPaymentAmount.value - parseFloat(totalAmount.value)).toFixed(2))
 
 function isSelected(row: any) { return allocations.value.some(a => a.invoice_no === row.invoice_no) }
 
@@ -67,9 +85,21 @@ function addAllocation(row: any) {
   allocations.value.push({ invoice_no: row.invoice_no, outstanding: row.outstanding, amount: '' })
 }
 
-function execute() {
-  ElMessage.success('核销执行成功！')
-  allocations.value = []
+async function execute() {
+  if (allocations.value.length === 0) return
+  try {
+    await request.post('/reconciliation/manual', {
+      allocations: allocations.value.map(a => ({
+        invoice_no: a.invoice_no,
+        amount: parseFloat(a.amount || '0'),
+      })),
+    })
+    ElMessage.success('核销执行成功！')
+    allocations.value = []
+    loadInvoices()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '核销失败')
+  }
 }
 </script>
 <style scoped>

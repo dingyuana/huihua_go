@@ -37,6 +37,17 @@
         <el-table-column label="关联科目" width="160">
           <template #default="{ row }">{{ row.clearing_account_code || '-' }}</template>
         </el-table-column>
+        <el-table-column v-if="hasCashAccount" label="保管人/位置" width="200">
+          <template #default="{ row }">
+            <template v-if="row.bank_account_type === 'cash'">
+              <div style="line-height: 1.4">
+                <div>👤 {{ row.custodian || '未指定' }}</div>
+                <div style="font-size: 12px; color: #999">📍 {{ row.location || '未指定' }}</div>
+              </div>
+            </template>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="currency" label="币种" width="60" />
         <el-table-column label="状态" width="70">
           <template #default="{ row }">
@@ -86,6 +97,18 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-row :gutter="16" v-if="form.accountType === 'cash'">
+          <el-col :span="12">
+            <el-form-item label="保管人">
+              <el-input v-model="form.custodian" placeholder="如：出纳姓名" maxlength="50" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="存放位置">
+              <el-input v-model="form.location" placeholder="如：财务部保险柜" maxlength="100" />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="关联GL科目">
           <AccountSelector v-model="form.clearingAccount" :ledger-only="true" :disabled="!!editingId" />
           <p class="form-hint">必须选择资产类 Ledger 科目{{ editingId ? '（创建后不可修改）' : '' }}</p>
@@ -107,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
@@ -126,10 +149,15 @@ interface BankAccountItem {
   swift_code?: string
   currency: string
   is_active: boolean
+  is_cash?: boolean
+  custodian?: string
+  location?: string
   balance?: string
 }
 
 const accounts = ref<BankAccountItem[]>([])
+
+const hasCashAccount = computed(() => accounts.value.some(a => a.bank_account_type === 'cash'))
 
 async function loadBankAccounts() {
   try {
@@ -152,6 +180,7 @@ const defaultForm = {
   bankName: '', accountNumber: '', accountType: 'bank',
   iban: '', swiftCode: '', clearingAccount: null as Account | null,
   currency: 'CNY',
+  custodian: '', location: '',
 }
 
 const form = reactive({ ...defaultForm })
@@ -181,6 +210,8 @@ function editAccount(item: BankAccountItem) {
   form.swiftCode = item.swift_code || ''
   form.currency = item.currency
   form.clearingAccount = item.clearing_account || null
+  form.custodian = item.custodian || ''
+  form.location = item.location || ''
   showDialog.value = true
 }
 
@@ -203,8 +234,10 @@ async function saveAccount() {
         swift_code: form.swiftCode || undefined,
         currency: form.currency,
         clearing_account_id: form.clearingAccount?.id || undefined,
+        is_cash: form.accountType === 'cash',
+        custodian: form.accountType === 'cash' ? form.custodian : undefined,
+        location: form.accountType === 'cash' ? form.location : undefined,
       })
-      // Reload to get fresh data from backend
       await loadBankAccounts()
       ElMessage.success('账户已更新')
       showDialog.value = false
@@ -217,6 +250,9 @@ async function saveAccount() {
         swift_code: form.swiftCode || undefined,
         currency: form.currency,
         clearing_account_id: form.clearingAccount!.id,
+        is_cash: form.accountType === 'cash',
+        custodian: form.accountType === 'cash' ? form.custodian : undefined,
+        location: form.accountType === 'cash' ? form.location : undefined,
       })
       const created = res?.data
       if (created) {

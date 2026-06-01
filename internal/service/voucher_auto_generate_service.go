@@ -51,7 +51,8 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 	}
 
 	// Match to a classification rule
-	var matchedAccountID uuid.UUID
+	var debitAccountID, creditAccountID uuid.UUID
+	var ruleName string
 	txnDesc := ""
 	if txn.Description != nil {
 		txnDesc = *txn.Description
@@ -65,11 +66,22 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 		direction = "in"
 	}
 
-	// Try to match classification rule (new API)
+	// Try to match classification rule and pull the per-rule account mapping
 	result, err := s.classificationSvc.MatchTransaction(ctx, tenantID, txnDesc, counterpartyStr, direction)
 	if err == nil && result.Matched {
-		// TODO: Map classification to account ID
-		// For now, use default account or disable this logic temporarily
+		ruleName = *result.RuleName
+		if r, lookupErr := s.classificationSvc.GetRuleByID(ctx, tenantID, *result.RuleID); lookupErr == nil {
+			if r.DebitAccountID != nil {
+				debitAccountID = *r.DebitAccountID
+			}
+			if r.CreditAccountID != nil {
+				creditAccountID = *r.CreditAccountID
+			}
+		}
+	}
+
+	if debitAccountID == uuid.Nil || creditAccountID == uuid.Nil {
+		return nil, fmt.Errorf("classification rule %q has no account mapping (dr=%v cr=%v)", ruleName, debitAccountID, creditAccountID)
 	}
 
 	// Generate voucher number
@@ -100,33 +112,20 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 		txnAmt = txn.Credit
 	}
 	amount := txnAmt
+	var lines []model.JournalEntryLine
 	if txn.Debit.GreaterThan(decimal.Zero) {
 		// Bank received: debit bank, credit matched account
-		line1 := model.JournalEntryLine{
-			ID: uuid.New(), JournalEntryID: je.ID,
-			AccountID: txn.BankAccountID,
-			Debit: amount, Credit: decimal.Zero,
+		lines = []model.JournalEntryLine{
+			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: txn.BankAccountID, Debit: amount, Credit: decimal.Zero},
+			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: creditAccountID, Debit: decimal.Zero, Credit: amount},
 		}
-		line2 := model.JournalEntryLine{
-			ID: uuid.New(), JournalEntryID: je.ID,
-			AccountID: matchedAccountID,
-			Debit: decimal.Zero, Credit: amount,
-		}
-		_, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, []model.JournalEntryLine{line1, line2})
 	} else {
-		// Bank paid out: credit bank, debit matched account
-		line1 := model.JournalEntryLine{
-			ID: uuid.New(), JournalEntryID: je.ID,
-			AccountID: matchedAccountID,
-			Debit: amount, Credit: decimal.Zero,
+		lines = []model.JournalEntryLine{
+			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: debitAccountID, Debit: amount, Credit: decimal.Zero},
+			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: txn.BankAccountID, Debit: decimal.Zero, Credit: amount},
 		}
-		line2 := model.JournalEntryLine{
-			ID: uuid.New(), JournalEntryID: je.ID,
-			AccountID: txn.BankAccountID,
-			Debit: decimal.Zero, Credit: amount,
-		}
-		_, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, []model.JournalEntryLine{line1, line2})
 	}
+	_, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, lines)
 
 	_, err = s.journalRepo.Create(ctx, tenantID, je)
 	if err != nil {
@@ -161,7 +160,6 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 		return nil, err
 	}
 
-	// Generate voucher number
 	voucherResp, _ := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
 	voucherNo := ""
 	if voucherResp != nil {
@@ -181,32 +179,32 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 	}
 
 	var lines []model.JournalEntryLine
-
-	// Determine direction from invoice type
 	isSales := invoice.InvoiceType == "sales" || invoice.InvoiceType == "output"
 	invoiceType := "sales"
 	if !isSales {
 		invoiceType = "purchase"
 	}
 
-	// Try to match via classification rules for the counter account
-	var counterAcctID uuid.UUID
+	var counterDr, counterCr uuid.UUID
 	txnDesc := invoice.InvoiceNo + " " + invoiceType
-	counterpartyStr := "" // invoice doesn't have CustomerName/VendorName fields currently
+	counterpartyStr := ""
 	direction := "in"
 	if !isSales {
 		direction = "out"
 	}
-	// Try to match classification rule (new API)
 	result, err := s.classificationSvc.MatchTransaction(ctx, tenantID, txnDesc, counterpartyStr, direction)
-	if err == nil && result.Matched {
-		// TODO: Map classification to account ID
-		// For now, use default account or disable this logic temporarily
+	if err == nil && result.Matched && result.RuleID != nil {
+		if r, lookupErr := s.classificationSvc.GetRuleByID(ctx, tenantID, *result.RuleID); lookupErr == nil {
+			if r.DebitAccountID != nil {
+				counterDr = *r.DebitAccountID
+			}
+			if r.CreditAccountID != nil {
+				counterCr = *r.CreditAccountID
+			}
+		}
 	}
 
 	if isSales {
-		// Sales invoice: Dr: Accounts Receivable (1122), Cr: Revenue (matched or default)
-		// Line 1: Debit AR
 		arAccountID := s.findAccountByCode(ctx, tenantID, "1122")
 		if arAccountID != nil {
 			lines = append(lines, model.JournalEntryLine{
@@ -215,20 +213,18 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 				Debit:     invoice.TotalAmount, Credit: decimal.Zero,
 			})
 		}
-		// Line 2: Credit revenue account
-		if counterAcctID != uuid.Nil {
+		if counterCr != uuid.Nil {
 			lines = append(lines, model.JournalEntryLine{
 				ID: uuid.New(), JournalEntryID: je.ID,
-				AccountID: counterAcctID,
+				AccountID: counterCr,
 				Debit:     decimal.Zero, Credit: invoice.TotalAmount,
 			})
 		}
 	} else {
-		// Purchase invoice: Dr: Expense (matched or default), Cr: Accounts Payable (2202)
-		if counterAcctID != uuid.Nil {
+		if counterDr != uuid.Nil {
 			lines = append(lines, model.JournalEntryLine{
 				ID: uuid.New(), JournalEntryID: je.ID,
-				AccountID: counterAcctID,
+				AccountID: counterDr,
 				Debit:     invoice.TotalAmount, Credit: decimal.Zero,
 			})
 		}

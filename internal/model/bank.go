@@ -82,6 +82,9 @@ type BankAccount struct {
 	SwiftCode         *string    `json:"swift_code,omitempty" db:"swift_code"`
 	BankAccountType   *string    `json:"bank_account_type,omitempty" db:"bank_account_type"`
 	IsActive          bool       `json:"is_active" db:"is_active"`
+	IsCash            bool       `json:"is_cash" db:"is_cash"`
+	Custodian         *string    `json:"custodian,omitempty" db:"custodian"`
+	Location          *string    `json:"location,omitempty" db:"location"`
 	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
 }
 

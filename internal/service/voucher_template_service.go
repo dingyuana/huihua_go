@@ -45,6 +45,7 @@ func (s *VoucherTemplateService) CreateTemplate(ctx context.Context, tenantID uu
 		Description:    req.Description,
 		NumberPrefix:   numberPrefix,
 		IsActive:       req.IsActive,
+		Classification: req.Classification,
 		ApprovalFlowID: req.ApprovalFlowID,
 	}
 
@@ -113,6 +114,9 @@ func (s *VoucherTemplateService) UpdateTemplate(ctx context.Context, tenantID, i
 	}
 	if req.ApprovalFlowID != nil {
 		existing.ApprovalFlowID = req.ApprovalFlowID
+	}
+	if req.Classification != nil {
+		existing.Classification = req.Classification
 	}
 
 	// Replace lines

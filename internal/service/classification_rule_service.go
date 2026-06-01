@@ -51,14 +51,16 @@ func (s *ClassificationRuleService) CreateRule(ctx context.Context, tenantID uui
 	}
 
 	rule := &model.ClassificationRule{
-		Name:           req.Name,
-		RuleType:       req.RuleType,
-		Pattern:        req.Pattern,
-		MatchField:     req.MatchField,
-		Direction:      req.Direction,
-		Classification: req.Classification,
-		Priority:       req.Priority,
-		IsActive:       req.IsActive,
+		Name:            req.Name,
+		RuleType:        req.RuleType,
+		Pattern:         req.Pattern,
+		MatchField:      req.MatchField,
+		Direction:       req.Direction,
+		Classification:  req.Classification,
+		Priority:        req.Priority,
+		IsActive:        req.IsActive,
+		DebitAccountID:  req.DebitAccountID,
+		CreditAccountID: req.CreditAccountID,
 	}
 
 	return s.repo.Create(ctx, tenantID, rule)
@@ -94,6 +96,12 @@ func (s *ClassificationRuleService) UpdateRule(ctx context.Context, tenantID, id
 	}
 	if req.IsActive != nil {
 		rule.IsActive = *req.IsActive
+	}
+	if req.DebitAccountID != nil {
+		rule.DebitAccountID = req.DebitAccountID
+	}
+	if req.CreditAccountID != nil {
+		rule.CreditAccountID = req.CreditAccountID
 	}
 
 	return s.repo.Update(ctx, tenantID, id, rule)
@@ -133,6 +141,11 @@ func (s *ClassificationRuleService) MatchTransaction(ctx context.Context, tenant
 	}
 
 	return &model.RuleMatchResult{Matched: false}, nil
+}
+
+// GetRuleByID returns a single rule including its per-rule account mapping.
+func (s *ClassificationRuleService) GetRuleByID(ctx context.Context, tenantID, id uuid.UUID) (*model.ClassificationRule, error) {
+	return s.repo.GetByID(ctx, tenantID, id)
 }
 
 // SeedRules creates initial default rules for a tenant.

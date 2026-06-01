@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"huihua/finance/internal/model"
@@ -41,6 +43,9 @@ func (h *BankHandler) Create(c *fiber.Ctx) error {
 		BankAccountType   string `json:"bank_account_type"`
 		IBAN              string `json:"iban"`
 		SwiftCode         string `json:"swift_code"`
+		IsCash            bool   `json:"is_cash"`
+		Custodian         string `json:"custodian"`
+		Location          string `json:"location"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
@@ -54,6 +59,15 @@ func (h *BankHandler) Create(c *fiber.Ctx) error {
 		BankAccountType:   strPtr(req.BankAccountType),
 		IBAN:              strPtr(req.IBAN),
 		SwiftCode:         strPtr(req.SwiftCode),
+		IsCash:            req.IsCash,
+		Custodian:         strPtr(req.Custodian),
+		Location:          strPtr(req.Location),
+	}
+	if req.IsCash && req.AccountNumber == "" {
+		bankAcc.AccountNumber = fmt.Sprintf("CASH-%s", uuid.New().String()[:8])
+	}
+	if req.IsCash && req.BankAccountType == "" {
+		bankAcc.BankAccountType = strPtr("cash")
 	}
 	account, err := h.svc.Create(c.Context(), tenantID, bankAcc)
 	if err != nil {
@@ -92,6 +106,9 @@ func (h *BankHandler) Update(c *fiber.Ctx) error {
 		IBAN              string `json:"iban"`
 		SwiftCode         string `json:"swift_code"`
 		IsActive          *bool  `json:"is_active"`
+		IsCash            *bool  `json:"is_cash"`
+		Custodian         string `json:"custodian"`
+		Location          string `json:"location"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
@@ -104,6 +121,8 @@ func (h *BankHandler) Update(c *fiber.Ctx) error {
 		IBAN:            strPtr(req.IBAN),
 		SwiftCode:       strPtr(req.SwiftCode),
 		IsActive:        true,
+		Custodian:       strPtr(req.Custodian),
+		Location:        strPtr(req.Location),
 	}
 	if req.ClearingAccountID != "" {
 		clearingID, _ := uuid.Parse(req.ClearingAccountID)
@@ -111,6 +130,9 @@ func (h *BankHandler) Update(c *fiber.Ctx) error {
 	}
 	if req.IsActive != nil {
 		bankAcc.IsActive = *req.IsActive
+	}
+	if req.IsCash != nil {
+		bankAcc.IsCash = *req.IsCash
 	}
 	if err := h.svc.Update(c.Context(), tenantID, id, bankAcc); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})

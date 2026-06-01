@@ -62,7 +62,7 @@
         <span class="summary-divider">|</span>
         <span class="summary-item">支出: <b class="amount-expense">¥{{ tabSummary.expense }}</b></span>
         <span class="summary-divider">|</span>
-        <span class="summary-item">净额: <b :class="tabSummary.net >= 0 ? 'amount-income' : 'amount-expense'">¥{{ tabSummary.net }}</b></span>
+        <span class="summary-item">净额: <b :class="Number(tabSummary.net.replace(/,/g,'')) >= 0 ? 'amount-income' : 'amount-expense'">¥{{ tabSummary.net }}</b></span>
       </div>
 
       <div class="batch-bar">
@@ -95,9 +95,10 @@
             <el-tag :type="classificationTag(row.classification)" size="small">{{ classificationLabel(row.classification) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="将生成" width="100">
+        <el-table-column label="将生成" width="150">
           <template #default="{ row }">
-            <el-tag v-if="row.confirmed" size="small" type="success">{{ docTypeLabel(row.classification) }}</el-tag>
+            <el-tag v-if="row.payment_no" size="small" type="primary">{{ row.payment_no }}</el-tag>
+            <span v-else-if="row.confirmed" class="doc-preview">{{ docTypeLabel(row.classification) }}</span>
             <span v-else class="doc-preview">{{ docTypeLabel(row.classification) }}</span>
           </template>
         </el-table-column>
@@ -158,6 +159,8 @@ interface TxnItem {
   description: string
   classification: string
   confirmed: boolean
+  payment_entry_id?: string
+  payment_no?: string
 }
 
 interface BankTxnAPI {
@@ -170,6 +173,7 @@ interface BankTxnAPI {
   description: string | null
   classification: string | null
   matched: boolean
+  matched_payment_entry_id?: string
 }
 
 const allTxns = ref<TxnItem[]>([])
@@ -192,6 +196,7 @@ function apiToTxnItem(t: BankTxnAPI): TxnItem {
     description: t.description || '',
     classification: t.classification || (t.matched ? 'business_receipt' : 'pending'),
     confirmed: t.matched,
+    payment_entry_id: t.matched_payment_entry_id,
   }
 }
 
@@ -292,19 +297,40 @@ function docTypeLabel(cls: string): string {
     bank_fee: '银行费用单',
     interest_income: '利息收入单',
     internal_transfer: '银行转账单',
+    tax_payment: '税务缴费单',
     pending: '待处理',
   }
   return map[cls] || cls
 }
 
 function classificationTag(val: string) {
-  const map: Record<string, string> = { business_receipt: 'success', business_payment: 'danger', bank_fee: 'warning', interest_income: 'primary', internal_transfer: 'info', pending: 'danger' }
+  const map: Record<string, string> = { business_receipt: 'success', business_payment: 'danger', bank_fee: 'warning', interest_income: 'primary', internal_transfer: 'info', tax_payment: 'warning', pending: 'danger' }
   return map[val] || 'info'
 }
 
 function classificationLabel(val: string) {
-  const map: Record<string, string> = { business_receipt: '业务收款', business_payment: '业务付款', bank_fee: '银行费用', interest_income: '利息收入', internal_transfer: '内部转账', pending: '待处理' }
+  const map: Record<string, string> = { business_receipt: '业务收款', business_payment: '业务付款', bank_fee: '银行费用', interest_income: '利息收入', internal_transfer: '内部转账', tax_payment: '税务缴费', pending: '待处理' }
   return map[val] || val
+}
+
+const AUTO_VOUCHER_CLASSIFICATIONS = new Set(['bank_fee', 'interest_income', 'tax_payment'])
+const DRAFT_ORDER_CLASSIFICATIONS = new Set(['business_receipt', 'business_payment', 'internal_transfer'])
+
+function isAutoVoucherClassification(cls: string): boolean {
+  return AUTO_VOUCHER_CLASSIFICATIONS.has(cls)
+}
+
+interface PaymentMapping { paymentType: string; partyType: string }
+
+function mapToPaymentEntry(cls: string): PaymentMapping {
+  switch (cls) {
+    case 'business_receipt':  return { paymentType: 'receive',  partyType: 'customer' }
+    case 'business_payment':  return { paymentType: 'pay',      partyType: 'supplier' }
+    case 'internal_transfer': return { paymentType: 'transfer', partyType: 'internal' }
+    case 'expense':           return { paymentType: 'expense',  partyType: 'employee' }
+    case 'interest':          return { paymentType: 'interest', partyType: 'bank' }
+    default:                  return { paymentType: 'pay',      partyType: 'other' }
+  }
 }
 
 function amountClass(row: TxnItem): string {
@@ -326,19 +352,84 @@ function onSelectAll() {
   // el-table 内置全选
 }
 
-function confirmOne(row: TxnItem) {
-  row.confirmed = true
-  docCounter.value++
-  const docType = docTypeLabel(row.classification)
-  ElMessage.success(`流水 ${row.date} 已确认，已生成${docType}`)
+async function confirmOne(row: TxnItem) {
+  try {
+    if (isAutoVoucherClassification(row.classification)) {
+      const res: any = await request.post(`/bank-transactions/${row.id}/generate-voucher`)
+      const je = res?.data
+      row.confirmed = true
+      row.payment_no = je?.voucher_no || ''
+      docCounter.value++
+      ElMessage.success(`流水 ${row.date} 已确认，已生成凭证：${je?.voucher_no || '(凭证号未返回)'}（${docTypeLabel(row.classification)}）`)
+    } else {
+      const { paymentType, partyType } = mapToPaymentEntry(row.classification)
+
+      const res: any = await request.post('/payment-entries', {
+        bank_transaction_id: row.id,
+        payment_type: paymentType,
+        party_type: partyType,
+        party_id: '00000000-0000-0000-0000-000000000000',
+        posting_date: new Date().toISOString().slice(0, 10),
+      })
+      row.confirmed = true
+      row.payment_entry_id = res.data?.payment_entry?.id
+      row.payment_no = res.data?.payment_entry?.payment_no
+      docCounter.value++
+      ElMessage.success(`流水 ${row.date} 已确认，已生成${docTypeLabel(row.classification)}：${row.payment_no}（待会计处理）`)
+    }
+  } catch (e: any) {
+    const msg = e?.response?.data?.error || e?.message || '操作失败'
+    ElMessage.error(`流水 ${row.date} 处理失败：${msg}`)
+  }
 }
 
-function batchConfirm() {
+async function batchConfirm() {
   const selected = allTxns.value.filter(t => selectedIds.value.includes(t.id))
-  selected.forEach(t => { t.confirmed = true })
-  docCounter.value += selected.length
-  const typeSummary = [...new Set(selected.map(t => docTypeLabel(t.classification)))].join('、')
-  ElMessage.success(`已确认 ${selectedIds.value.length} 条流水，自动生成 ${typeSummary}`)
+  if (selected.length === 0) return
+
+  const today = new Date().toISOString().slice(0, 10)
+  let voucherOk = 0
+  let orderOk = 0
+  let fail = 0
+
+  for (const t of selected) {
+    try {
+      if (isAutoVoucherClassification(t.classification)) {
+        const res: any = await request.post(`/bank-transactions/${t.id}/generate-voucher`)
+        t.confirmed = true
+        t.payment_no = res?.data?.voucher_no || ''
+        voucherOk++
+      } else {
+        const { paymentType, partyType } = mapToPaymentEntry(t.classification)
+
+        const res: any = await request.post('/payment-entries', {
+          bank_transaction_id: t.id,
+          payment_type: paymentType,
+          party_type: partyType,
+          party_id: '00000000-0000-0000-0000-000000000000',
+          posting_date: today,
+        })
+        t.confirmed = true
+        t.payment_entry_id = res.data?.payment_entry?.id
+        t.payment_no = res.data?.payment_entry?.payment_no
+        orderOk++
+      }
+      docCounter.value++
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || e?.message || '失败'
+      console.error(`Bank txn ${t.id} failed:`, msg)
+      fail++
+    }
+  }
+
+  const parts: string[] = []
+  if (voucherOk > 0) parts.push(`自动凭证 ${voucherOk} 张`)
+  if (orderOk > 0) parts.push(`草稿单据 ${orderOk} 张`)
+  if (fail > 0) parts.push(`失败 ${fail} 条`)
+
+  if (parts.length > 0) {
+    ElMessage.success(`批量完成：${parts.join('，')}`)
+  }
   selectedIds.value = []
   selectAll.value = false
 }

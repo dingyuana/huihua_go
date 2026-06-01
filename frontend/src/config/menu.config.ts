@@ -16,6 +16,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
   cashier: [
     { path: '/bank/import', title: '流水导入', icon: 'Upload' },
     { path: '/bank/workbench', title: '核对工作台', icon: 'List' },
+    { path: '/payments', title: '收付款单', icon: 'Wallet' },
     { path: '/bank-reconciliation/match', title: '银企对账', icon: 'BalanceTwo' },
   ],
   accountant_ar: [
@@ -45,6 +46,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
       children: [
         { path: '/bank/import', title: '流水导入' },
         { path: '/bank/workbench', title: '核对工作台' },
+        { path: '/payments', title: '收付款单' },
       ],
     },
     { path: '/invoices', title: '发票管理', icon: 'Document' },

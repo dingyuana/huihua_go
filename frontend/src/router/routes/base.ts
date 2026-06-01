@@ -76,6 +76,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '核对工作台', roles: ['cashier', 'admin', 'agent'] },
       },
       {
+        path: 'payments',
+        name: 'PaymentList',
+        component: () => import('@/views/payments/PaymentList.vue'),
+        meta: { title: '收付款单', roles: ['cashier', 'admin', 'agent'] },
+      },
+      {
         path: 'invoices',
         name: 'InvoiceList',
         component: () => import('@/views/invoices/InvoiceList.vue'),

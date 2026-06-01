@@ -229,6 +229,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/reconciliation/pairs/:id/confirm", reconciliationHandler.ConfirmPair)
 	api.Post("/reconciliation/pairs/:id/unconfirm", reconciliationHandler.UnconfirmPair)
 	api.Get("/reconciliation/unmatched", reconciliationHandler.GetUnmatched)
+	api.Post("/reconciliation/manual", reconciliationHandler.ManualMatch)
 
 	// Bank reconciliation routes
 	reconSvc := service.NewBankReconciliationService(bankTransactionRepo, journalRepo, bankRepo, glEntryRepo)
@@ -273,4 +274,14 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/bank-transactions/:id/generate-voucher", autoGenHandler.GenerateFromBankTxn)
 	api.Post("/bank-transactions/batch-generate", autoGenHandler.BatchGenerate)
 	api.Post("/invoices/:id/generate-voucher", autoGenHandler.GenerateFromInvoice)
+
+	// Payment entry routes (收款/付款单)
+	paymentRepo := repository.NewPaymentEntryRepository(db.GetPool())
+	paymentSvc := service.NewPaymentEntryService(paymentRepo, partyRepo, bankRepo, accountRepo)
+	paymentHandler := handler.NewPaymentEntryHandler(paymentSvc, bankTransactionRepo)
+	api.Get("/payment-entries", paymentHandler.List)
+	api.Post("/payment-entries", paymentHandler.CreateFromBankTransaction)
+	api.Get("/payment-entries/:id", paymentHandler.GetByID)
+	api.Put("/payment-entries/:id", paymentHandler.Update)
+	api.Delete("/payment-entries/:id", paymentHandler.Delete)
 }

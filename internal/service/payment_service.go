@@ -1,0 +1,131 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+	"huihua/finance/internal/model"
+	"huihua/finance/internal/repository"
+)
+
+type PaymentEntryService struct {
+	repo         *repository.PaymentEntryRepository
+	partyRepo    *repository.PartyRepository
+	bankRepo     *repository.BankRepository
+	accountRepo  *repository.AccountRepository
+}
+
+func NewPaymentEntryService(
+	repo *repository.PaymentEntryRepository,
+	partyRepo *repository.PartyRepository,
+	bankRepo *repository.BankRepository,
+	accountRepo *repository.AccountRepository,
+) *PaymentEntryService {
+	return &PaymentEntryService{
+		repo:        repo,
+		partyRepo:   partyRepo,
+		bankRepo:    bankRepo,
+		accountRepo: accountRepo,
+	}
+}
+
+type CreatePaymentFromBankTxnRequest struct {
+	BankTransactionID uuid.UUID
+	PaymentType       string
+	PartyType         string
+	PartyID           uuid.UUID
+	PostingDate       time.Time
+	ReferenceNo       string
+}
+
+func (s *PaymentEntryService) CreateFromBankTransaction(
+	ctx context.Context,
+	tenantID, userID uuid.UUID,
+	req *CreatePaymentFromBankTxnRequest,
+	bankTxn *model.BankTransaction,
+	companyID uuid.UUID,
+) (*model.PaymentEntry, error) {
+
+	if !repository.IsValidPaymentType(req.PaymentType) {
+		return nil, fmt.Errorf("invalid payment_type %q (allowed: receive, pay, expense, interest, transfer)", req.PaymentType)
+	}
+
+	paymentNo, err := s.repo.GetNextPaymentNo(ctx, tenantID, req.PaymentType)
+	if err != nil {
+		return nil, fmt.Errorf("generate payment no: %w", err)
+	}
+
+	var amount decimal.Decimal
+	var receivedAmt *decimal.Decimal
+	switch req.PaymentType {
+	case "receive", "interest":
+		amount = bankTxn.Debit
+		receivedAmt = &amount
+	default:
+		amount = bankTxn.Credit
+	}
+
+	var paidFromID, paidToID *uuid.UUID
+	switch req.PaymentType {
+	case "receive", "interest":
+		paidToID = s.getClearingAccount(ctx, tenantID, bankTxn.BankAccountID)
+	default:
+		paidFromID = s.getClearingAccount(ctx, tenantID, bankTxn.BankAccountID)
+	}
+
+	pe := &model.PaymentEntry{
+		PaymentNo:      paymentNo,
+		PaymentType:    req.PaymentType,
+		PartyType:      req.PartyType,
+		PartyID:        req.PartyID,
+		PaidFromID:     paidFromID,
+		PaidToID:       paidToID,
+		PaidAmount:     amount,
+		ReceivedAmount: receivedAmt,
+		ReferenceNo:    &req.ReferenceNo,
+		ReferenceDate:  &bankTxn.TxnDate,
+		PostingDate:    req.PostingDate,
+		CompanyID:      companyID,
+		BankAccountID:  &bankTxn.BankAccountID,
+		DocStatus:      0,
+		CreatedBy:      &userID,
+	}
+
+	entry, err := s.repo.Create(ctx, tenantID, pe)
+	if err != nil {
+		return nil, fmt.Errorf("create payment entry: %w", err)
+	}
+
+	return entry, nil
+}
+
+func (s *PaymentEntryService) getClearingAccount(ctx context.Context, tenantID, bankAccountID uuid.UUID) *uuid.UUID {
+	bank, err := s.bankRepo.GetByID(ctx, tenantID, bankAccountID)
+	if err != nil || bank == nil {
+		return nil
+	}
+	return bank.ClearingAccountID
+}
+
+func (s *PaymentEntryService) ListPaymentEntries(ctx context.Context, tenantID uuid.UUID) ([]model.PaymentEntry, error) {
+	return s.repo.ListByTenant(ctx, tenantID)
+}
+
+func (s *PaymentEntryService) ListByBankAccount(ctx context.Context, tenantID, bankAccountID uuid.UUID) ([]model.PaymentEntry, error) {
+	return s.repo.ListByBankAccount(ctx, tenantID, bankAccountID)
+}
+
+func (s *PaymentEntryService) GetPaymentEntry(ctx context.Context, tenantID, id uuid.UUID) (*model.PaymentEntry, error) {
+	return s.repo.GetByID(ctx, tenantID, id)
+}
+
+func (s *PaymentEntryService) UpdatePaymentEntry(ctx context.Context, tenantID uuid.UUID, pe *model.PaymentEntry) error {
+	return s.repo.Update(ctx, tenantID, pe)
+}
+
+func (s *PaymentEntryService) DeletePaymentEntry(ctx context.Context, tenantID, id uuid.UUID) error {
+	return s.repo.Delete(ctx, tenantID, id)
+}

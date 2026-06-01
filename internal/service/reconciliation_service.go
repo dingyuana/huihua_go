@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -253,6 +255,58 @@ func (s *ReconciliationService) makePair(tenantID uuid.UUID, st string, sid uuid
 // ConfirmPair confirms a matched pair.
 func (s *ReconciliationService) ConfirmPair(ctx context.Context, tenantID, pairID, userID uuid.UUID) error {
 	return s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "confirmed")
+}
+
+type ManualMatchRequest struct {
+	BankTransactionID uuid.UUID
+	Allocations       []ManualAllocation
+}
+
+type ManualAllocation struct {
+	InvoiceID uuid.UUID
+	Amount    decimal.Decimal
+}
+
+func (s *ReconciliationService) ManualMatch(ctx context.Context, tenantID, userID uuid.UUID, req *ManualMatchRequest) ([]model.ReconciliationPair, error) {
+	if req.BankTransactionID == uuid.Nil {
+		return nil, errors.New("bank_transaction_id is required")
+	}
+	if len(req.Allocations) == 0 {
+		return nil, errors.New("at least one allocation is required")
+	}
+
+	txn, err := s.bankTxnRepo.GetByID(ctx, tenantID, req.BankTransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("bank transaction not found: %w", err)
+	}
+	if txn.Matched {
+		return nil, errors.New("bank transaction is already matched")
+	}
+
+	pairs := make([]model.ReconciliationPair, 0, len(req.Allocations))
+	for _, a := range req.Allocations {
+		if a.InvoiceID == uuid.Nil {
+			continue
+		}
+		if a.Amount.LessThanOrEqual(decimal.Zero) {
+			continue
+		}
+		pair := s.makePair(tenantID, "bank_txn", req.BankTransactionID, "invoice", a.InvoiceID, a.Amount, "manual")
+		now := time.Now()
+		pair.MatchedAt = &now
+		pair.ConfirmedAt = &now
+		pair.Status = "confirmed"
+		if err := s.reconRepo.Create(ctx, &pair); err != nil {
+			return pairs, fmt.Errorf("create pair: %w", err)
+		}
+		pairs = append(pairs, pair)
+	}
+
+	if err := s.bankTxnRepo.UpdateStatus(ctx, tenantID, req.BankTransactionID, true); err != nil {
+		return pairs, fmt.Errorf("mark bank txn matched: %w", err)
+	}
+
+	return pairs, nil
 }
 
 // UnconfirmPair cancels confirmation.

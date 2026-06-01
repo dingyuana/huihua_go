@@ -26,14 +26,14 @@ func (r *ClassificationRuleRepository) Create(ctx context.Context, tenantID uuid
 	rule.TenantID = tenantID
 
 	query := `
-		INSERT INTO classification_rules (id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+		INSERT INTO classification_rules (id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, debit_account_id, credit_account_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
 		RETURNING created_at, updated_at`
 
 	err := r.pool.QueryRow(ctx, query,
 		rule.ID, tenantID, rule.Name, rule.RuleType, rule.Pattern,
 		rule.MatchField, rule.Direction, rule.Classification,
-		rule.Priority, rule.IsActive,
+		rule.Priority, rule.IsActive, rule.DebitAccountID, rule.CreditAccountID,
 	).Scan(&rule.CreatedAt, &rule.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create classification rule: %w", err)
@@ -44,7 +44,7 @@ func (r *ClassificationRuleRepository) Create(ctx context.Context, tenantID uuid
 // ListByTenant retrieves all classification rules for a tenant ordered by priority ASC.
 func (r *ClassificationRuleRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]model.ClassificationRule, error) {
 	query := `
-		SELECT id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, created_at, updated_at
+		SELECT id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, debit_account_id, credit_account_id, created_at, updated_at
 		FROM classification_rules
 		WHERE tenant_id = $1
 		ORDER BY priority ASC`
@@ -61,7 +61,8 @@ func (r *ClassificationRuleRepository) ListByTenant(ctx context.Context, tenantI
 		if err := rows.Scan(
 			&rule.ID, &rule.TenantID, &rule.Name, &rule.RuleType, &rule.Pattern,
 			&rule.MatchField, &rule.Direction, &rule.Classification, &rule.Priority,
-			&rule.IsActive, &rule.CreatedAt, &rule.UpdatedAt,
+			&rule.IsActive, &rule.DebitAccountID, &rule.CreditAccountID,
+			&rule.CreatedAt, &rule.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan classification rule: %w", err)
 		}
@@ -73,7 +74,7 @@ func (r *ClassificationRuleRepository) ListByTenant(ctx context.Context, tenantI
 // GetByID retrieves a classification rule by ID.
 func (r *ClassificationRuleRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.ClassificationRule, error) {
 	query := `
-		SELECT id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, created_at, updated_at
+		SELECT id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, debit_account_id, credit_account_id, created_at, updated_at
 		FROM classification_rules
 		WHERE tenant_id = $1 AND id = $2`
 
@@ -81,7 +82,8 @@ func (r *ClassificationRuleRepository) GetByID(ctx context.Context, tenantID, id
 	err := r.pool.QueryRow(ctx, query, tenantID, id).Scan(
 		&rule.ID, &rule.TenantID, &rule.Name, &rule.RuleType, &rule.Pattern,
 		&rule.MatchField, &rule.Direction, &rule.Classification, &rule.Priority,
-		&rule.IsActive, &rule.CreatedAt, &rule.UpdatedAt,
+		&rule.IsActive, &rule.DebitAccountID, &rule.CreditAccountID,
+		&rule.CreatedAt, &rule.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get classification rule by id: %w", err)
@@ -93,12 +95,13 @@ func (r *ClassificationRuleRepository) GetByID(ctx context.Context, tenantID, id
 func (r *ClassificationRuleRepository) Update(ctx context.Context, tenantID, id uuid.UUID, rule *model.ClassificationRule) error {
 	query := `
 		UPDATE classification_rules
-		SET name = $3, rule_type = $4, pattern = $5, match_field = $6, direction = $7, classification = $8, priority = $9, is_active = $10, updated_at = NOW()
+		SET name = $3, rule_type = $4, pattern = $5, match_field = $6, direction = $7, classification = $8, priority = $9, is_active = $10, debit_account_id = $11, credit_account_id = $12, updated_at = NOW()
 		WHERE tenant_id = $1 AND id = $2`
 
 	_, err := r.pool.Exec(ctx, query,
 		tenantID, id, rule.Name, rule.RuleType, rule.Pattern,
 		rule.MatchField, rule.Direction, rule.Classification, rule.Priority, rule.IsActive,
+		rule.DebitAccountID, rule.CreditAccountID,
 	)
 	if err != nil {
 		return fmt.Errorf("update classification rule: %w", err)
@@ -155,7 +158,7 @@ func (r *ClassificationRuleRepository) GetMaxPriority(ctx context.Context, tenan
 // ListActiveRules retrieves all active rules ordered by priority.
 func (r *ClassificationRuleRepository) ListActiveRules(ctx context.Context, tenantID uuid.UUID) ([]model.ClassificationRule, error) {
 	query := `
-		SELECT id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, created_at, updated_at
+		SELECT id, tenant_id, name, rule_type, pattern, match_field, direction, classification, priority, is_active, debit_account_id, credit_account_id, created_at, updated_at
 		FROM classification_rules
 		WHERE tenant_id = $1 AND is_active = TRUE
 		ORDER BY priority ASC`
@@ -172,7 +175,8 @@ func (r *ClassificationRuleRepository) ListActiveRules(ctx context.Context, tena
 		if err := rows.Scan(
 			&rule.ID, &rule.TenantID, &rule.Name, &rule.RuleType, &rule.Pattern,
 			&rule.MatchField, &rule.Direction, &rule.Classification, &rule.Priority,
-			&rule.IsActive, &rule.CreatedAt, &rule.UpdatedAt,
+			&rule.IsActive, &rule.DebitAccountID, &rule.CreditAccountID,
+			&rule.CreatedAt, &rule.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan active rule: %w", err)
 		}

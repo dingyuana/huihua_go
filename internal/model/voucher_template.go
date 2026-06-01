@@ -14,6 +14,7 @@ type VoucherTemplate struct {
 	Description    string               `json:"description,omitempty" db:"description"`
 	NumberPrefix   string               `json:"number_prefix" db:"number_prefix"`
 	IsActive       bool                 `json:"is_active" db:"is_active"`
+	Classification *string              `json:"classification,omitempty" db:"classification"` // bank_fee / business_receipt / ...
 	ApprovalFlowID *uuid.UUID           `json:"approval_flow_id,omitempty" db:"approval_flow_id"` // bound approval flow
 	CreatedAt      time.Time            `json:"created_at" db:"created_at"`
 	UpdatedAt      time.Time            `json:"updated_at" db:"updated_at"`
@@ -54,6 +55,7 @@ type CreateTemplateRequest struct {
 	Description    string                       `json:"description"`
 	NumberPrefix   string                       `json:"number_prefix"`
 	IsActive       bool                         `json:"is_active"`
+	Classification *string                      `json:"classification,omitempty"`
 	ApprovalFlowID *uuid.UUID                   `json:"approval_flow_id,omitempty"`
 	Lines          []CreateTemplateLineRequest `json:"lines"`
 }
@@ -75,6 +77,7 @@ type UpdateTemplateRequest struct {
 	Description    string                       `json:"description"`
 	NumberPrefix   string                       `json:"number_prefix"`
 	IsActive       *bool                        `json:"is_active"`
+	Classification *string                      `json:"classification,omitempty"`
 	ApprovalFlowID *uuid.UUID                   `json:"approval_flow_id,omitempty"`
 	Lines          []CreateTemplateLineRequest `json:"lines"`
 }

@@ -15,6 +15,7 @@ export interface PaymentEntry {
   posting_date: string
   bank_account_id: string | null
   docstatus: number
+  created_at?: string
 }
 
 export interface PaymentAllocation {
