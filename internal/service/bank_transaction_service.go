@@ -82,10 +82,17 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 		}
 	}
 
-	// Adjust total rows to exclude everything before the data rows
+	// Adjust total rows: count only rows with at least 1 non-blank cell.
 	result.TotalRows = 0
 	for _, row := range rows[headerRowIndex+1:] {
-		if len(row) > 0 {
+		hasContent := false
+		for _, cell := range row {
+			if strings.TrimSpace(cell) != "" {
+				hasContent = true
+				break
+			}
+		}
+		if hasContent {
 			result.TotalRows++
 		}
 	}
@@ -226,6 +233,15 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 			}
 		}
 
+		if debit.IsZero() && credit.IsZero() {
+			result.FailedCount++
+			result.FailedRows = append(result.FailedRows, rowNum)
+			result.FailedReasons = append(result.FailedReasons, model.FailedRowDetail{
+				Row: rowNum, Date: dateStr, Reason: "金额为空或解析为 0，跳过空白行",
+			})
+			continue
+		}
+
 		// Determine direction
 		var direction *string
 		if debit.GreaterThan(decimal.Zero) {
@@ -235,7 +251,6 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 			directionStr := "out"
 			direction = &directionStr
 		} else {
-			// Try direction column if amount-based detection failed
 			dirIdx, _ := findCol("direction", "收支方向", "方向", "借贷方向")
 			if dirIdx < len(row) {
 				dirVal := strings.ToLower(strings.TrimSpace(row[dirIdx]))

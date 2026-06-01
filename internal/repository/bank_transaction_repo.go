@@ -23,19 +23,15 @@ func NewBankTransactionRepository(pool *pgxpool.Pool) *BankTransactionRepository
 }
 
 // ImportBatch inserts multiple bank transactions with duplicate checking.
-// Duplicate check is based on: bank_account_id + transaction_date + description + amount.
-// Returns the number of rows inserted (excluding duplicates).
 func (r *BankTransactionRepository) ImportBatch(ctx context.Context, tenantID, bankAccountID uuid.UUID, txns []model.BankTransaction) (int, error) {
 	if len(txns) == 0 {
 		return 0, nil
 	}
 
-	// Use ON CONFLICT DO NOTHING to skip duplicates
-	query := `
-		INSERT INTO bank_transactions (id, tenant_id, bank_account_id, txn_date, description, 
+	insertQuery := `
+		INSERT INTO bank_transactions (id, tenant_id, bank_account_id, txn_date, description,
 			debit, credit, direction, reference_no, counterparty_name, classification, matched, company_id, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-		ON CONFLICT (tenant_id, bank_account_id, txn_date, description, debit, credit) DO NOTHING`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
 
 	for _, txn := range txns {
 		if txn.ID == uuid.Nil {
@@ -59,7 +55,15 @@ func (r *BankTransactionRepository) ImportBatch(ctx context.Context, tenantID, b
 			classification = *txn.Classification
 		}
 
-		_, err := r.pool.Exec(ctx, query,
+		exists, err := r.existsByKey(ctx, tenantID, bankAccountID, txn)
+		if err != nil {
+			return 0, fmt.Errorf("import batch: check exists: %w", err)
+		}
+		if exists {
+			continue
+		}
+
+		_, err = r.pool.Exec(ctx, insertQuery,
 			txn.ID, tenantID, bankAccountID, txn.TxnDate, txn.Description,
 			debit, credit, txn.Direction, txn.ReferenceNo, txn.CounterpartyName,
 			classification, txn.Matched, txn.CompanyID, time.Now())
@@ -69,6 +73,39 @@ func (r *BankTransactionRepository) ImportBatch(ctx context.Context, tenantID, b
 	}
 
 	return len(txns), nil
+}
+
+func (r *BankTransactionRepository) existsByKey(ctx context.Context, tenantID, bankAccountID uuid.UUID, txn model.BankTransaction) (bool, error) {
+	var exists bool
+	if txn.ReferenceNo != nil && *txn.ReferenceNo != "" {
+		err := r.pool.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM bank_transactions
+				WHERE tenant_id = $1 AND bank_account_id = $2
+				  AND reference_no = $3 AND txn_date = $4
+			)`,
+			tenantID, bankAccountID, *txn.ReferenceNo, txn.TxnDate).Scan(&exists)
+		return exists, err
+	}
+
+	var debit, credit decimal.Decimal
+	if txn.Direction != nil && *txn.Direction == "in" {
+		debit = txn.Debit
+	} else if txn.Direction != nil && *txn.Direction == "out" {
+		credit = txn.Credit
+	} else {
+		debit = txn.Debit
+		credit = txn.Credit
+	}
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM bank_transactions
+			WHERE tenant_id = $1 AND bank_account_id = $2
+			  AND reference_no IS NULL AND txn_date = $3
+			  AND description = $4 AND debit = $5 AND credit = $6
+		)`,
+		tenantID, bankAccountID, txn.TxnDate, txn.Description, debit, credit).Scan(&exists)
+	return exists, err
 }
 
 // ListByBankAccount retrieves bank transactions with filters.
