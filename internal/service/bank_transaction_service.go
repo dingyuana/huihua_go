@@ -297,9 +297,9 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 
 		txnDirection := ""
 		if debit.GreaterThan(decimal.Zero) {
-			txnDirection = "out"
-		} else {
 			txnDirection = "in"
+		} else {
+			txnDirection = "out"
 		}
 
 		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, counterpartyStr, txnDirection)
@@ -355,9 +355,9 @@ func (s *BankTransactionService) ClassifyTransaction(ctx context.Context, tenant
 
 	txnDirection := ""
 	if txn.Debit.GreaterThan(decimal.Zero) {
-		txnDirection = "out"
-	} else {
 		txnDirection = "in"
+	} else {
+		txnDirection = "out"
 	}
 
 	matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, counterpartyStr, txnDirection)
@@ -411,9 +411,9 @@ func (s *BankTransactionService) ClassifyAllPending(ctx context.Context, tenantI
 
 		txnDirection := ""
 		if txn.Debit.GreaterThan(decimal.Zero) {
-			txnDirection = "out"
-		} else {
 			txnDirection = "in"
+		} else {
+			txnDirection = "out"
 		}
 
 		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, counterpartyStr, txnDirection)
@@ -431,10 +431,8 @@ func (s *BankTransactionService) ClassifyAllPending(ctx context.Context, tenantI
 
 		if matchResult != nil && matchResult.Matched && matchResult.RuleID != nil {
 			err = s.repo.UpdateMatchedInfo(ctx, tenantID, txn.ID, *matchResult.RuleID)
-			if err == nil {
-				classifiedCount++
-			}
 		}
+		classifiedCount++
 	}
 
 	return classifiedCount, nil

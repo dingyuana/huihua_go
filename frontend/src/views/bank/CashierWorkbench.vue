@@ -46,13 +46,24 @@
     <el-card>
       <el-tabs v-model="activeTab" class="classification-tabs">
         <el-tab-pane :label="`全部 (${stats.total})`" name="all" />
-        <el-tab-pane label="业务收款" name="business_receipt" />
-        <el-tab-pane label="业务付款" name="business_payment" />
-        <el-tab-pane label="银行费用" name="bank_fee" />
-        <el-tab-pane label="利息收入" name="interest_income" />
-        <el-tab-pane label="内部转账" name="internal_transfer" />
-        <el-tab-pane :label="`待处理 ${stats.unclassified > 0 ? '🔴' : ''}`" name="pending" />
+        <el-tab-pane :label="`业务收款 (${stats.byCategory.business_receipt})`" name="business_receipt" />
+        <el-tab-pane :label="`业务付款 (${stats.byCategory.business_payment})`" name="business_payment" />
+        <el-tab-pane :label="`银行费用 (${stats.byCategory.bank_fee})`" name="bank_fee" />
+        <el-tab-pane :label="`利息收入 (${stats.byCategory.interest_income})`" name="interest_income" />
+        <el-tab-pane :label="`内部转账 (${stats.byCategory.internal_transfer})`" name="internal_transfer" />
+        <el-tab-pane :label="`待处理 (${stats.byCategory.pending})${stats.byCategory.pending > 0 ? ' 🔴' : ''}`" name="pending" />
       </el-tabs>
+
+      <!-- Tab 汇总 -->
+      <div class="tab-summary">
+        <span class="summary-item"><b>{{ tabSummary.count }}</b> 笔</span>
+        <span class="summary-divider">|</span>
+        <span class="summary-item">收入: <b class="amount-income">¥{{ tabSummary.income }}</b></span>
+        <span class="summary-divider">|</span>
+        <span class="summary-item">支出: <b class="amount-expense">¥{{ tabSummary.expense }}</b></span>
+        <span class="summary-divider">|</span>
+        <span class="summary-item">净额: <b :class="tabSummary.net >= 0 ? 'amount-income' : 'amount-expense'">¥{{ tabSummary.net }}</b></span>
+      </div>
 
       <div class="batch-bar">
         <el-checkbox v-model="selectAll" @change="onSelectAll">全选</el-checkbox>
@@ -74,9 +85,7 @@
         <el-table-column prop="date" label="日期" width="90" />
         <el-table-column label="金额" width="120">
           <template #default="{ row }">
-            <span :class="row.direction === 'in' ? 'amount-positive' : 'amount-negative'">
-              {{ row.direction === 'in' ? '+' : '-' }}{{ row.amount }}
-            </span>
+            <span :class="amountClass(row)">{{ amountDisplay(row) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="counterparty" label="对方" width="140" />
@@ -143,6 +152,7 @@ interface TxnItem {
   id: string
   date: string
   amount: string
+  rawAmount: number
   direction: string
   counterparty: string
   description: string
@@ -169,11 +179,13 @@ function apiToTxnItem(t: BankTxnAPI): TxnItem {
   const debit = Number(t.debit) || 0
   const credit = Number(t.credit) || 0
   const direction = t.direction || (debit > 0 ? 'in' : 'out')
-  const amount = (debit > 0 ? debit : credit).toFixed(2)
+  const rawAmount = debit > 0 ? debit : credit
+  const amount = rawAmount.toFixed(2)
   const date = t.txn_date ? t.txn_date.slice(5, 10) : ''
   return {
     id: t.id,
     date,
+    rawAmount,
     amount: Number(amount).toLocaleString('en', { minimumFractionDigits: 2 }),
     direction,
     counterparty: t.counterparty_name || '',
@@ -219,18 +231,51 @@ const classifyForm = reactive({
   remark: '',
 })
 
-const stats = computed(() => ({
-  total: allTxns.value.length,
-  confirmed: allTxns.value.filter(t => t.confirmed).length,
-  pending: allTxns.value.filter(t => !t.confirmed).length,
-  unclassified: allTxns.value.filter(t => t.classification === 'pending').length,
-  generatedDocs: docCounter.value,
-}))
+const stats = computed(() => {
+  const byCategory: Record<string, number> = {
+    business_receipt: 0,
+    business_payment: 0,
+    bank_fee: 0,
+    interest_income: 0,
+    internal_transfer: 0,
+    pending: 0,
+  }
+  allTxns.value.forEach(t => {
+    if (byCategory[t.classification] !== undefined) {
+      byCategory[t.classification]++
+    }
+  })
+  return {
+    total: allTxns.value.length,
+    confirmed: allTxns.value.filter(t => t.confirmed).length,
+    pending: allTxns.value.filter(t => !t.confirmed).length,
+    unclassified: allTxns.value.filter(t => t.classification === 'pending').length,
+    generatedDocs: docCounter.value,
+    byCategory,
+  }
+})
 
 const filteredTxns = computed(() => {
   if (activeTab.value === 'all') return allTxns.value
   if (activeTab.value === 'pending') return allTxns.value.filter(t => t.classification === 'pending')
   return allTxns.value.filter(t => t.classification === activeTab.value)
+})
+
+const tabSummary = computed(() => {
+  const items = filteredTxns.value
+  let income = 0
+  let expense = 0
+  for (const t of items) {
+    if (t.direction === 'in') income += t.rawAmount
+    else expense += t.rawAmount
+  }
+  const fmt = (n: number) => n.toLocaleString('en', { minimumFractionDigits: 2 })
+  return {
+    count: items.length,
+    income: fmt(income),
+    expense: fmt(expense),
+    net: fmt(income - expense),
+  }
 })
 
 /** 批量操作预览：显示选中项将生成的单据类型 */
@@ -260,6 +305,17 @@ function classificationTag(val: string) {
 function classificationLabel(val: string) {
   const map: Record<string, string> = { business_receipt: '业务收款', business_payment: '业务付款', bank_fee: '银行费用', interest_income: '利息收入', internal_transfer: '内部转账', pending: '待处理' }
   return map[val] || val
+}
+
+function amountClass(row: TxnItem): string {
+  if (row.classification === 'business_receipt') return 'amount-income'
+  if (row.classification === 'business_payment') return 'amount-expense'
+  return row.direction === 'in' ? 'amount-income' : 'amount-expense'
+}
+
+function amountDisplay(row: TxnItem): string {
+  if (row.classification === 'business_payment') return `-${row.amount}`
+  return `${row.direction === 'in' ? '+' : '-'}${row.amount}`
 }
 
 function onSelectionChange(rows: TxnItem[]) {
@@ -302,8 +358,11 @@ function saveClassification() {
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; h3 { font-size: 18px; } }
 .stat-row { margin-bottom: 16px; }
 .stat-card { text-align: center; .stat-num { font-size: 28px; font-weight: 700; margin-bottom: 4px; &.danger { color: #ff4d4f; } } .stat-label { font-size: 13px; color: #999; } &.total .stat-num { color: #1890ff; } &.confirmed .stat-num { color: #52c41a; } &.pending .stat-num { color: #faad14; } &.docs .stat-num { color: #722ed1; } }
-.classification-tabs { margin-bottom: 8px; }
+.classification-tabs { margin-bottom: 4px; }
+.tab-summary { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #fafafa; border-radius: 4px; margin-bottom: 8px; font-size: 13px; .summary-divider { color: #ddd; } .summary-item { color: #666; b { font-weight: 600; } } }
 .batch-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 8px 0; .selected-count { font-size: 13px; color: #666; } }
 .batch-preview { margin-bottom: 12px; }
 .doc-preview { color: #999; font-size: 12px; }
+.amount-income { color: #389e0d; font-weight: 600; }
+.amount-expense { color: #cf1322; font-weight: 600; }
 </style>

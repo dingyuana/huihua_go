@@ -161,6 +161,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/bank-transactions", bankTxnHandler.List)
 	api.Post("/bank-transactions/preview", bankTxnHandler.PreviewExcel)
 	api.Post("/bank-transactions/import", bankTxnHandler.Import)
+	api.Post("/bank-transactions/classify-all", bankTxnHandler.ClassifyAll)
 	api.Post("/bank-transactions/:id/classify", bankTxnHandler.Classify)
 	api.Post("/bank-transactions/:id/mark-matched", bankTxnHandler.MarkMatched)
 	api.Get("/bank-transactions/unmatched", bankTxnHandler.GetUnmatched)

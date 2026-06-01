@@ -117,25 +117,44 @@
 
     <div v-if="showPreview" class="import-actions">
       <el-button size="large" @click="resetImport">重新选择</el-button>
-      <el-button size="large" type="primary" :loading="importing" @click="handleImport">确认导入 ({{ normalCount }} 条)</el-button>
+      <el-button size="large" type="primary" :loading="importing" @click="confirmBeforeImport">确认导入 ({{ normalCount }} 条)</el-button>
     </div>
 
-    <!-- 导入结果 -->
-    <el-result v-if="importDone" icon="success" title="导入完成" class="import-result">
-      <template #extra>
-        <el-descriptions :column="3" size="small" border>
+    <!-- 导入确认弹窗（仅当有多个银行账户时弹出） -->
+    <el-dialog v-model="showConfirmDialog" title="确认导入" width="420px">
+      <div style="padding:8px 0">
+        <el-descriptions :column="1" size="small" border>
           <el-descriptions-item label="银行账户">{{ selectedBankName }}</el-descriptions-item>
-          <el-descriptions-item label="总条数">{{ importResult.total_rows }}</el-descriptions-item>
-          <el-descriptions-item label="成功">{{ importResult.success_count }}</el-descriptions-item>
-          <el-descriptions-item label="失败">{{ importResult.failed_count }}</el-descriptions-item>
+          <el-descriptions-item label="导入文件">{{ uploadedFile?.name }}</el-descriptions-item>
+          <el-descriptions-item label="文件格式">{{ detectedFormat }}</el-descriptions-item>
+          <el-descriptions-item label="导入条数">{{ normalCount }} 条</el-descriptions-item>
         </el-descriptions>
-        <el-alert v-if="importResult.failed_rows?.length" title="以下行号导入失败" type="warning" :description="importResult.failed_rows.join(', ')" show-icon style="margin-top:12px" />
-        <div style="margin-top:16px">
-          <el-button type="primary" @click="$router.push('/bank/workbench')">前往核对工作台</el-button>
-          <el-button @click="resetImport">继续导入</el-button>
-        </div>
+        <el-alert v-if="parseErrors.length" title="存在异常记录将被跳过" type="warning" :description="`${parseErrors.length} 条记录无法解析`" show-icon style="margin-top:12px" :closable="false" />
+      </div>
+      <template #footer>
+        <el-button @click="showConfirmDialog = false">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="handleImport">确认导入</el-button>
       </template>
-    </el-result>
+    </el-dialog>
+
+    <!-- 导入结果弹窗 -->
+    <el-dialog v-model="showResultDialog" title="导入完成" width="480px">
+      <el-result icon="success" title="导入完成">
+        <template #extra>
+          <el-descriptions :column="3" size="small" border>
+            <el-descriptions-item label="银行账户">{{ selectedBankName }}</el-descriptions-item>
+            <el-descriptions-item label="总条数">{{ importResult.total_rows }}</el-descriptions-item>
+            <el-descriptions-item label="成功">{{ importResult.success_count }}</el-descriptions-item>
+            <el-descriptions-item label="失败">{{ importResult.failed_count }}</el-descriptions-item>
+          </el-descriptions>
+          <el-alert v-if="importResult.failed_rows?.length" title="以下行号导入失败" type="warning" :description="importResult.failed_rows.join(', ')" show-icon style="margin-top:12px" />
+          <div style="margin-top:16px">
+            <el-button type="primary" @click="$router.push('/bank/workbench')">前往核对工作台</el-button>
+            <el-button @click="closeResultDialog">继续导入</el-button>
+          </div>
+        </template>
+      </el-result>
+    </el-dialog>
   </div>
 </template>
 
@@ -156,6 +175,8 @@ const bankAccountId = ref('')
 const uploadedFile = ref<File | null>(null)
 const showMapping = ref(false)
 const showPreview = ref(false)
+const showConfirmDialog = ref(false)
+const showResultDialog = ref(false)
 const previewTab = ref('all')
 const loading = ref(false)
 const importing = ref(false)
@@ -168,6 +189,16 @@ async function loadBankAccounts() {
     const res: any = await request.get('/bank-accounts')
     const list = res?.data?.list !== undefined && res?.data?.list !== null ? res.data.list : (res?.data !== undefined && res?.data !== null ? res.data : res)
     bankAccounts.value = Array.isArray(list) ? list : []
+
+    // 默认选中基本户
+    if (bankAccounts.value.length === 1) {
+      bankAccountId.value = bankAccounts.value[0].id
+    } else if (bankAccounts.value.length > 1) {
+      const basic = bankAccounts.value.find(a =>
+        (a as any).bank_name?.includes('基本') || (a as any).bank_account_type === 'current'
+      )
+      if (basic) bankAccountId.value = basic.id
+    }
   } catch (e) {
     console.warn('后端资金账户接口不可用', e)
     bankAccounts.value = []
@@ -419,6 +450,8 @@ function resetImport() {
   uploadedFile.value = null
   showMapping.value = false
   showPreview.value = false
+  showConfirmDialog.value = false
+  showResultDialog.value = false
   importDone.value = false
   parseErrors.value = []
   detectedFormat.value = ''
@@ -428,11 +461,25 @@ function resetImport() {
   fieldMappings.value = [...defaultMappings]
 }
 
+function confirmBeforeImport() {
+  if (!uploadedFile.value || !bankAccountId.value) {
+    ElMessage.warning('请选择银行账户和上传文件')
+    return
+  }
+  // 只有一个银行账户时跳过确认弹窗，直接导入
+  if (bankAccounts.value.length <= 1) {
+    handleImport()
+    return
+  }
+  showConfirmDialog.value = true
+}
+
 async function handleImport() {
   if (!uploadedFile.value || !bankAccountId.value) {
     ElMessage.warning('请选择银行账户和上传文件')
     return
   }
+  showConfirmDialog.value = false
   importing.value = true
   try {
     const formData = new FormData()
@@ -447,6 +494,7 @@ async function handleImport() {
       failed_rows: res?.failed_rows ?? [],
     }
     importDone.value = true
+    showResultDialog.value = true
     ElMessage.success(`导入完成，成功 ${importResult.value.success_count} 条`)
   } catch (e: any) {
     const msg = e?.response?.data?.error || '导入失败'
@@ -454,6 +502,11 @@ async function handleImport() {
   } finally {
     importing.value = false
   }
+}
+
+function closeResultDialog() {
+  showResultDialog.value = false
+  resetImport()
 }
 </script>
 
