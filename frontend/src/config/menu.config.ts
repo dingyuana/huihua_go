@@ -18,6 +18,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
     { path: '/bank/workbench', title: '核对工作台', icon: 'List' },
     { path: '/payments', title: '收付款单', icon: 'Wallet' },
     { path: '/bank-reconciliation/match', title: '银企对账', icon: 'BalanceTwo' },
+    { path: '/bank-reconciliation/diff-report', title: '对账差异报告', icon: 'DataAnalysis' },
   ],
   accountant_ar: [
     { path: '/invoices', title: '发票管理', icon: 'Document' },
@@ -39,6 +40,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
         { path: '/setup/bank-accounts', title: '资金账户' },
         { path: '/setup/parties', title: '客商档案' },
         { path: '/setup/rules', title: '规则库' },
+        { path: '/setup/voucher-templates', title: '凭证模板' },
       ],
     },
     {
@@ -77,6 +79,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
         ],
       },
     { path: '/bank-reconciliation/match', title: '银企对账', icon: 'BalanceTwo' },
+    { path: '/bank-reconciliation/diff-report', title: '对账差异报告', icon: 'DataAnalysis' },
   ],
   boss: [
     { path: '/analytics', title: '经营分析', icon: 'TrendCharts' },

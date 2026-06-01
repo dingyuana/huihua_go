@@ -62,6 +62,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/setup/RuleLibrary.vue'),
         meta: { title: '规则库', roles: ['admin'] },
       },
+      {
+        path: 'setup/voucher-templates',
+        name: 'VoucherTemplateList',
+        component: () => import('@/views/setup/VoucherTemplateList.vue'),
+        meta: { title: '凭证模板', roles: ['admin'] },
+      },
       // ==== F2 票据采集 ====
       {
         path: 'bank/import',
@@ -137,6 +143,12 @@ const routes: RouteRecordRaw[] = [
         name: 'BalanceSheet',
         component: () => import('@/views/reconciliation-bank/BalanceSheet.vue'),
         meta: { title: '余额调节表', roles: ['cashier', 'admin'] },
+      },
+      {
+        path: 'bank-reconciliation/diff-report',
+        name: 'DiffReport',
+        component: () => import('@/views/reconciliation-bank/DiffReport.vue'),
+        meta: { title: '对账差异报告', roles: ['cashier', 'admin'] },
       },
       // ==== F6 期末处理 ====
       {

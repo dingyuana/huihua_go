@@ -2,9 +2,11 @@ package handler
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/service"
 )
@@ -46,6 +48,8 @@ func (h *BankHandler) Create(c *fiber.Ctx) error {
 		IsCash            bool   `json:"is_cash"`
 		Custodian         string `json:"custodian"`
 		Location          string `json:"location"`
+		OpeningBalance    string `json:"opening_balance"`
+		OpeningDate       string `json:"opening_date"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
@@ -62,6 +66,21 @@ func (h *BankHandler) Create(c *fiber.Ctx) error {
 		IsCash:            req.IsCash,
 		Custodian:         strPtr(req.Custodian),
 		Location:          strPtr(req.Location),
+	}
+	if req.OpeningBalance != "" {
+		amt, err := decimal.NewFromString(req.OpeningBalance)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid opening_balance"})
+		}
+		bankAcc.OpeningBalance = amt
+		bankAcc.CurrentBalance = amt
+	}
+	if req.OpeningDate != "" {
+		t, err := time.Parse("2006-01-02", req.OpeningDate)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid opening_date format, expected YYYY-MM-DD"})
+		}
+		bankAcc.OpeningDate = &t
 	}
 	if req.IsCash && req.AccountNumber == "" {
 		bankAcc.AccountNumber = fmt.Sprintf("CASH-%s", uuid.New().String()[:8])
@@ -109,6 +128,8 @@ func (h *BankHandler) Update(c *fiber.Ctx) error {
 		IsCash            *bool  `json:"is_cash"`
 		Custodian         string `json:"custodian"`
 		Location          string `json:"location"`
+		OpeningBalance    string `json:"opening_balance"`
+		OpeningDate       string `json:"opening_date"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
@@ -134,10 +155,73 @@ func (h *BankHandler) Update(c *fiber.Ctx) error {
 	if req.IsCash != nil {
 		bankAcc.IsCash = *req.IsCash
 	}
+	if req.OpeningBalance != "" {
+		amt, err := decimal.NewFromString(req.OpeningBalance)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid opening_balance"})
+		}
+		bankAcc.OpeningBalance = amt
+	}
+	if req.OpeningDate != "" {
+		t, err := time.Parse("2006-01-02", req.OpeningDate)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid opening_date format"})
+		}
+		bankAcc.OpeningDate = &t
+	}
 	if err := h.svc.Update(c.Context(), tenantID, id, bankAcc); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"status": "updated"})
+}
+
+// AdjustBalance records a manual opening or current-balance adjustment with audit trail.
+func (h *BankHandler) AdjustBalance(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userIDRaw := c.Locals("user_id")
+	userID, _ := userIDRaw.(uuid.UUID)
+
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+	var req struct {
+		AdjustmentType string `json:"adjustment_type"`
+		NewBalance     string `json:"new_balance"`
+		Reason         string `json:"reason"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+	if req.AdjustmentType == "" {
+		req.AdjustmentType = "manual_adjust"
+	}
+	if req.AdjustmentType != "opening" && req.AdjustmentType != "manual_adjust" {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid adjustment_type (allowed: opening, manual_adjust)"})
+	}
+	newBal, err := decimal.NewFromString(req.NewBalance)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid new_balance"})
+	}
+	adj, err := h.svc.AdjustBalance(c.Context(), tenantID, id, req.AdjustmentType, newBal, req.Reason, userID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(201).JSON(fiber.Map{"data": adj})
+}
+
+// ListBalanceAdjustments returns the audit trail of balance adjustments.
+func (h *BankHandler) ListBalanceAdjustments(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+	items, err := h.svc.ListBalanceAdjustments(c.Context(), tenantID, id)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": items})
 }
 
 // strPtr converts a string to a *string, returning nil for empty strings.

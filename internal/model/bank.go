@@ -63,6 +63,19 @@ type FailedRowDetail struct {
 	Reason  string `json:"reason"`
 }
 
+type BankBalanceAdjustment struct {
+	ID             uuid.UUID       `json:"id" db:"id"`
+	TenantID       uuid.UUID       `json:"tenant_id" db:"tenant_id"`
+	BankAccountID  uuid.UUID       `json:"bank_account_id" db:"bank_account_id"`
+	AdjustmentType string          `json:"adjustment_type" db:"adjustment_type"`
+	BeforeBalance  decimal.Decimal `json:"before_balance" db:"before_balance"`
+	AfterBalance   decimal.Decimal `json:"after_balance" db:"after_balance"`
+	Delta          decimal.Decimal `json:"delta" db:"delta"`
+	Reason         *string         `json:"reason,omitempty" db:"reason"`
+	OperatorID     *uuid.UUID      `json:"operator_id,omitempty" db:"operator_id"`
+	CreatedAt      time.Time       `json:"created_at" db:"created_at"`
+}
+
 // MatchResult represents the result of marking transactions as matched.
 type MatchResult struct {
 	MatchedIDs []uuid.UUID `json:"matched_ids"`
@@ -71,21 +84,25 @@ type MatchResult struct {
 
 // BankAccount represents the bank_accounts table.
 type BankAccount struct {
-	ID                uuid.UUID  `json:"id" db:"id"`
-	BankName          string     `json:"bank_name" db:"bank_name"`
-	AccountNumber     string     `json:"account_number" db:"account_number"`
-	ClearingAccountID *uuid.UUID `json:"clearing_account_id,omitempty" db:"clearing_account_id"`
-	CompanyID         uuid.UUID  `json:"company_id" db:"company_id"`
-	TenantID          uuid.UUID  `json:"tenant_id" db:"tenant_id"`
-	Currency          string     `json:"currency" db:"currency"`
-	IBAN              *string    `json:"iban,omitempty" db:"iban"`
-	SwiftCode         *string    `json:"swift_code,omitempty" db:"swift_code"`
-	BankAccountType   *string    `json:"bank_account_type,omitempty" db:"bank_account_type"`
-	IsActive          bool       `json:"is_active" db:"is_active"`
-	IsCash            bool       `json:"is_cash" db:"is_cash"`
-	Custodian         *string    `json:"custodian,omitempty" db:"custodian"`
-	Location          *string    `json:"location,omitempty" db:"location"`
-	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
+	ID                uuid.UUID       `json:"id" db:"id"`
+	BankName          string          `json:"bank_name" db:"bank_name"`
+	AccountNumber     string          `json:"account_number" db:"account_number"`
+	ClearingAccountID *uuid.UUID      `json:"clearing_account_id,omitempty" db:"clearing_account_id"`
+	CompanyID         uuid.UUID       `json:"company_id" db:"company_id"`
+	TenantID          uuid.UUID       `json:"tenant_id" db:"tenant_id"`
+	Currency          string          `json:"currency" db:"currency"`
+	IBAN              *string         `json:"iban,omitempty" db:"iban"`
+	SwiftCode         *string         `json:"swift_code,omitempty" db:"swift_code"`
+	BankAccountType   *string         `json:"bank_account_type,omitempty" db:"bank_account_type"`
+	IsActive          bool            `json:"is_active" db:"is_active"`
+	IsCash            bool            `json:"is_cash" db:"is_cash"`
+	Custodian         *string         `json:"custodian,omitempty" db:"custodian"`
+	Location          *string         `json:"location,omitempty" db:"location"`
+	OpeningBalance    decimal.Decimal `json:"opening_balance" db:"opening_balance"`
+	OpeningDate       *time.Time      `json:"opening_date,omitempty" db:"opening_date"`
+	CurrentBalance    decimal.Decimal `json:"current_balance" db:"current_balance"`
+	BalanceUpdatedAt  *time.Time      `json:"balance_updated_at,omitempty" db:"balance_updated_at"`
+	CreatedAt         time.Time       `json:"created_at" db:"created_at"`
 }
 
 // BankTransaction represents the bank_transactions table (imported bank statements).

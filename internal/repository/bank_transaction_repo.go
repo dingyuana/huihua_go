@@ -368,3 +368,31 @@ func (r *BankTransactionRepository) UpdateClassification(ctx context.Context, te
 func (r *BankTransactionRepository) GetPool() *pgxpool.Pool {
 	return r.pool
 }
+
+func (r *BankTransactionRepository) GetNetChangeByAccount(ctx context.Context, tenantID, bankAccountID uuid.UUID) (decimal.Decimal, int, error) {
+	var totalIn, totalOut decimal.NullDecimal
+	var count int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(debit), 0), COALESCE(SUM(credit), 0), COUNT(*)
+		FROM bank_transactions
+		WHERE tenant_id = $1 AND bank_account_id = $2`,
+		tenantID, bankAccountID).Scan(&totalIn, &totalOut, &count)
+	if err != nil {
+		return decimal.Zero, 0, err
+	}
+	net := totalIn.Decimal.Sub(totalOut.Decimal)
+	return net, count, nil
+}
+
+func (r *BankTransactionRepository) GetDirectionTotalsByAccount(ctx context.Context, tenantID, bankAccountID uuid.UUID) (decimal.Decimal, decimal.Decimal, error) {
+	var inflow, outflow decimal.NullDecimal
+	err := r.pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(debit), 0), COALESCE(SUM(credit), 0)
+		FROM bank_transactions
+		WHERE tenant_id = $1 AND bank_account_id = $2`,
+		tenantID, bankAccountID).Scan(&inflow, &outflow)
+	if err != nil {
+		return decimal.Zero, decimal.Zero, err
+	}
+	return inflow.Decimal, outflow.Decimal, nil
+}

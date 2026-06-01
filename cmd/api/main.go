@@ -98,6 +98,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/bank-accounts", bankHandler.Create)
 	api.Put("/bank-accounts/:id", bankHandler.Update)
 	api.Delete("/bank-accounts/:id", bankHandler.Delete)
+	api.Post("/bank-accounts/:id/adjust-balance", bankHandler.AdjustBalance)
+	api.Get("/bank-accounts/:id/balance-adjustments", bankHandler.ListBalanceAdjustments)
 
 	// Party routes
 	partyRepo := repository.NewPartyRepository(db.GetPool())
@@ -231,11 +233,15 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/reconciliation/unmatched", reconciliationHandler.GetUnmatched)
 	api.Post("/reconciliation/manual", reconciliationHandler.ManualMatch)
 
+	// Bank reconciliation (银企对账) routes
+	bankReconciliationSvc := service.NewBankReconciliationService(bankTransactionRepo, journalRepo, bankRepo, glEntryRepo)
+	reconHandler := handler.NewBankReconciliationHandler(bankReconciliationSvc)
+
 	// Bank reconciliation routes
-	reconSvc := service.NewBankReconciliationService(bankTransactionRepo, journalRepo, bankRepo, glEntryRepo)
-	reconHandler := handler.NewBankReconciliationHandler(reconSvc)
 	api.Post("/bank-reconciliation/reconcile", reconHandler.Reconcile)
 	api.Get("/bank-reconciliation/report", reconHandler.GetReport)
+	api.Get("/bank-reconciliation/balance-check", reconHandler.BalanceCheck)
+	api.Get("/bank-reconciliation/diff-report", reconHandler.GetDiffReport)
 	api.Post("/bank-reconciliation/mark-done", reconHandler.MarkDone)
 	api.Get("/bank-reconciliation/status", reconHandler.GetStatus)
 
