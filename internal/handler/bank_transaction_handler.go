@@ -165,6 +165,21 @@ func (h *BankTransactionHandler) PreviewExcel(c *fiber.Ctx) error {
 	}
 	log.Printf("Using columns found at row %d: %v", headerRowIndex, columns)
 
+	// Count only rows with at least 1 non-blank cell (skip trailing blank rows)
+	validRows := 0
+	for i := headerRowIndex + 1; i < len(rows); i++ {
+		hasContent := false
+		for _, cell := range rows[i] {
+			if strings.TrimSpace(cell) != "" {
+				hasContent = true
+				break
+			}
+		}
+		if hasContent {
+			validRows++
+		}
+	}
+
 	// Extract sample data (from data rows after header)
 	sampleData := [][]string{}
 	for i := headerRowIndex + 1; i < len(rows) && i <= headerRowIndex+5; i++ {
@@ -177,13 +192,13 @@ func (h *BankTransactionHandler) PreviewExcel(c *fiber.Ctx) error {
 		}
 	}
 
-	log.Printf("Sample data rows: %d", len(sampleData))
+	log.Printf("Valid data rows: %d", validRows)
 	log.Println("=== PreviewExcel completed ===")
 
 	return c.JSON(fiber.Map{
 		"columns":         columns,
 		"sample":          sampleData,
-		"total_rows":      len(rows) - headerRowIndex - 1, // exclude header and skipped rows
+		"total_rows":      validRows,
 		"header_row":      headerRowIndex,
 	})
 }
