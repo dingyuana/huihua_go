@@ -36,12 +36,12 @@
         </el-table-column>
         <el-table-column label="借方金额" width="180">
           <template #default="{ $index }">
-            <AmountInput v-model="lines[$index].debit" :disabled="readonly" :max="''" @update:model-value="onLineChange($index, 'debit')" />
+            <el-input v-model="lines[$index].debit" :disabled="readonly" placeholder="0.00" @input="onLineChange($index, 'debit')" />
           </template>
         </el-table-column>
         <el-table-column label="贷方金额" width="180">
           <template #default="{ $index }">
-            <AmountInput v-model="lines[$index].credit" :disabled="readonly" :max="''" @update:model-value="onLineChange($index, 'credit')" />
+            <el-input v-model="lines[$index].credit" :disabled="readonly" placeholder="0.00" @input="onLineChange($index, 'credit')" />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="60">
@@ -127,6 +127,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/api/request'
+import DocStatusTag from '@/components/business/DocStatusTag.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -143,6 +144,18 @@ interface LineItem {
   reverse_credit?: string
 }
 
+function parseNum(val: any): string {
+  if (val == null || val === '') return ''
+  const num = parseFloat(val)
+  return isNaN(num) ? '' : num.toString()
+}
+
+function toNum(val: any): number {
+  if (val == null || val === '') return 0
+  const num = parseFloat(val)
+  return isNaN(num) ? 0 : num
+}
+
 const docstatus = ref(0)
 const readonly = computed(() => docstatus.value === 1)
 const reversalId = ref('')
@@ -155,10 +168,10 @@ const lines = ref<LineItem[]>([
 
 const voucherNo = computed(() => {
   if (isNew.value) return '(自动生成)'
-  return route.params.id as string || '记-2026-05-XXXX'
+  return voucherNoRef.value || '记-2026-05-XXXX'
 })
+const voucherNoRef = ref('')
 
-/** 编辑模式：从后端加载凭证数据 */
 onMounted(async () => {
   if (isNew.value) {
     form.date = new Date().toISOString().slice(0, 10)
@@ -166,20 +179,22 @@ onMounted(async () => {
   }
   try {
     const res: any = await request.get(`/vouchers/${route.params.id}`)
-    const data = res?.data || res
+    const data = res?.journal_entry || res?.data || res
+    const linesData = res?.journal_entry_lines || data?.lines || []
     if (data) {
-      form.date = data.posting_date || ''
+      form.date = (data.posting_date || '').slice(0, 10)
       form.type = data.voucher_type || '记'
       form.remark = data.remark || ''
       docstatus.value = data.docstatus ?? 0
       reversalId.value = data.reversal_id || ''
-      if (data.lines?.length) {
-        lines.value = data.lines.map((l: any) => ({
-          account: { id: l.account_id, code: l.account_code, name: l.account_name },
-          debit: l.debit || '',
-          credit: l.credit || '',
-        }))
-      }
+      voucherNoRef.value = data.voucher_no || ''
+    }
+    if (linesData.length) {
+      lines.value = linesData.map((l: any) => ({
+        account: { id: l.account_id, code: l.account_code, name: l.account_name },
+        debit: l.debit || '',
+        credit: l.credit || '',
+      }))
     }
   } catch {
     form.date = new Date().toISOString().slice(0, 10)

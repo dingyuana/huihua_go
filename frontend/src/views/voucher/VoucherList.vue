@@ -20,19 +20,21 @@
           </el-select>
         </el-form-item>
         <el-form-item label="日期">
-          <el-date-picker v-model="filter.dateRange" type="daterange" range-separator="~" style="width: 220px" />
+          <el-date-picker v-model="filter.dateRange" type="daterange" range-separator="~" style="width: 220px" value-format="YYYY-MM-DD" />
         </el-form-item>
-        <el-form-item><el-button type="primary">查询</el-button></el-form-item>
+        <el-form-item><el-button type="primary" @click="fetchVouchers">查询</el-button></el-form-item>
       </el-form>
     </el-card>
 
     <el-card>
       <el-table :data="vouchers" border stripe size="small" @row-click="goDetail">
         <el-table-column prop="voucher_no" label="凭证号" width="150" />
-        <el-table-column prop="posting_date" label="日期" width="90" />
+        <el-table-column prop="posting_date" label="日期" width="110">
+          <template #default="{ row }">{{ (row.posting_date || '').slice(0, 10) }}</template>
+        </el-table-column>
         <el-table-column prop="remark" label="摘要" min-width="200" show-overflow-tooltip />
-        <el-table-column label="借方合计" width="120" align="right"><template #default="{ row }">{{ row.debit_total }}</template></el-table-column>
-        <el-table-column label="贷方合计" width="120" align="right"><template #default="{ row }">{{ row.credit_total }}</template></el-table-column>
+        <el-table-column label="借方合计" width="120" align="right"><template #default="{ row }">{{ row.debit_total || '0.00' }}</template></el-table-column>
+        <el-table-column label="贷方合计" width="120" align="right"><template #default="{ row }">{{ row.credit_total || '0.00' }}</template></el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }"><DocStatusTag :docstatus="row.docstatus" /></template>
         </el-table-column>
@@ -45,6 +47,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import request from '@/api/request'
+import DocStatusTag from '@/components/business/DocStatusTag.vue'
 
 const router = useRouter()
 
@@ -52,13 +55,22 @@ const filter = reactive({ type: '', status: null as number | null, dateRange: nu
 
 const vouchers = ref<any[]>([])
 
-onMounted(async () => {
+async function fetchVouchers() {
   try {
-    const res: any = await request.get('/vouchers')
-    const list = res?.data?.list || res?.data
+    const params: any = { limit: 100, offset: 0 }
+    if (filter.type) params.voucher_type = filter.type
+    if (filter.status !== null && filter.status !== undefined) params.doc_status = filter.status
+    if (filter.dateRange && filter.dateRange.length === 2) {
+      params.start_date = filter.dateRange[0]
+      params.end_date = filter.dateRange[1]
+    }
+    const res: any = await request.get('/vouchers', { params })
+    const list = res?.vouchers || res?.data?.list || res?.data
     if (Array.isArray(list)) { vouchers.value = list }
   } catch { /* no data */ }
-})
+}
+
+onMounted(() => fetchVouchers())
 
 function goDetail(row: any) {
   router.push(`/vouchers/${row.id}`)

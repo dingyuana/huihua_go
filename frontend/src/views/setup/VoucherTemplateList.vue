@@ -12,7 +12,7 @@
     </div>
 
     <el-alert type="info" :closable="false" show-icon style="margin-bottom: 12px">
-      <p>凭证模板用于在自动生成凭证时按 <b>分类标识</b> 选择借/贷方科目。一级借/贷方科目在模板行中指定；占位符 <code>{{ '{{amount}}' }}</code> 表示自动填入流水金额，<code>{{ '{{party}}' }}</code> 表示对方户名。</p>
+      <p>凭证模板用于在自动生成凭证时按 <b>分类标识</b> 选择借/贷方科目。一级借/贷方科目在模板行中指定；占位符 <code v-text="'{{amount}}'"></code> 表示自动填入流水金额，<code v-text="'{{party}}'"></code> 表示对方户名。</p>
       <p>每个分类下只能有一个 <b>启用</b> 模板。</p>
     </el-alert>
 

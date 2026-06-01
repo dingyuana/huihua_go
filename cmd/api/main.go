@@ -274,7 +274,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Placed after approvalSvc is initialized so it can be injected
 	autoGenSvc := service.NewVoucherAutoGenerateService(
 		journalRepo, glEntryRepo, bankTransactionRepo,
-		invoiceRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
+		bankRepo, invoiceRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
 	)
 	// Wire auto-gen service into bank transaction handler for post-import voucher auto-generation
 	bankTxnHandler.InjectAutoGenSvc(autoGenSvc)

@@ -16,6 +16,7 @@ type VoucherAutoGenerateService struct {
 	journalRepo       *repository.JournalRepository
 	glRepo            *repository.GLEntryRepository
 	bankTxnRepo       *repository.BankTransactionRepository
+	bankRepo          *repository.BankRepository
 	invoiceRepo       *repository.InvoiceRepository
 	accountRepo       *repository.AccountRepository
 	classificationSvc *ClassificationRuleService
@@ -23,11 +24,11 @@ type VoucherAutoGenerateService struct {
 	approvalSvc       *ApprovalService
 }
 
-// NewVoucherAutoGenerateService creates a new VoucherAutoGenerateService.
 func NewVoucherAutoGenerateService(
 	journalRepo *repository.JournalRepository,
 	glRepo *repository.GLEntryRepository,
 	bankTxnRepo *repository.BankTransactionRepository,
+	bankRepo *repository.BankRepository,
 	invoiceRepo *repository.InvoiceRepository,
 	accountRepo *repository.AccountRepository,
 	classificationSvc *ClassificationRuleService,
@@ -36,7 +37,8 @@ func NewVoucherAutoGenerateService(
 ) *VoucherAutoGenerateService {
 	return &VoucherAutoGenerateService{
 		journalRepo: journalRepo, glRepo: glRepo,
-		bankTxnRepo: bankTxnRepo, invoiceRepo: invoiceRepo,
+		bankTxnRepo: bankTxnRepo, bankRepo: bankRepo,
+		invoiceRepo: invoiceRepo,
 		accountRepo: accountRepo,
 		classificationSvc: classificationSvc, templateSvc: templateSvc,
 		approvalSvc: approvalSvc,
@@ -50,38 +52,59 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 		return nil, err
 	}
 
-	// Match to a classification rule
-	var debitAccountID, creditAccountID uuid.UUID
-	var ruleName string
-	txnDesc := ""
-	if txn.Description != nil {
-		txnDesc = *txn.Description
+	bankAcct, err := s.bankRepo.GetByID(ctx, tenantID, txn.BankAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup bank account: %w", err)
 	}
-	counterpartyStr := ""
-	if txn.CounterpartyName != nil {
-		counterpartyStr = *txn.CounterpartyName
-	}
-	direction := "out"
-	if txn.Credit.GreaterThan(txn.Debit) {
-		direction = "in"
-	}
-
-	// Try to match classification rule and pull the per-rule account mapping
-	result, err := s.classificationSvc.MatchTransaction(ctx, tenantID, txnDesc, counterpartyStr, direction)
-	if err == nil && result.Matched {
-		ruleName = *result.RuleName
-		if r, lookupErr := s.classificationSvc.GetRuleByID(ctx, tenantID, *result.RuleID); lookupErr == nil {
-			if r.DebitAccountID != nil {
-				debitAccountID = *r.DebitAccountID
-			}
-			if r.CreditAccountID != nil {
-				creditAccountID = *r.CreditAccountID
-			}
+	bankClearingAcctID := bankAcct.ClearingAccountID
+	if bankClearingAcctID == nil {
+		acct, lookupErr := s.accountRepo.GetByCode(ctx, tenantID, "1002")
+		if lookupErr != nil || acct == nil {
+			return nil, fmt.Errorf("bank account %s has no clearing_account_id and fallback account 1002 not found", txn.BankAccountID)
 		}
+		bankClearingAcctID = &acct.ID
 	}
 
-	if debitAccountID == uuid.Nil || creditAccountID == uuid.Nil {
-		return nil, fmt.Errorf("classification rule %q has no account mapping (dr=%v cr=%v)", ruleName, debitAccountID, creditAccountID)
+	var debitAccountID, creditAccountID uuid.UUID
+	var classification string
+	if txn.Classification != nil {
+		classification = *txn.Classification
+	}
+
+	// Determine accounts based on classification
+	switch classification {
+	case "bank_fee":
+		// 银行手续费 → 财务费用 (5602)
+		debitAccountID = *s.findAccountByCode(ctx, tenantID, "5602")
+		creditAccountID = *bankClearingAcctID
+	case "interest_income":
+		// 利息收入 → 财务费用 (5602) 贷方，或者投资收益
+		creditAccountID = *s.findAccountByCode(ctx, tenantID, "5602")
+		debitAccountID = *bankClearingAcctID
+	case "tax_payment":
+		// 税务缴费 → 应交税费 (2221)
+		debitAccountID = *s.findAccountByCode(ctx, tenantID, "2221")
+		creditAccountID = *bankClearingAcctID
+	case "social_security":
+		// 社保缴费 → 应付职工薪酬 (2211)
+		debitAccountID = *s.findAccountByCode(ctx, tenantID, "2211")
+		creditAccountID = *bankClearingAcctID
+	case "insurance_fee":
+		// 保险费用 → 管理费用 (5601)
+		debitAccountID = *s.findAccountByCode(ctx, tenantID, "5601")
+		creditAccountID = *bankClearingAcctID
+	case "business_receipt":
+		// 业务收款 → 应收账款 (1122) 贷方，或者主营业务收入
+		creditAccountID = *s.findAccountByCode(ctx, tenantID, "1122")
+		debitAccountID = *bankClearingAcctID
+	case "business_payment":
+		// 业务付款 → 应付账款 (2202)
+		debitAccountID = *s.findAccountByCode(ctx, tenantID, "2202")
+		creditAccountID = *bankClearingAcctID
+	default:
+		// 默认用管理费用
+		debitAccountID = *s.findAccountByCode(ctx, tenantID, "5601")
+		creditAccountID = *bankClearingAcctID
 	}
 
 	// Generate voucher number
@@ -103,7 +126,7 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 		CreatedBy:   createdBy,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
-		DocStatus:   0, // draft
+		DocStatus:   0, // 始终为草稿状态，需要人工审核
 	}
 
 	// Build lines
@@ -114,42 +137,29 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 	amount := txnAmt
 	var lines []model.JournalEntryLine
 	if txn.Debit.GreaterThan(decimal.Zero) {
-		// Bank received: debit bank, credit matched account
+		// 收入：借银行，贷对方科目
 		lines = []model.JournalEntryLine{
-			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: txn.BankAccountID, Debit: amount, Credit: decimal.Zero},
+			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: *bankClearingAcctID, Debit: amount, Credit: decimal.Zero},
 			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: creditAccountID, Debit: decimal.Zero, Credit: amount},
 		}
 	} else {
+		// 支出：借对方科目，贷银行
 		lines = []model.JournalEntryLine{
 			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: debitAccountID, Debit: amount, Credit: decimal.Zero},
-			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: txn.BankAccountID, Debit: decimal.Zero, Credit: amount},
+			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: *bankClearingAcctID, Debit: decimal.Zero, Credit: amount},
 		}
 	}
-	_, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, lines)
-
 	_, err = s.journalRepo.Create(ctx, tenantID, je)
 	if err != nil {
 		return nil, err
 	}
 
-	// Submit for approval using the template's bound approval flow (if any)
-	if s.approvalSvc != nil && je.CreatedBy != uuid.Nil {
-		var flowID *uuid.UUID
-		// Template binding: look up the active template for this tenant
-		templates, err := s.templateSvc.ListTemplates(ctx, tenantID)
-		if err == nil && len(templates) > 0 {
-			for i := range templates {
-				if templates[i].IsActive && templates[i].ApprovalFlowID != nil {
-					flowID = templates[i].ApprovalFlowID
-					break // use first active template with a flow
-				}
-			}
-		}
-		_ = s.approvalSvc.SubmitForApproval(ctx, tenantID, je.ID, je.CreatedBy, flowID)
+	_, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, lines)
+	if err != nil {
+		return nil, err
 	}
 
-	// Mark bank txn as matched
-	_ = s.bankTxnRepo.UpdateStatus(ctx, tenantID, txnID, true)
+	_ = s.bankTxnRepo.MarkAsMatched(ctx, tenantID, []uuid.UUID{txnID}, je.ID)
 	return je, nil
 }
 

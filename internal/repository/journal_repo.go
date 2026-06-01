@@ -427,11 +427,13 @@ func (r *JournalRepository) GetPostedByPeriod(ctx context.Context, tenantID uuid
 // GetLines retrieves all journal entry lines for a given journal entry.
 func (r *JournalRepository) GetLines(ctx context.Context, tenantID uuid.UUID, journalEntryID uuid.UUID) ([]model.JournalEntryLine, error) {
 	query := `
-		SELECT id, journal_entry_id, account_id, debit, credit, debit_ccy, credit_ccy,
-		       account_ccy, exchange_rate, party_type, party_id, cost_center_id, project_id,
-		       user_remark, reconciled, tenant_id
-		FROM journal_entry_lines
-		WHERE journal_entry_id = $1 AND tenant_id = $2`
+		SELECT jel.id, jel.journal_entry_id, jel.account_id, jel.debit, jel.credit, jel.debit_ccy, jel.credit_ccy,
+		       jel.account_ccy, jel.exchange_rate, jel.party_type, jel.party_id, jel.cost_center_id, jel.project_id,
+		       jel.user_remark, jel.reconciled, jel.tenant_id,
+		       a.code AS account_code, a.name AS account_name
+		FROM journal_entry_lines jel
+		LEFT JOIN accounts a ON a.id = jel.account_id
+		WHERE jel.journal_entry_id = $1 AND jel.tenant_id = $2`
 
 	rows, err := r.pool.Query(ctx, query, journalEntryID, tenantID)
 	if err != nil {
@@ -447,6 +449,7 @@ func (r *JournalRepository) GetLines(ctx context.Context, tenantID uuid.UUID, jo
 			&line.DebitCcy, &line.CreditCcy, &line.AccountCcy, &line.ExchangeRate,
 			&line.PartyType, &line.PartyID, &line.CostCenterID, &line.ProjectID,
 			&line.UserRemark, &line.Reconciled, &line.TenantID,
+			&line.AccountCode, &line.AccountName,
 		); err != nil {
 			return nil, fmt.Errorf("scan line: %w", err)
 		}
@@ -461,10 +464,15 @@ func (r *JournalRepository) GetLines(ctx context.Context, tenantID uuid.UUID, jo
 // ListVouchers retrieves vouchers with optional filters (for manual CRUD UI).
 func (r *JournalRepository) ListVouchers(ctx context.Context, tenantID uuid.UUID, startDate, endDate *time.Time, voucherType *string, docStatus *int16, accountID *uuid.UUID, limit, offset int) ([]model.JournalEntry, error) {
 	query := `
-		SELECT DISTINCT je.id, je.voucher_no, je.voucher_type, je.posting_date, je.company_id,
+		SELECT je.id, je.voucher_no, je.voucher_type, je.posting_date, je.company_id,
 		       je.tenant_id, je.remark, je.docstatus, je.reversed_id, je.reversal_id,
-		       je.submitted_by, je.submitted_at, je.created_by, je.created_at, je.updated_at
-		FROM journal_entries je`
+		       je.submitted_by, je.submitted_at, je.created_by, je.created_at, je.updated_at,
+		       COALESCE(jl.debit_total, 0) AS debit_total, COALESCE(jl.credit_total, 0) AS credit_total
+		FROM journal_entries je
+		LEFT JOIN LATERAL (
+		    SELECT SUM(jel.debit) AS debit_total, SUM(jel.credit) AS credit_total
+		    FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id
+		) jl ON true`
 	var args []interface{}
 	argIdx := 1
 
@@ -519,6 +527,7 @@ func (r *JournalRepository) ListVouchers(ctx context.Context, tenantID uuid.UUID
 			&je.ID, &je.VoucherNo, &je.VoucherType, &je.PostingDate, &je.CompanyID,
 			&je.TenantID, &je.Remark, &je.DocStatus, &je.ReversedID, &je.ReversalID,
 			&je.SubmittedBy, &je.SubmittedAt, &je.CreatedBy, &je.CreatedAt, &je.UpdatedAt,
+			&je.DebitTotal, &je.CreditTotal,
 		); err != nil {
 			return nil, fmt.Errorf("scan voucher: %w", err)
 		}

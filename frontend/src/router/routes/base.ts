@@ -126,6 +126,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '新增凭证', roles: ['admin', 'agent'] },
       },
       {
+        path: 'vouchers/:id',
+        name: 'VoucherDetail',
+        component: () => import('@/views/voucher/VoucherEdit.vue'),
+        meta: { title: '凭证详情', roles: ['admin', 'agent'] },
+      },
+      {
         path: 'vouchers/review',
         name: 'VoucherReview',
         component: () => import('@/views/voucher/ReviewWorkbench.vue'),

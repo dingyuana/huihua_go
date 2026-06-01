@@ -319,11 +319,9 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 
 		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, counterpartyStr, txnDirection)
 		if err == nil && matchResult != nil && matchResult.Matched && matchResult.RuleID != nil {
-			txn.Matched = true
 			if matchResult.Classification != nil {
 				txn.Classification = matchResult.Classification
 			}
-			// Store match info in RawData
 			rawData, _ := json.Marshal(map[string]interface{}{
 				"rule_id":        matchResult.RuleID,
 				"rule_name":      matchResult.RuleName,
@@ -529,11 +527,19 @@ func fallbackClassify(description, counterparty, direction string, debit, credit
 		}
 	}
 
-	// Tax payment keywords → business_payment (税务付款)
-	taxKeywords := []string{"税款", "税金", "缴税", "扣税", "增值税", "所得税", "附加税", "社保", "公积金", "实时缴税"}
+	// Insurance-related keywords → insurance_fee (保险费用)
+	insuranceKeywords := []string{"保险", "保费", "投保", "财产险", "责任险", "雇主责任险", "意外险"}
+	for _, kw := range insuranceKeywords {
+		if strings.Contains(desc, kw) || strings.Contains(cp, kw) {
+			return "insurance_fee"
+		}
+	}
+
+	// Tax payment keywords → tax_payment (税务缴费)
+	taxKeywords := []string{"税款", "税金", "缴税", "扣税", "增值税", "所得税", "附加税", "社保", "公积金", "实时缴税", "国税", "地税", "税务局", "国家金库", "国库", "印花税", "城建税", "教育费附加"}
 	for _, kw := range taxKeywords {
 		if strings.Contains(desc, kw) || strings.Contains(cp, kw) {
-			return "business_payment"
+			return "tax_payment"
 		}
 	}
 

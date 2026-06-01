@@ -1,28 +1,69 @@
 <template>
-  <el-cascader
-    :model-value="cascaderValue"
-    :options="cascaderOptions"
-    :props="cascaderProps"
-    :placeholder="placeholder"
-    :disabled="disabled"
-    :clearable="!disabled"
-    :show-all-levels="false"
-    :filterable="true"
-    style="width: 100%"
-    @change="handleCascaderChange"
-  >
-    <template #default="{ data }">
-      <span class="cascader-node">
-        <span class="node-code">{{ data.code }}</span>
-        <span class="node-name">{{ data.name }}</span>
-        <el-tag v-if="data.is_group" size="small" type="info" effect="plain">汇总</el-tag>
-      </span>
-    </template>
-  </el-cascader>
+  <div class="account-selector">
+    <el-select
+      v-model="level1Id"
+      :placeholder="level1Placeholder"
+      :disabled="disabled"
+      filterable
+      style="width: 33%"
+      @change="handleLevel1Change"
+    >
+      <el-option
+        v-for="node in level1Options"
+        :key="node.id"
+        :label="`${node.code} ${node.name}`"
+        :value="node.id"
+      >
+        <span class="node-code">{{ node.code }}</span>
+        <span class="node-name">{{ node.name }}</span>
+        <el-tag v-if="node.is_group" size="small" type="info" effect="plain" style="margin-left: 8px">汇总</el-tag>
+      </el-option>
+    </el-select>
+
+    <el-select
+      v-model="level2Id"
+      :placeholder="level2Placeholder"
+      :disabled="disabled || !level1Id"
+      filterable
+      style="width: 33%"
+      @change="handleLevel2Change"
+    >
+      <el-option
+        v-for="node in level2Options"
+        :key="node.id"
+        :label="`${node.code} ${node.name}`"
+        :value="node.id"
+      >
+        <span class="node-code">{{ node.code }}</span>
+        <span class="node-name">{{ node.name }}</span>
+        <el-tag v-if="node.is_group" size="small" type="info" effect="plain" style="margin-left: 8px">汇总</el-tag>
+      </el-option>
+    </el-select>
+
+    <el-select
+      v-model="level3Id"
+      :placeholder="level3Placeholder"
+      :disabled="disabled || !level2Id"
+      filterable
+      style="width: 33%"
+      @change="handleLevel3Change"
+    >
+      <el-option
+        v-for="node in level3Options"
+        :key="node.id"
+        :label="`${node.code} ${node.name}`"
+        :value="node.id"
+      >
+        <span class="node-code">{{ node.code }}</span>
+        <span class="node-name">{{ node.name }}</span>
+        <el-tag v-if="node.is_group" size="small" type="info" effect="plain" style="margin-left: 8px">汇总</el-tag>
+      </el-option>
+    </el-select>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 
@@ -33,6 +74,7 @@ interface AccountNode {
   is_group: boolean
   parent_id?: string | null
   children?: AccountNode[]
+  level: number
 }
 
 const props = withDefaults(defineProps<{
@@ -51,41 +93,58 @@ const emit = defineEmits<{
 const treeData = ref<AccountNode[]>([])
 const loading = ref(false)
 
-const cascaderProps = {
-  value: 'id',
-  label: 'name',
-  children: 'children',
-  checkStrictly: true,
-  emitPath: false,
-  expandTrigger: 'hover' as const,
-}
+const level1Id = ref<string | null>(null)
+const level2Id = ref<string | null>(null)
+const level3Id = ref<string | null>(null)
 
-const cascaderValue = computed(() => {
-  if (!props.modelValue) return null
-  if (typeof props.modelValue === 'string') return props.modelValue
-  return props.modelValue.id ?? null
-})
+const level1Placeholder = computed(() => props.placeholder || '请选择一级科目')
+const level2Placeholder = computed(() => !level1Id.value ? '请先选择一级科目' : '请选择二级科目')
+const level3Placeholder = computed(() => !level2Id.value ? '请先选择二级科目' : '请选择三级科目')
 
-const cascaderOptions = computed<AccountNode[]>(() => {
+const level1Options = computed<AccountNode[]>(() => {
   const root = treeData.value.find(n => !n.parent_id || n.parent_id === '')
-  if (!root) return treeData.value
-  return (root.children || []).map(toCascaderOption)
+  if (!root) return []
+  return (root.children || []).map(node => ({ ...node, level: 1 }))
 })
 
-function toCascaderOption(node: AccountNode): AccountNode {
-  return {
-    ...node,
-    children: node.children && node.children.length > 0
-      ? node.children.map(toCascaderOption)
-      : undefined,
+const level2Options = computed<AccountNode[]>(() => {
+  if (!level1Id.value) return []
+  const level1Node = findNodeById(treeData.value, level1Id.value)
+  if (!level1Node) return []
+  return (level1Node.children || []).map(node => ({ ...node, level: 2 }))
+})
+
+const level3Options = computed<AccountNode[]>(() => {
+  if (!level2Id.value) return []
+  const level2Node = findNodeById(treeData.value, level2Id.value)
+  if (!level2Node) return []
+  return (level2Node.children || []).map(node => ({ ...node, level: 3 }))
+})
+
+function findNodeById(nodes: AccountNode[], id: string): AccountNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n
+    if (n.children) {
+      const found = findNodeById(n.children, id)
+      if (found) return found
+    }
   }
+  return null
 }
 
-const displayText = computed(() => {
-  if (!props.modelValue) return ''
-  if (typeof props.modelValue === 'string') return props.modelValue
-  return `${props.modelValue.code} ${props.modelValue.name}`
-})
+function getNodePath(node: AccountNode): AccountNode[] {
+  const path: AccountNode[] = []
+  let current: AccountNode | null = node
+  while (current) {
+    path.unshift(current)
+    if (current.parent_id) {
+      current = findNodeById(treeData.value, current.parent_id!)
+    } else {
+      current = null
+    }
+  }
+  return path
+}
 
 async function loadTree() {
   if (treeData.value.length > 0) return
@@ -102,33 +161,66 @@ async function loadTree() {
   }
 }
 
-function findNodeById(nodes: AccountNode[], id: string): AccountNode | null {
-  for (const n of nodes) {
-    if (n.id === id) return n
-    if (n.children) {
-      const found = findNodeById(n.children, id)
-      if (found) return found
-    }
-  }
-  return null
+function handleLevel1Change() {
+  level2Id.value = null
+  level3Id.value = null
+  checkSelection()
 }
 
-function handleCascaderChange(id: string | null) {
-  if (!id) {
-    emit('update:modelValue', null)
-    return
-  }
-  const node = findNodeById(treeData.value, id)
-  if (!node) {
-    emit('update:modelValue', null)
-    return
-  }
-  if (node.is_group) {
-    ElMessage.warning('一级汇总科目不可直接入账，请选择二级或三级明细科目')
-    return
-  }
-  emit('update:modelValue', node)
+function handleLevel2Change() {
+  level3Id.value = null
+  checkSelection()
 }
+
+function handleLevel3Change() {
+  checkSelection()
+}
+
+function checkSelection() {
+  let selectedNode: AccountNode | null = null
+  if (level3Id.value) {
+    selectedNode = findNodeById(treeData.value, level3Id.value)
+  } else if (level2Id.value) {
+    selectedNode = findNodeById(treeData.value, level2Id.value)
+  } else if (level1Id.value) {
+    selectedNode = findNodeById(treeData.value, level1Id.value)
+  }
+
+  if (selectedNode) {
+    if (selectedNode.is_group) {
+      ElMessage.warning('汇总科目不可直接入账，请选择明细科目')
+      emit('update:modelValue', null)
+      return
+    }
+    emit('update:modelValue', selectedNode)
+  } else {
+    emit('update:modelValue', null)
+  }
+}
+
+watch(() => props.modelValue, (newVal) => {
+  if (!newVal) {
+    level1Id.value = null
+    level2Id.value = null
+    level3Id.value = null
+    return
+  }
+
+  let id: string
+  if (typeof newVal === 'string') {
+    id = newVal
+  } else {
+    id = newVal.id
+  }
+
+  const node = findNodeById(treeData.value, id)
+  if (node) {
+    const path = getNodePath(node)
+    level1Id.value = path[1]?.id || null
+    level2Id.value = path[2]?.id || null
+    level3Id.value = path[3]?.id || null
+  }
+}, { immediate: true })
 
 onMounted(() => {
   loadTree()
@@ -136,19 +228,20 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.cascader-node {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
+.account-selector {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
 
-  .node-code {
-    font-family: monospace;
-    color: #666;
-    min-width: 64px;
-  }
-  .node-name {
-    flex: 1;
-  }
+.node-code {
+  font-family: monospace;
+  color: #666;
+  min-width: 64px;
+  margin-right: 8px;
+}
+
+.node-name {
+  flex: 1;
 }
 </style>
