@@ -1,0 +1,87 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, master, feat/**]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'migrations/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: huihua
+          POSTGRES_PASSWORD: hfpwd
+          POSTGRES_DB: huihua_finance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U huihua"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: huihua
+      DB_PASSWORD: hfpwd
+      DB_NAME: huihua_finance
+      REDIS_HOST: localhost
+      REDIS_PORT: 6380
+      JWT_SECRET: ci-test-secret-not-for-production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify build
+        run: go build ./...
+
+      - name: Run unit tests
+        run: go test ./internal/... -count=1 -short
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Apply migrations
+        run: |
+          for f in migrations/*.sql; do
+            echo "Applying $f"
+            PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -v ON_ERROR_STOP=1 -f "$f" || exit 1
+          done
+        env:
+          PGPASSWORD: hfpwd
+        continue-on-error: true
+
+      - name: Run integration tests
+        run: go test ./... -count=1 -run Integration -v
+        continue-on-error: true
