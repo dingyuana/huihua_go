@@ -512,6 +512,16 @@ func (r *BankTransactionRepository) GetAllBankAccountIDs(ctx context.Context, te
 	return ids, rows.Err()
 }
 
+// UpdateAIFields updates the AI analysis fields on a bank transaction.
+func (r *BankTransactionRepository) UpdateAIFields(ctx context.Context, id uuid.UUID, businessScene, suggestedAction string, confidence int) error {
+	query := `
+		UPDATE bank_transactions
+		SET ai_business_scene = $2, ai_suggested_action = $3, ai_confidence = $4, updated_at = NOW()
+		WHERE id = $1`
+	_, err := r.pool.Exec(ctx, query, id, businessScene, suggestedAction, confidence)
+	return err
+}
+
 // CountByPeriod counts all bank transactions for a tenant within a date range (across all accounts).
 func (r *BankTransactionRepository) CountByPeriod(ctx context.Context, tenantID uuid.UUID, startDate, endDate time.Time) (int, error) {
 	var count int

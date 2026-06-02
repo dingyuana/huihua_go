@@ -122,8 +122,11 @@ type BankTransaction struct {
 	Matched               bool            `json:"matched" db:"matched"`
 	Confirmed             bool            `json:"confirmed" db:"confirmed"`
 	Status                *string         `json:"status,omitempty" db:"status"`
+	AIConfidence         *int           `json:"ai_confidence,omitempty" db:"ai_confidence"`
+	AISuggestedAction     *string         `json:"ai_suggested_action,omitempty" db:"ai_suggested_action"`
+	AIBusinessScene      *string         `json:"ai_business_scene,omitempty" db:"ai_business_scene"`
 	MatchedPaymentEntryID *uuid.UUID      `json:"matched_payment_entry_id,omitempty" db:"matched_payment_entry_id"`
-	MatchedGLEntryID      *uuid.UUID      `json:"matched_gl_entry_id,omitempty" db:"matched_gl_entry_id"`
+	MatchedGLEntryID     *uuid.UUID      `json:"matched_gl_entry_id,omitempty" db:"matched_gl_entry_id"`
 	ImportedFrom          *string         `json:"imported_from,omitempty" db:"imported_from"`
 	RawData               json.RawMessage `json:"raw_data,omitempty" db:"raw_data"`
 	CompanyID             uuid.UUID       `json:"company_id" db:"company_id"`
