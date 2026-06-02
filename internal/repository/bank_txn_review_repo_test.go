@@ -149,9 +149,14 @@ func (s *BankTxnReviewRepoSuite) TestGetByIDForUpdate_AC5() {
 
 	txnID := s.setupTestTxn(model.BankTxnReviewStatusPending, "unknown")
 
-	txnFromDB, err := s.repo.GetByIDForUpdate(ctx, txnID)
+	tx, _ := s.repo.BeginTx(ctx)
+	txnFromDB, err := s.repo.GetByIDForUpdate(ctx, tx, txnID)
 	assert.NoError(s.T(), err)
 	assert.NotNil(s.T(), txnFromDB)
 	assert.Equal(s.T(), txnID, txnFromDB.ID)
 	assert.Equal(s.T(), s.tenantID, txnFromDB.TenantID)
+}
+
+func TestBankTxnReviewRepoSuite(t *testing.T) {
+	suite.Run(t, new(BankTxnReviewRepoSuite))
 }
