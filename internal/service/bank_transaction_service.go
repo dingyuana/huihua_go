@@ -285,18 +285,18 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 		}
 
 		txn := model.BankTransaction{
-			ID:              uuid.New(),
-			TenantID:        tenantID,
-			BankAccountID:   bankAccountID,
-			TxnDate:         txnDate,
-			Description:     description,
-			Debit:           debit,
-			Credit:          credit,
-			Direction:       direction,
-			ReferenceNo:     referenceNo,
+			ID:               uuid.New(),
+			TenantID:         tenantID,
+			BankAccountID:    bankAccountID,
+			TxnDate:          txnDate,
+			Description:      description,
+			Debit:            debit,
+			Credit:           credit,
+			Direction:        direction,
+			ReferenceNo:      referenceNo,
 			CounterpartyName: counterparty,
-			Matched:         false,
-			CompanyID:       bankAccount.CompanyID,
+			Matched:          false,
+			CompanyID:        bankAccount.CompanyID,
 		}
 
 		// Auto-classify using classification rules
@@ -344,6 +344,7 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 		if err != nil {
 			return nil, fmt.Errorf("import batch: %w", err)
 		}
+		result.ImportedTxns = txns
 	}
 
 	return result, nil
