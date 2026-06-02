@@ -172,6 +172,15 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/bank-transactions/:id", bankTxnHandler.GetByID)
 	api.Delete("/bank-transactions/:id", bankTxnHandler.Delete)
 
+	// Bank transaction review workflow routes (TASK-BANK-01.4)
+	bankTxnReviewSvc := service.NewBankTxnReviewService(db.GetPool(), bankTransactionRepo, nil, nil)
+	bankTxnReviewHandler := handler.NewBankTxnReviewHandler(bankTxnReviewSvc, bankTransactionRepo)
+	api.Get("/bank-transactions/review-list", bankTxnReviewHandler.ReviewList)
+	api.Get("/bank-transactions/review-stats", bankTxnReviewHandler.ReviewStats)
+	api.Post("/bank-transactions/preview-draft/:id", bankTxnReviewHandler.PreviewDraft)
+	api.Post("/bank-transactions/submit-review", bankTxnReviewHandler.SubmitReview)
+	api.Post("/bank-transactions/reject-manual", bankTxnReviewHandler.RejectManual)
+
 	// Voucher template routes
 	voucherTemplateRepo := repository.NewVoucherTemplateRepository(db.GetPool())
 	voucherTemplateSvc := service.NewVoucherTemplateService(voucherTemplateRepo, accountRepo)
@@ -273,22 +282,27 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Put("/approval-flows/:id", approvalHandler.UpdateApprovalFlow)
 	api.Delete("/approval-flows/:id", approvalHandler.DeleteApprovalFlow)
 
-	// Voucher auto-generate routes (from bank transactions)
+	// Payment entry repo — used by auto-gen service and payment handler
+	paymentRepo := repository.NewPaymentEntryRepository(db.GetPool())
+
+	// Voucher auto-generate routes (from bank transactions & payment entries)
 	// Placed after approvalSvc is initialized so it can be injected
 	autoGenSvc := service.NewVoucherAutoGenerateService(
 		journalRepo, glEntryRepo, bankTransactionRepo,
-		bankRepo, invoiceRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
+		bankRepo, invoiceRepo, paymentRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
 	)
 	// Wire auto-gen service into bank transaction handler for post-import voucher auto-generation
 	bankTxnHandler.InjectAutoGenSvc(autoGenSvc)
+
 	autoGenHandler := handler.NewVoucherAutoGenerateHandler(autoGenSvc)
+	api.Post("/bank-transactions/batch-confirm", bankTxnHandler.BatchConfirm)
 	api.Post("/bank-transactions/:id/generate-voucher", autoGenHandler.GenerateFromBankTxn)
 	api.Post("/bank-transactions/batch-generate", autoGenHandler.BatchGenerate)
 	api.Post("/invoices/:id/generate-voucher", autoGenHandler.GenerateFromInvoice)
+	api.Post("/payment-entries/:id/generate-voucher", autoGenHandler.GenerateFromPaymentEntry)
 
 	// Payment entry routes (收款/付款单)
-	paymentRepo := repository.NewPaymentEntryRepository(db.GetPool())
-	paymentSvc := service.NewPaymentEntryService(paymentRepo, partyRepo, bankRepo, accountRepo)
+	paymentSvc := service.NewPaymentEntryService(paymentRepo, partyRepo, bankRepo, accountRepo, bankTransactionRepo)
 	paymentHandler := handler.NewPaymentEntryHandler(paymentSvc, bankTransactionRepo)
 	api.Get("/payment-entries", paymentHandler.List)
 	api.Post("/payment-entries", paymentHandler.CreateFromBankTransaction)
