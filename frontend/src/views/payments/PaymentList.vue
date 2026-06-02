@@ -66,7 +66,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="party_name" label="对方单位" min-width="140" />
+        <el-table-column prop="counterparty_name" label="对方单位" min-width="140" />
         <el-table-column prop="paid_amount" label="金额" width="120" align="right">
           <template #default="{ row }">
             <span :class="row.payment_type === 'receive' ? 'amount-income' : 'amount-expense'">
@@ -111,7 +111,7 @@
               {{ currentPayment.payment_type === 'receive' ? '收款' : '付款' }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="对方单位">{{ currentPayment.party_name }}</el-descriptions-item>
+          <el-descriptions-item label="对方单位">{{ currentPayment.counterparty_name }}</el-descriptions-item>
           <el-descriptions-item label="金额">
             <b :class="currentPayment.payment_type === 'receive' ? 'amount-income' : 'amount-expense'">
               {{ currentPayment.payment_type === 'receive' ? '+' : '-' }}{{ formatAmount(currentPayment.paid_amount) }}
@@ -126,7 +126,8 @@
         </el-descriptions>
 
         <div style="margin-top: 20px; text-align: center">
-          <el-button v-if="currentPayment.docstatus === 0" type="primary">提交审核</el-button>
+          <el-button v-if="currentPayment.docstatus === 0" type="primary" :loading="voucherLoading" @click="handleGenerateVoucher">生成凭证</el-button>
+          <el-button v-if="currentPayment.docstatus === 0" type="primary" plain>提交审核</el-button>
           <el-button v-if="currentPayment.docstatus === 1" type="danger">作废</el-button>
           <el-button @click="showDrawer = false">关闭</el-button>
         </div>
@@ -138,7 +139,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { fetchPayments, fetchPaymentDetail } from '@/api/modules/payment'
+import { fetchPayments, fetchPaymentDetail, generateVoucherFromPayment } from '@/api/modules/payment'
 import DocStatusTag from '@/components/business/DocStatusTag.vue'
 import type { PaymentEntry } from '@/types/models/payment'
 
@@ -170,6 +171,22 @@ const stats = computed(() => {
 
 const showDrawer = ref(false)
 const currentPayment = ref<PaymentEntry | null>(null)
+const voucherLoading = ref(false)
+
+async function handleGenerateVoucher() {
+  if (!currentPayment.value) return
+  voucherLoading.value = true
+  try {
+    const res: any = await generateVoucherFromPayment(currentPayment.value.id)
+    const voucherNo = res?.data?.voucher_no || ''
+    currentPayment.value.docstatus = 1 // posted
+    ElMessage.success(`凭证已生成: ${voucherNo}`)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '凭证生成失败')
+  } finally {
+    voucherLoading.value = false
+  }
+}
 
 async function loadData() {
   loading.value = true

@@ -513,7 +513,12 @@ func (s *BankTransactionService) GetTransaction(ctx context.Context, tenantID, i
 
 // DeleteTransaction deletes a bank transaction.
 func (s *BankTransactionService) DeleteTransaction(ctx context.Context, tenantID, id uuid.UUID) error {
-	return s.repo.UpdateStatus(ctx, tenantID, id, false)
+	return s.repo.UpdateMatched(ctx, tenantID, id, false)
+}
+
+// MarkAsConfirmed marks a single transaction as confirmed (人工确认).
+func (s *BankTransactionService) MarkAsConfirmed(ctx context.Context, tenantID, id uuid.UUID) error {
+	return s.repo.MarkAsConfirmed(ctx, tenantID, id)
 }
 
 // MarkAsMatched marks transactions as matched.

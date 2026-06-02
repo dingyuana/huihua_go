@@ -42,6 +42,8 @@ func TestPeriodHandler_PreCloseCheck(t *testing.T) {
 		repository.NewGLEntryRepository(pool),
 		repository.NewAccountRepository(pool),
 		repository.NewAssetDepreciationRepository(pool),
+		repository.NewBankTransactionRepository(pool),
+		repository.NewInvoiceRepository(pool),
 	)
 	h := NewPeriodHandler(svc)
 
@@ -77,6 +79,8 @@ func TestPeriodHandler_PreCloseCheck_MissingParams(t *testing.T) {
 		repository.NewGLEntryRepository(pool),
 		repository.NewAccountRepository(pool),
 		repository.NewAssetDepreciationRepository(pool),
+		repository.NewBankTransactionRepository(pool),
+		repository.NewInvoiceRepository(pool),
 	)
 	h := NewPeriodHandler(svc)
 
@@ -103,6 +107,8 @@ func TestPeriodHandler_Close(t *testing.T) {
 		repository.NewGLEntryRepository(pool),
 		repository.NewAccountRepository(pool),
 		repository.NewAssetDepreciationRepository(pool),
+		repository.NewBankTransactionRepository(pool),
+		repository.NewInvoiceRepository(pool),
 	)
 	h := NewPeriodHandler(svc)
 
@@ -130,6 +136,8 @@ func TestPeriodHandler_List(t *testing.T) {
 		repository.NewGLEntryRepository(pool),
 		repository.NewAccountRepository(pool),
 		repository.NewAssetDepreciationRepository(pool),
+		repository.NewBankTransactionRepository(pool),
+		repository.NewInvoiceRepository(pool),
 	)
 	h := NewPeriodHandler(svc)
 

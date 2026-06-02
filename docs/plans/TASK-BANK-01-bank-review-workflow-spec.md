@@ -256,7 +256,7 @@ Response (失败):
 }
 ```
 
-**事务执行步骤**（伪代码）：
+### 事务执行步骤（伪代码）：
 ```go
 func (s *BankTxnReviewService) SubmitReview(ctx, tenantID, txnIDs) {
     tx, _ := s.pool.Begin(ctx)
@@ -266,8 +266,8 @@ func (s *BankTxnReviewService) SubmitReview(ctx, tenantID, txnIDs) {
         txn := s.repo.GetByID(tx, txnID)
 
         // 1. 状态变更
-        if txn.status == "classified" {
-            txn.status = "approved"
+        if txn.status == BankTxnReviewStatusClassified {
+            txn.status = BankTxnReviewStatusApproved
         }
 
         // 2. 草稿转正 + 生成下游单据
@@ -277,13 +277,13 @@ func (s *BankTxnReviewService) SubmitReview(ctx, tenantID, txnIDs) {
             voucher := s.voucherAutoSvc.GenerateFromBankTxn(tx, tenantID, txnID, docstatus=1)
             txn.draft_voucher_id = voucher.ID
             txn.matched_journal_entry_id = voucher.ID
-            txn.status = "voucher_generated"
+            txn.status = BankTxnReviewStatusVoucherGenerated
         case "B":
             // B类：生成收款单/付款单（confirmed）
             payment := s.paymentSvc.GenerateFromBankTxn(tx, tenantID, txnID, status=confirmed)
             txn.draft_payment_id = payment.ID
             txn.matched_document_id = payment.ID
-            txn.status = "payment_created"
+            txn.status = BankTxnReviewStatusPaymentCreated
         }
 
         // 3. 银企勾对
@@ -406,18 +406,47 @@ Response: { "data": { "updated": true } }
 
 ---
 
-## 8. 执行顺序建议
+## 8. 执行顺序（TDD · 测试先行）
+
+> **TDD 原则**：每个子任务先写对应 `_test.go`（验证失败）→ 实现代码 → 测试通过 → commit → push
 
 ```
-Step 1: Migration 脚本（新增字段 + AI 反馈日志表）
-Step 2: 后端字段 + Repository（BankTxnStatus 模型 + UpdateStatus/ListByStatus）
-Step 3: 原子性提交审核 Service（事务核心）
-Step 4: Handler 层 API（SubmitReview / RejectManual / ReviewList / ReviewStats）
-Step 5: AI 反馈日志 Service
-Step 6: 前端审核工作台（BankTxnReviewView + DraftPreviewDialog）
-Step 7: 前端待处理工作台（ManualPendingView）
-Step 8: 集成测试 + 编译验证
+Step 1:  Migration（新增字段 + AI反馈日志表）  [先跑]
+        ↓
+Step 2:  Model 层
+        ├─ model/bank_txn_status.go（枚举）
+        └─ 同步写 model 测试（字段/枚举）[TASK-BANK-01.1]
+
+Step 3:  Repository 层
+        ├─ bank_transaction_repo.go（ListByStatus / UpdateStatus）
+        └─ 同步写 repo 测试[TASK-BANK-01.2]
+
+Step 4:  Service 层
+        ├─ bank_txn_review_service.go（SubmitReview 核心）
+        └─ 同步写 service 测试（含事务回滚/AC5-AC6）[TASK-BANK-01.3]
+
+Step 5:  Handler 层
+        ├─ bank_txn_review_handler.go（5个API）
+        └─ 同步写 handler 测试（HTTP响应码）[TASK-BANK-01.4]
+
+Step 6:  AI Feedback 层
+        ├─ ai_feedback_service.go + repo
+        └─ 同步写测试（AC10）[TASK-BANK-01.5]
+
+Step 7:  前端 API 层
+        ├─ bank_transaction.ts 扩展
+        └─ 手动验证 API 连通[前端自验]
+
+Step 8:  前端页面
+        BankTxnReviewView + DraftPreviewDialog + ManualPendingView[TASK-BANK-01.6]
+
+Step 9:  集成测试 + go build 验证（AC14-AC15）[TASK-BANK-01.7]
 ```
+
+**每个 Step commit 节奏**：
+1. 写测试（RED）→ commit `test: add X_test.go for TASK-BANK-01.N [RED]`
+2. 实现代码 → commit `feat: implement TASK-BANK-01.N`
+3. `go test ./...` 通过 → `git push` → 才开始下一步
 
 ---
 

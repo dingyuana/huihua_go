@@ -302,7 +302,7 @@ func (s *ReconciliationService) ManualMatch(ctx context.Context, tenantID, userI
 		pairs = append(pairs, pair)
 	}
 
-	if err := s.bankTxnRepo.UpdateStatus(ctx, tenantID, req.BankTransactionID, true); err != nil {
+	if err := s.bankTxnRepo.UpdateMatched(ctx, tenantID, req.BankTransactionID, true); err != nil {
 		return pairs, fmt.Errorf("mark bank txn matched: %w", err)
 	}
 

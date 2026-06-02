@@ -6,7 +6,7 @@ export interface PaymentEntry {
   payment_type: PaymentType
   party_type: PartyType
   party_id: string
-  party_name: string
+  counterparty_name: string
   paid_from_id: string
   paid_to_id: string
   paid_amount: string

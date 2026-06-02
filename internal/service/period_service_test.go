@@ -36,6 +36,8 @@ func newTestPeriodService(t *testing.T) *PeriodService {
 		repository.NewGLEntryRepository(pool),
 		repository.NewAccountRepository(pool),
 		repository.NewAssetDepreciationRepository(pool),
+		repository.NewBankTransactionRepository(pool),
+		repository.NewInvoiceRepository(pool),
 	)
 }
 

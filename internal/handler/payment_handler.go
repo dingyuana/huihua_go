@@ -82,6 +82,7 @@ func (h *PaymentEntryHandler) CreateFromBankTransaction(c *fiber.Ctx) error {
 	if bankTxn.ReferenceNo != nil {
 		createReq.ReferenceNo = *bankTxn.ReferenceNo
 	}
+	createReq.CounterpartyName = bankTxn.CounterpartyName
 
 	entry, err := h.svc.CreateFromBankTransaction(c.Context(), tenantID, userID, createReq, bankTxn, bankTxn.CompanyID)
 	if err != nil {

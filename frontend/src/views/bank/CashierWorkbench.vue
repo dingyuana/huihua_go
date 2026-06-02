@@ -53,6 +53,7 @@
         <el-tab-pane :label="`内部转账 (${stats.byCategory.internal_transfer})`" name="internal_transfer" />
         <el-tab-pane :label="`税务缴费 (${stats.byCategory.tax_payment})`" name="tax_payment" />
         <el-tab-pane :label="`社保缴费 (${stats.byCategory.social_security})`" name="social_security" />
+        <el-tab-pane :label="`保险费用 (${stats.byCategory.insurance_fee})`" name="insurance_fee" />
         <el-tab-pane :label="`待处理 (${stats.byCategory.pending})${stats.byCategory.pending > 0 ? ' 🔴' : ''}`" name="pending" />
       </el-tabs>
 
@@ -71,7 +72,7 @@
         <el-checkbox v-model="selectAll" @change="onSelectAll">全选</el-checkbox>
         <span class="selected-count">已选 {{ selectedIds.length }} 条</span>
         <el-button size="small" type="primary" :disabled="selectedIds.length === 0" @click="batchConfirm">确认选中</el-button>
-        <el-button size="small" :disabled="selectedIds.length === 0" @click="showClassifyDialog = true">修正分类</el-button>
+        <el-button size="small" :disabled="selectedIds.length === 0 || hasConfirmedSelected" @click="showClassifyDialog = true">修正分类</el-button>
       </div>
 
       <!-- 批量模式下提示待生成单据 -->
@@ -113,7 +114,7 @@
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
             <el-button v-if="!row.confirmed" link type="primary" size="small" @click="confirmOne(row)">确认</el-button>
-            <el-button link type="primary" size="small" @click="editOne(row)">修正</el-button>
+            <el-button v-if="!row.confirmed" link type="primary" size="small" @click="editOne(row)">修正</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -176,6 +177,7 @@ interface BankTxnAPI {
   description: string | null
   classification: string | null
   matched: boolean
+  confirmed: boolean
   matched_payment_entry_id?: string
 }
 
@@ -198,7 +200,7 @@ function apiToTxnItem(t: BankTxnAPI): TxnItem {
     counterparty: t.counterparty_name || '',
     description: t.description || '',
     classification: t.classification || (t.matched ? 'business_receipt' : 'pending'),
-    confirmed: t.matched,
+    confirmed: t.confirmed,
     payment_entry_id: t.matched_payment_entry_id,
   }
 }
@@ -250,6 +252,7 @@ const stats = computed(() => {
     internal_transfer: 0,
     tax_payment: 0,
     social_security: 0,
+    insurance_fee: 0,
     pending: 0,
   }
   allTxns.value.forEach(t => {
@@ -265,6 +268,13 @@ const stats = computed(() => {
     generatedDocs: docCounter.value,
     byCategory,
   }
+})
+
+const hasConfirmedSelected = computed(() => {
+  return selectedIds.value.some(id => {
+    const txn = allTxns.value.find(t => t.id === id)
+    return txn?.confirmed
+  })
 })
 
 const filteredTxns = computed(() => {
@@ -306,6 +316,7 @@ function docTypeLabel(cls: string): string {
     internal_transfer: '银行转账单',
     tax_payment: '税务缴费单',
     social_security: '社保缴费单',
+    insurance_fee: '保险费用单',
     pending: '待处理',
   }
   return map[cls] || cls
@@ -320,6 +331,7 @@ function classificationTag(val: string) {
     internal_transfer: 'info',
     tax_payment: 'warning',
     social_security: 'info',
+    insurance_fee: 'warning',
     pending: 'danger',
   }
   return map[val] || 'info'
@@ -334,13 +346,14 @@ function classificationLabel(val: string) {
     internal_transfer: '内部转账',
     tax_payment: '税务缴费',
     social_security: '社保缴费',
+    insurance_fee: '保险费用',
     pending: '待处理',
   }
   return map[val] || val
 }
 
-const AUTO_VOUCHER_CLASSIFICATIONS = new Set(['bank_fee', 'interest_income', 'tax_payment', 'social_security'])
-const DRAFT_ORDER_CLASSIFICATIONS = new Set(['business_receipt', 'business_payment', 'internal_transfer'])
+const AUTO_VOUCHER_CLASSIFICATIONS = new Set(['bank_fee', 'interest_income', 'tax_payment', 'social_security', 'insurance_fee', 'internal_transfer'])
+const DRAFT_ORDER_CLASSIFICATIONS = new Set(['business_receipt', 'business_payment'])
 
 function isAutoVoucherClassification(cls: string): boolean {
   return AUTO_VOUCHER_CLASSIFICATIONS.has(cls)
@@ -380,28 +393,32 @@ function onSelectAll() {
 
 async function confirmOne(row: TxnItem) {
   try {
-    if (isAutoVoucherClassification(row.classification)) {
-      const res: any = await request.post(`/bank-transactions/${row.id}/generate-voucher`)
-      const je = res?.data
-      row.confirmed = true
-      row.payment_no = je?.voucher_no || ''
-      docCounter.value++
-      ElMessage.success(`流水 ${row.date} 已确认，已生成凭证：${je?.voucher_no || '(凭证号未返回)'}（${docTypeLabel(row.classification)}）`)
-    } else {
-      const { paymentType, partyType } = mapToPaymentEntry(row.classification)
+    const res: any = await request.post('/bank-transactions/batch-confirm', { ids: [row.id] })
+    const data = res?.data
 
-      const res: any = await request.post('/payment-entries', {
+    // Always mark as confirmed locally — backend set it
+    row.confirmed = true
+
+    if (data?.vouchers_created > 0) {
+      row.payment_no = data.voucher_nos?.[0] || ''
+      docCounter.value++
+      ElMessage.success(`流水 ${row.date} 已确认，已生成凭证：${row.payment_no}（${docTypeLabel(row.classification)}）`)
+    } else if (data?.documents_needed > 0) {
+      const { paymentType, partyType } = mapToPaymentEntry(row.classification)
+      const docRes: any = await request.post('/payment-entries', {
         bank_transaction_id: row.id,
         payment_type: paymentType,
         party_type: partyType,
         party_id: '00000000-0000-0000-0000-000000000000',
         posting_date: new Date().toISOString().slice(0, 10),
       })
-      row.confirmed = true
-      row.payment_entry_id = res.data?.payment_entry?.id
-      row.payment_no = res.data?.payment_entry?.payment_no
+      row.payment_entry_id = docRes.data?.payment_entry?.id
+      row.payment_no = docRes.data?.payment_entry?.payment_no
       docCounter.value++
       ElMessage.success(`流水 ${row.date} 已确认，已生成${docTypeLabel(row.classification)}：${row.payment_no}（待会计处理）`)
+    } else if (data?.failed > 0) {
+      // Already processed — still show as confirmed
+      ElMessage.info(`流水 ${row.date} 已完成确认`)
     }
   } catch (e: any) {
     const msg = e?.response?.data?.error || e?.message || '操作失败'
@@ -414,48 +431,62 @@ async function batchConfirm() {
   if (selected.length === 0) return
 
   const today = new Date().toISOString().slice(0, 10)
-  let voucherOk = 0
-  let orderOk = 0
-  let fail = 0
 
-  for (const t of selected) {
-    try {
-      if (isAutoVoucherClassification(t.classification)) {
-        const res: any = await request.post(`/bank-transactions/${t.id}/generate-voucher`)
-        t.confirmed = true
-        t.payment_no = res?.data?.voucher_no || ''
-        voucherOk++
-      } else {
-        const { paymentType, partyType } = mapToPaymentEntry(t.classification)
+  try {
+    const res: any = await request.post('/bank-transactions/batch-confirm', { ids: selectedIds.value })
+    const data = res?.data
+    const voucherOk = data?.vouchers_created || 0
+    const docIds: string[] = data?.document_ids || []
 
-        const res: any = await request.post('/payment-entries', {
-          bank_transaction_id: t.id,
+    // Mark all selected as confirmed in local state for immediate UI feedback
+    selected.forEach(t => { t.confirmed = true })
+
+    // Match voucher nos to auto-voucher items in classification order
+    let vIdx = 0
+    for (const t of selected) {
+      if (isAutoVoucherClassification(t.classification) && vIdx < (data?.voucher_nos?.length || 0)) {
+        t.payment_no = data.voucher_nos[vIdx++]
+      }
+    }
+    docCounter.value += vIdx
+
+    // Business types: create payment entries for returned document_ids
+    let orderOk = 0
+    for (const id of docIds) {
+      const t = allTxns.value.find(tx => tx.id === id)
+      if (!t) continue
+      const { paymentType, partyType } = mapToPaymentEntry(t.classification)
+      try {
+        const docRes: any = await request.post('/payment-entries', {
+          bank_transaction_id: id,
           payment_type: paymentType,
           party_type: partyType,
           party_id: '00000000-0000-0000-0000-000000000000',
           posting_date: today,
         })
-        t.confirmed = true
-        t.payment_entry_id = res.data?.payment_entry?.id
-        t.payment_no = res.data?.payment_entry?.payment_no
+        t.payment_entry_id = docRes.data?.payment_entry?.id
+        t.payment_no = docRes.data?.payment_entry?.payment_no
         orderOk++
+      } catch {
+        console.error(`Failed to create payment entry for txn ${id}`)
       }
-      docCounter.value++
-    } catch (e: any) {
-      const msg = e?.response?.data?.error || e?.message || '失败'
-      console.error(`Bank txn ${t.id} failed:`, msg)
-      fail++
     }
+    docCounter.value += orderOk
+
+    const parts: string[] = []
+    if (voucherOk > 0) parts.push(`自动凭证 ${voucherOk} 张`)
+    if (orderOk > 0) parts.push(`草稿单据 ${orderOk} 张`)
+    const failCount = (data?.failed || 0)
+    if (failCount > 0) parts.push(`失败 ${failCount} 条`)
+
+    if (parts.length > 0) {
+      ElMessage.success(`批量完成：${parts.join('，')}`)
+    }
+  } catch (e: any) {
+    const msg = e?.response?.data?.error || e?.message || '批量确认失败'
+    ElMessage.error(`批量确认失败：${msg}`)
   }
 
-  const parts: string[] = []
-  if (voucherOk > 0) parts.push(`自动凭证 ${voucherOk} 张`)
-  if (orderOk > 0) parts.push(`草稿单据 ${orderOk} 张`)
-  if (fail > 0) parts.push(`失败 ${fail} 条`)
-
-  if (parts.length > 0) {
-    ElMessage.success(`批量完成：${parts.join('，')}`)
-  }
   selectedIds.value = []
   selectAll.value = false
 }

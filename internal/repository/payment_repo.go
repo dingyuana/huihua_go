@@ -29,15 +29,15 @@ func (r *PaymentEntryRepository) Create(ctx context.Context, tenantID uuid.UUID,
 
 	query := `
 		INSERT INTO payment_entries (
-			id, payment_no, payment_type, party_type, party_id,
+			id, payment_no, payment_type, party_type, party_id, counterparty_name,
 			paid_from_id, paid_to_id, paid_amount, received_amount,
 			reference_no, reference_date, posting_date,
 			company_id, tenant_id, bank_account_id, docstatus, created_by, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		RETURNING created_at`
 
 	err := r.pool.QueryRow(ctx, query,
-		pe.ID, pe.PaymentNo, pe.PaymentType, pe.PartyType, pe.PartyID,
+		pe.ID, pe.PaymentNo, pe.PaymentType, pe.PartyType, pe.PartyID, pe.CounterpartyName,
 		pe.PaidFromID, pe.PaidToID, pe.PaidAmount, pe.ReceivedAmount,
 		pe.ReferenceNo, pe.ReferenceDate, pe.PostingDate,
 		pe.CompanyID, pe.TenantID, pe.BankAccountID, pe.DocStatus, pe.CreatedBy, time.Now(),
@@ -50,7 +50,7 @@ func (r *PaymentEntryRepository) Create(ctx context.Context, tenantID uuid.UUID,
 
 func (r *PaymentEntryRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.PaymentEntry, error) {
 	query := `
-		SELECT id, payment_no, payment_type, party_type, party_id,
+		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
 			paid_from_id, paid_to_id, paid_amount, received_amount,
 			reference_no, reference_date, posting_date,
 			company_id, tenant_id, bank_account_id, docstatus, created_by, created_at
@@ -59,7 +59,7 @@ func (r *PaymentEntryRepository) GetByID(ctx context.Context, tenantID, id uuid.
 
 	pe := &model.PaymentEntry{}
 	err := r.pool.QueryRow(ctx, query, id, tenantID).Scan(
-		&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID,
+		&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID, &pe.CounterpartyName,
 		&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount,
 		&pe.ReferenceNo, &pe.ReferenceDate, &pe.PostingDate,
 		&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.CreatedBy, &pe.CreatedAt,
@@ -72,7 +72,7 @@ func (r *PaymentEntryRepository) GetByID(ctx context.Context, tenantID, id uuid.
 
 func (r *PaymentEntryRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, filters ...func(*pgxpool.Pool, uuid.UUID) ([]model.PaymentEntry, error)) ([]model.PaymentEntry, error) {
 	query := `
-		SELECT id, payment_no, payment_type, party_type, party_id,
+		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
 			paid_from_id, paid_to_id, paid_amount, received_amount,
 			reference_no, reference_date, posting_date,
 			company_id, tenant_id, bank_account_id, docstatus, created_by, created_at
@@ -90,7 +90,7 @@ func (r *PaymentEntryRepository) ListByTenant(ctx context.Context, tenantID uuid
 	for rows.Next() {
 		var pe model.PaymentEntry
 		if err := rows.Scan(
-			&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID,
+			&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID, &pe.CounterpartyName,
 			&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount,
 			&pe.ReferenceNo, &pe.ReferenceDate, &pe.PostingDate,
 			&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.CreatedBy, &pe.CreatedAt,
@@ -104,7 +104,7 @@ func (r *PaymentEntryRepository) ListByTenant(ctx context.Context, tenantID uuid
 
 func (r *PaymentEntryRepository) ListByBankAccount(ctx context.Context, tenantID, bankAccountID uuid.UUID) ([]model.PaymentEntry, error) {
 	query := `
-		SELECT id, payment_no, payment_type, party_type, party_id,
+		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
 			paid_from_id, paid_to_id, paid_amount, received_amount,
 			reference_no, reference_date, posting_date,
 			company_id, tenant_id, bank_account_id, docstatus, created_by, created_at
@@ -122,7 +122,7 @@ func (r *PaymentEntryRepository) ListByBankAccount(ctx context.Context, tenantID
 	for rows.Next() {
 		var pe model.PaymentEntry
 		if err := rows.Scan(
-			&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID,
+			&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID, &pe.CounterpartyName,
 			&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount,
 			&pe.ReferenceNo, &pe.ReferenceDate, &pe.PostingDate,
 			&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.CreatedBy, &pe.CreatedAt,

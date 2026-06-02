@@ -120,6 +120,8 @@ type BankTransaction struct {
 	CounterpartyName      *string         `json:"counterparty_name,omitempty" db:"counterparty_name"`
 	Classification        *string         `json:"classification,omitempty" db:"classification"`
 	Matched               bool            `json:"matched" db:"matched"`
+	Confirmed             bool            `json:"confirmed" db:"confirmed"`
+	Status                *string         `json:"status,omitempty" db:"status"`
 	MatchedPaymentEntryID *uuid.UUID      `json:"matched_payment_entry_id,omitempty" db:"matched_payment_entry_id"`
 	MatchedGLEntryID      *uuid.UUID      `json:"matched_gl_entry_id,omitempty" db:"matched_gl_entry_id"`
 	ImportedFrom          *string         `json:"imported_from,omitempty" db:"imported_from"`

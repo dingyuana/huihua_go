@@ -41,3 +41,8 @@ export function updatePayment(id: string, data: Partial<PaymentEntry>): Promise<
 export function deletePayment(id: string): Promise<ApiResponse<void>> {
   return request.delete(`/payment-entries/${id}`)
 }
+
+/** 从收付款单生成凭证 */
+export function generateVoucherFromPayment(id: string): Promise<ApiResponse<any>> {
+  return request.post(`/payment-entries/${id}/generate-voucher`)
+}

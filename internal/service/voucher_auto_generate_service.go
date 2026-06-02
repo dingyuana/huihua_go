@@ -18,6 +18,7 @@ type VoucherAutoGenerateService struct {
 	bankTxnRepo       *repository.BankTransactionRepository
 	bankRepo          *repository.BankRepository
 	invoiceRepo       *repository.InvoiceRepository
+	paymentRepo       *repository.PaymentEntryRepository
 	accountRepo       *repository.AccountRepository
 	classificationSvc *ClassificationRuleService
 	templateSvc       *VoucherTemplateService
@@ -30,6 +31,7 @@ func NewVoucherAutoGenerateService(
 	bankTxnRepo *repository.BankTransactionRepository,
 	bankRepo *repository.BankRepository,
 	invoiceRepo *repository.InvoiceRepository,
+	paymentRepo *repository.PaymentEntryRepository,
 	accountRepo *repository.AccountRepository,
 	classificationSvc *ClassificationRuleService,
 	templateSvc *VoucherTemplateService,
@@ -39,6 +41,7 @@ func NewVoucherAutoGenerateService(
 		journalRepo: journalRepo, glRepo: glRepo,
 		bankTxnRepo: bankTxnRepo, bankRepo: bankRepo,
 		invoiceRepo:       invoiceRepo,
+		paymentRepo:       paymentRepo,
 		accountRepo:       accountRepo,
 		classificationSvc: classificationSvc, templateSvc: templateSvc,
 		approvalSvc: approvalSvc,
@@ -50,6 +53,10 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 	txn, err := s.bankTxnRepo.GetByID(ctx, tenantID, txnID)
 	if err != nil {
 		return nil, err
+	}
+
+	if txn.Matched {
+		return nil, fmt.Errorf("bank transaction %s already has a journal entry", txnID)
 	}
 
 	bankAcct, err := s.bankRepo.GetByID(ctx, tenantID, txn.BankAccountID)
@@ -159,7 +166,6 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 		return nil, err
 	}
 
-	_ = s.bankTxnRepo.MarkAsMatched(ctx, tenantID, []uuid.UUID{txnID}, je.ID)
 	return je, nil
 }
 
@@ -257,6 +263,110 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 	}
 	if _, err := s.journalRepo.AddLines(ctx, tenantID, je.ID, lines); err != nil {
 		return nil, err
+	}
+
+	return je, nil
+}
+
+// GenerateFromPaymentEntry generates a voucher from a payment entry (收款单/付款单).
+func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Context, tenantID, paymentID, userID uuid.UUID) (*model.JournalEntry, error) {
+	pe, err := s.paymentRepo.GetByID(ctx, tenantID, paymentID)
+	if err != nil {
+		return nil, fmt.Errorf("get payment entry: %w", err)
+	}
+
+	var bankClearingAcctID *uuid.UUID
+	if pe.BankAccountID != nil {
+		bankAcct, repoErr := s.bankRepo.GetByID(ctx, tenantID, *pe.BankAccountID)
+		if repoErr == nil && bankAcct != nil {
+			bankClearingAcctID = bankAcct.ClearingAccountID
+		}
+	}
+	if bankClearingAcctID == nil {
+		bankClearingAcctID = s.findAccountByCode(ctx, tenantID, "1002")
+	}
+	if bankClearingAcctID == nil {
+		return nil, fmt.Errorf("cannot determine bank clearing account for payment entry %s", paymentID)
+	}
+
+	var debitAccountID, creditAccountID uuid.UUID
+	var amount decimal.Decimal
+	partyType := pe.PartyType
+	partyID := pe.PartyID
+
+	switch pe.PaymentType {
+	case "receive":
+		// 收款单: 借 银行存款 / 贷 应收账款(1122)
+		debitAccountID = *bankClearingAcctID
+		arAcct := s.findAccountByCode(ctx, tenantID, "1122")
+		if arAcct == nil {
+			return nil, fmt.Errorf("accounts receivable account (1122) not found")
+		}
+		creditAccountID = *arAcct
+		if pe.ReceivedAmount != nil {
+			amount = *pe.ReceivedAmount
+		} else {
+			amount = pe.PaidAmount
+		}
+	case "pay":
+		// 付款单: 借 应付账款(2202) / 贷 银行存款
+		apAcct := s.findAccountByCode(ctx, tenantID, "2202")
+		if apAcct == nil {
+			return nil, fmt.Errorf("accounts payable account (2202) not found")
+		}
+		debitAccountID = *apAcct
+		creditAccountID = *bankClearingAcctID
+		amount = pe.PaidAmount
+	default:
+		return nil, fmt.Errorf("payment type %q cannot generate voucher directly", pe.PaymentType)
+	}
+
+	voucherResp, tmplErr := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+	voucherNo := ""
+	if tmplErr == nil && voucherResp != nil {
+		voucherNo = voucherResp.VoucherNumber
+	}
+
+	je := &model.JournalEntry{
+		ID:          uuid.New(),
+		TenantID:    tenantID,
+		CompanyID:   pe.CompanyID,
+		VoucherNo:   voucherNo,
+		PostingDate: pe.PostingDate,
+		CreatedBy:   userID,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		DocStatus:   0,
+	}
+
+	partyTypeStr := partyType
+	partyIDCopy := partyID
+	lines := []model.JournalEntryLine{
+		{
+			ID:             uuid.New(),
+			JournalEntryID: je.ID,
+			AccountID:      debitAccountID,
+			Debit:          amount,
+			Credit:         decimal.Zero,
+			PartyType:      &partyTypeStr,
+			PartyID:        &partyIDCopy,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: je.ID,
+			AccountID:      creditAccountID,
+			Debit:          decimal.Zero,
+			Credit:         amount,
+			PartyType:      &partyTypeStr,
+			PartyID:        &partyIDCopy,
+		},
+	}
+
+	if _, err = s.journalRepo.Create(ctx, tenantID, je); err != nil {
+		return nil, fmt.Errorf("create journal entry: %w", err)
+	}
+	if _, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, lines); err != nil {
+		return nil, fmt.Errorf("add journal entry lines: %w", err)
 	}
 
 	return je, nil

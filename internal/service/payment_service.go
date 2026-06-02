@@ -16,6 +16,7 @@ type PaymentEntryService struct {
 	partyRepo   *repository.PartyRepository
 	bankRepo    *repository.BankRepository
 	accountRepo *repository.AccountRepository
+	bankTxnRepo *repository.BankTransactionRepository
 }
 
 func NewPaymentEntryService(
@@ -23,12 +24,14 @@ func NewPaymentEntryService(
 	partyRepo *repository.PartyRepository,
 	bankRepo *repository.BankRepository,
 	accountRepo *repository.AccountRepository,
+	bankTxnRepo *repository.BankTransactionRepository,
 ) *PaymentEntryService {
 	return &PaymentEntryService{
 		repo:        repo,
 		partyRepo:   partyRepo,
 		bankRepo:    bankRepo,
 		accountRepo: accountRepo,
+		bankTxnRepo: bankTxnRepo,
 	}
 }
 
@@ -37,6 +40,7 @@ type CreatePaymentFromBankTxnRequest struct {
 	PaymentType       string
 	PartyType         string
 	PartyID           uuid.UUID
+	CounterpartyName  *string
 	PostingDate       time.Time
 	ReferenceNo       string
 }
@@ -77,21 +81,22 @@ func (s *PaymentEntryService) CreateFromBankTransaction(
 	}
 
 	pe := &model.PaymentEntry{
-		PaymentNo:      paymentNo,
-		PaymentType:    req.PaymentType,
-		PartyType:      req.PartyType,
-		PartyID:        req.PartyID,
-		PaidFromID:     paidFromID,
-		PaidToID:       paidToID,
-		PaidAmount:     amount,
-		ReceivedAmount: receivedAmt,
-		ReferenceNo:    &req.ReferenceNo,
-		ReferenceDate:  &bankTxn.TxnDate,
-		PostingDate:    req.PostingDate,
-		CompanyID:      companyID,
-		BankAccountID:  &bankTxn.BankAccountID,
-		DocStatus:      0,
-		CreatedBy:      &userID,
+		PaymentNo:        paymentNo,
+		PaymentType:      req.PaymentType,
+		PartyType:        req.PartyType,
+		PartyID:          req.PartyID,
+		CounterpartyName: req.CounterpartyName,
+		PaidFromID:       paidFromID,
+		PaidToID:         paidToID,
+		PaidAmount:       amount,
+		ReceivedAmount:   receivedAmt,
+		ReferenceNo:      &req.ReferenceNo,
+		ReferenceDate:    &bankTxn.TxnDate,
+		PostingDate:      req.PostingDate,
+		CompanyID:        companyID,
+		BankAccountID:    &bankTxn.BankAccountID,
+		DocStatus:        0,
+		CreatedBy:        &userID,
 	}
 
 	entry, err := s.repo.Create(ctx, tenantID, pe)
@@ -99,6 +104,7 @@ func (s *PaymentEntryService) CreateFromBankTransaction(
 		return nil, fmt.Errorf("create payment entry: %w", err)
 	}
 
+	_ = s.bankTxnRepo.SetMatchedPaymentEntry(ctx, tenantID, bankTxn.ID, entry.ID)
 	return entry, nil
 }
 
@@ -128,4 +134,48 @@ func (s *PaymentEntryService) UpdatePaymentEntry(ctx context.Context, tenantID u
 
 func (s *PaymentEntryService) DeletePaymentEntry(ctx context.Context, tenantID, id uuid.UUID) error {
 	return s.repo.Delete(ctx, tenantID, id)
+}
+
+func (s *PaymentEntryService) CreateFromBankTxn(ctx context.Context, tenantID, bankTxnID, userID uuid.UUID) (*model.PaymentEntry, error) {
+	bankTxn, err := s.bankTxnRepo.GetByID(ctx, tenantID, bankTxnID)
+	if err != nil {
+		return nil, fmt.Errorf("get bank transaction: %w", err)
+	}
+
+	if bankTxn.Classification == nil {
+		return nil, fmt.Errorf("bank transaction has no classification")
+	}
+
+	var paymentType, partyType string
+	classification := *bankTxn.Classification
+	switch classification {
+	case "business_receipt":
+		paymentType = "receive"
+		partyType = "customer"
+	case "business_payment":
+		paymentType = "pay"
+		partyType = "supplier"
+	case "internal_transfer":
+		paymentType = "transfer"
+		partyType = "internal"
+	default:
+		return nil, fmt.Errorf("invalid classification %q for payment entry", classification)
+	}
+
+	var referenceNo string
+	if bankTxn.ReferenceNo != nil {
+		referenceNo = *bankTxn.ReferenceNo
+	}
+
+	req := &CreatePaymentFromBankTxnRequest{
+		BankTransactionID: bankTxnID,
+		PaymentType:       paymentType,
+		PartyType:         partyType,
+		PartyID:           uuid.Nil,
+		PostingDate:       time.Now(),
+		ReferenceNo:       referenceNo,
+		CounterpartyName:  bankTxn.CounterpartyName,
+	}
+
+	return s.CreateFromBankTransaction(ctx, tenantID, userID, req, bankTxn, bankTxn.CompanyID)
 }

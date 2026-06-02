@@ -175,7 +175,7 @@ func (r *BankTransactionRepository) ListByBankAccount(ctx context.Context, tenan
 	// Query with pagination
 	query := fmt.Sprintf(`
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction, 
-			reference_no, counterparty_name, classification, matched, matched_payment_entry_id, matched_gl_entry_id,
+			reference_no, counterparty_name, classification, matched, confirmed, matched_payment_entry_id, matched_gl_entry_id,
 			imported_from, raw_data, company_id, created_at
 		FROM bank_transactions
 		WHERE %s
@@ -195,9 +195,8 @@ func (r *BankTransactionRepository) ListByBankAccount(ctx context.Context, tenan
 		err := rows.Scan(
 			&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
 			&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
-			&txn.Classification,
-			&txn.Matched, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
-			&txn.RawData, &txn.CompanyID, &txn.CreatedAt,
+			&txn.Classification, &txn.Matched, &txn.Confirmed, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID,
+			&txn.ImportedFrom, &txn.RawData, &txn.CompanyID, &txn.CreatedAt,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("scan transaction: %w", err)
@@ -212,7 +211,7 @@ func (r *BankTransactionRepository) ListByBankAccount(ctx context.Context, tenan
 func (r *BankTransactionRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.BankTransaction, error) {
 	query := `
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
-			reference_no, counterparty_name, classification, matched, matched_payment_entry_id, matched_gl_entry_id,
+			reference_no, counterparty_name, classification, matched, confirmed, matched_payment_entry_id, matched_gl_entry_id,
 			imported_from, raw_data, company_id, created_at
 		FROM bank_transactions
 		WHERE tenant_id = $1 AND id = $2`
@@ -222,7 +221,7 @@ func (r *BankTransactionRepository) GetByID(ctx context.Context, tenantID, id uu
 		&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
 		&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
 		&txn.Classification,
-		&txn.Matched, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
+		&txn.Matched, &txn.Confirmed, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
 		&txn.RawData, &txn.CompanyID, &txn.CreatedAt,
 	)
 	if err != nil {
@@ -231,10 +230,20 @@ func (r *BankTransactionRepository) GetByID(ctx context.Context, tenantID, id uu
 	return txn, nil
 }
 
-// UpdateStatus updates the status of a bank transaction.
-func (r *BankTransactionRepository) UpdateStatus(ctx context.Context, tenantID, id uuid.UUID, matched bool) error {
+// UpdateMatched updates the matched flag of a bank transaction.
+func (r *BankTransactionRepository) UpdateMatched(ctx context.Context, tenantID, id uuid.UUID, matched bool) error {
 	query := `UPDATE bank_transactions SET matched = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2`
 	_, err := r.pool.Exec(ctx, query, tenantID, id, matched)
+	return err
+}
+
+// UpdateStatus updates the review workflow status of a bank transaction.
+func (r *BankTransactionRepository) UpdateStatus(ctx context.Context, txnID uuid.UUID, tenantID uuid.UUID, status model.BankTxnReviewStatus) error {
+	query := `
+		UPDATE bank_transactions
+		SET status = $3, updated_at = NOW()
+		WHERE id = $1 AND tenant_id = $2`
+	_, err := r.pool.Exec(ctx, query, txnID, tenantID, string(status))
 	return err
 }
 
@@ -250,6 +259,28 @@ func (r *BankTransactionRepository) MarkAsMatched(ctx context.Context, tenantID 
 		WHERE tenant_id = $1 AND id = ANY($2)`
 
 	_, err := r.pool.Exec(ctx, query, tenantID, ids, journalEntryID)
+	return err
+}
+
+// MarkAsConfirmed sets confirmed=true for a single transaction.
+func (r *BankTransactionRepository) MarkAsConfirmed(ctx context.Context, tenantID, id uuid.UUID) error {
+	query := `
+		UPDATE bank_transactions
+		SET confirmed = TRUE, updated_at = NOW()
+		WHERE tenant_id = $1 AND id = $2`
+
+	_, err := r.pool.Exec(ctx, query, tenantID, id)
+	return err
+}
+
+// SetMatchedPaymentEntry sets matched_payment_entry_id for a transaction (document created, no voucher yet).
+func (r *BankTransactionRepository) SetMatchedPaymentEntry(ctx context.Context, tenantID, txnID, paymentEntryID uuid.UUID) error {
+	query := `
+		UPDATE bank_transactions
+		SET confirmed = TRUE, matched = TRUE, matched_payment_entry_id = $3, updated_at = NOW()
+		WHERE tenant_id = $1 AND id = $2`
+
+	_, err := r.pool.Exec(ctx, query, tenantID, txnID, paymentEntryID)
 	return err
 }
 
@@ -297,7 +328,7 @@ func (r *BankTransactionRepository) ListUnmatched(ctx context.Context, tenantID 
 func (r *BankTransactionRepository) GetUnmatched(ctx context.Context, tenantID, bankAccountID uuid.UUID) ([]model.BankTransaction, error) {
 	query := `
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
-			reference_no, counterparty_name, classification, matched, matched_payment_entry_id, matched_gl_entry_id,
+			reference_no, counterparty_name, classification, matched, confirmed, matched_payment_entry_id, matched_gl_entry_id,
 			imported_from, raw_data, company_id, created_at
 		FROM bank_transactions
 		WHERE tenant_id = $1 AND bank_account_id = $2 AND matched = FALSE
@@ -316,7 +347,7 @@ func (r *BankTransactionRepository) GetUnmatched(ctx context.Context, tenantID, 
 			&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
 			&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
 			&txn.Classification,
-			&txn.Matched, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
+			&txn.Matched, &txn.Confirmed, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
 			&txn.RawData, &txn.CompanyID, &txn.CreatedAt,
 		)
 		if err != nil {

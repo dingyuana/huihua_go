@@ -104,13 +104,31 @@ const level3Placeholder = computed(() => !level2Id.value ? '请先选择二级�
 const level1Options = computed<AccountNode[]>(() => {
   const root = treeData.value.find(n => !n.parent_id || n.parent_id === '')
   if (!root) return []
-  return (root.children || []).map(node => ({ ...node, level: 1 }))
+  
+  const children = root.children || []
+  
+  if (children.length > 0 && children.every(n => n.is_group)) {
+    const result: AccountNode[] = []
+    for (const groupNode of children) {
+      if (groupNode.children) {
+        for (const child of groupNode.children) {
+          const extended = { ...child, level: 1, _originalGroupId: groupNode.id }
+          result.push(extended)
+        }
+      }
+    }
+    return result
+  }
+  
+  return children.map(node => ({ ...node, level: 1 }))
 })
 
 const level2Options = computed<AccountNode[]>(() => {
   if (!level1Id.value) return []
+  
   const level1Node = findNodeById(treeData.value, level1Id.value)
   if (!level1Node) return []
+  
   return (level1Node.children || []).map(node => ({ ...node, level: 2 }))
 })
 
