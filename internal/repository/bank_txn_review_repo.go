@@ -153,20 +153,23 @@ func (r *BankTransactionRepository) GetStats(
 // This is used by the SubmitReview service to lock rows before status change (AC5).
 func (r *BankTransactionRepository) GetByIDForUpdate(
 	ctx context.Context,
+	tx pgx.Tx,
 	txnID uuid.UUID,
 ) (*model.BankTransaction, error) {
 	query := `
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
-			reference_no, counterparty_name, classification, matched, confirmed,
+			status, reference_no, counterparty_name, classification, matched, confirmed,
 			matched_payment_entry_id, matched_gl_entry_id,
 			imported_from, raw_data, company_id, created_at
 		FROM bank_transactions
 		WHERE id = $1
 		FOR UPDATE`
 	txn := &model.BankTransaction{}
-	err := r.pool.QueryRow(ctx, query, txnID).Scan(
+	err := tx.QueryRow(ctx, query, txnID).Scan(
 		&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
-		&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
+		&txn.Debit, &txn.Credit, &txn.Direction,
+		&txn.Status,
+		&txn.ReferenceNo, &txn.CounterpartyName,
 		&txn.Classification,
 		&txn.Matched, &txn.Confirmed, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID,
 		&txn.ImportedFrom, &txn.RawData, &txn.CompanyID, &txn.CreatedAt,
