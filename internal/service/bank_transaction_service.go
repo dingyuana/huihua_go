@@ -270,14 +270,30 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 			}
 		}
 
-		cpIdx, cpFound := findCol(
-			"counterparty", "对方户名", "对方名称", "对方账户", "交易对方",
-			"付款人名称", "收款人名称",
-			"付款人", "收款人",
-		)
+		cpPrimary := "付款人名称"
+		if direction != nil && *direction == "out" {
+			cpPrimary = "收款人名称"
+		}
+		cpSecondary := "收款人名称"
+		if cpPrimary == "收款人名称" {
+			cpSecondary = "付款人名称"
+		}
 		var counterparty *string
-		if cpFound && cpIdx < len(row) {
-			cp := strings.TrimSpace(row[cpIdx])
+		cpCascades := [][]string{
+			{cpPrimary},
+			{cpSecondary},
+			{"对方户名", "对方名称", "对方账户", "交易对方", "counterparty"},
+			{"付款人", "收款人"},
+		}
+		for _, names := range cpCascades {
+			if counterparty != nil {
+				break
+			}
+			idx, ok := findCol(names...)
+			if !ok || idx >= len(row) {
+				continue
+			}
+			cp := strings.TrimSpace(row[idx])
 			if cp != "" && !looksLikeBankCode(cp) {
 				counterparty = &cp
 			}
