@@ -32,6 +32,9 @@
         <el-table-column prop="posting_date" label="日期" width="110">
           <template #default="{ row }">{{ (row.posting_date || '').slice(0, 10) }}</template>
         </el-table-column>
+        <el-table-column label="对方名称" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.counterparty_name || '—' }}</template>
+        </el-table-column>
         <el-table-column prop="remark" label="摘要" min-width="200" show-overflow-tooltip />
         <el-table-column label="借方合计" width="120" align="right"><template #default="{ row }">{{ row.debit_total || '0.00' }}</template></el-table-column>
         <el-table-column label="贷方合计" width="120" align="right"><template #default="{ row }">{{ row.credit_total || '0.00' }}</template></el-table-column>

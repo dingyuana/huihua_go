@@ -13,7 +13,7 @@ type VoucherStatus string
 const (
 	VoucherStatusDraft     VoucherStatus = "draft"     // 草稿
 	VoucherStatusPosted    VoucherStatus = "posted"    // 已过账/已提交审核
-	VoucherStatusVerified VoucherStatus = "verified"  // 已审核/已核准
+	VoucherStatusVerified  VoucherStatus = "verified"  // 已审核/已核准
 	VoucherStatusCancelled VoucherStatus = "cancelled" // 已作废
 )
 
@@ -30,37 +30,38 @@ const (
 
 // VoucherStateTransition records a state transition for audit purposes.
 type VoucherStateTransition struct {
-	ID           uuid.UUID     `json:"id" db:"id"`
-	VoucherID    uuid.UUID     `json:"voucher_id" db:"voucher_id"`
-	TenantID     uuid.UUID     `json:"tenant_id" db:"tenant_id"`
-	FromStatus   VoucherStatus `json:"from_status" db:"from_status"`
-	ToStatus     VoucherStatus `json:"to_status" db:"to_status"`
-	Action       VoucherAction `json:"action" db:"action"`
-	ChangedBy    uuid.UUID     `json:"changed_by" db:"changed_by"`
-	ChangedByName *string      `json:"changed_by_name,omitempty" db:"changed_by_name"`
-	Reason       *string       `json:"reason,omitempty" db:"reason"`
-	CreatedAt    time.Time     `json:"created_at" db:"created_at"`
+	ID            uuid.UUID     `json:"id" db:"id"`
+	VoucherID     uuid.UUID     `json:"voucher_id" db:"voucher_id"`
+	TenantID      uuid.UUID     `json:"tenant_id" db:"tenant_id"`
+	FromStatus    VoucherStatus `json:"from_status" db:"from_status"`
+	ToStatus      VoucherStatus `json:"to_status" db:"to_status"`
+	Action        VoucherAction `json:"action" db:"action"`
+	ChangedBy     uuid.UUID     `json:"changed_by" db:"changed_by"`
+	ChangedByName *string       `json:"changed_by_name,omitempty" db:"changed_by_name"`
+	Reason        *string       `json:"reason,omitempty" db:"reason"`
+	CreatedAt     time.Time     `json:"created_at" db:"created_at"`
 }
 
 // JournalEntry represents the journal_entries table (voucher master).
 type JournalEntry struct {
-	ID           uuid.UUID       `json:"id" db:"id"`
-	VoucherNo    string          `json:"voucher_no" db:"voucher_no"`
-	VoucherType  *string         `json:"voucher_type,omitempty" db:"voucher_type"`
-	PostingDate  time.Time       `json:"posting_date" db:"posting_date"`
-	CompanyID    uuid.UUID       `json:"company_id" db:"company_id"`
-	TenantID     uuid.UUID       `json:"tenant_id" db:"tenant_id"`
-	Remark       *string         `json:"remark,omitempty" db:"remark"`
-	DocStatus    int16           `json:"docstatus" db:"docstatus"`
-	ReversedID   *uuid.UUID      `json:"reversed_id,omitempty" db:"reversed_id"`
-	ReversalID   *uuid.UUID      `json:"reversal_id,omitempty" db:"reversal_id"`
-	SubmittedBy  *uuid.UUID      `json:"submitted_by,omitempty" db:"submitted_by"`
-	SubmittedAt  *time.Time      `json:"submitted_at,omitempty" db:"submitted_at"`
-	CreatedBy    uuid.UUID       `json:"created_by" db:"created_by"`
-	CreatedAt    time.Time       `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at" db:"updated_at"`
-	DebitTotal   decimal.Decimal `json:"debit_total,omitempty" db:"debit_total"`
-	CreditTotal  decimal.Decimal `json:"credit_total,omitempty" db:"credit_total"`
+	ID               uuid.UUID       `json:"id" db:"id"`
+	VoucherNo        string          `json:"voucher_no" db:"voucher_no"`
+	VoucherType      *string         `json:"voucher_type,omitempty" db:"voucher_type"`
+	PostingDate      time.Time       `json:"posting_date" db:"posting_date"`
+	CompanyID        uuid.UUID       `json:"company_id" db:"company_id"`
+	TenantID         uuid.UUID       `json:"tenant_id" db:"tenant_id"`
+	Remark           *string         `json:"remark,omitempty" db:"remark"`
+	DocStatus        int16           `json:"docstatus" db:"docstatus"`
+	ReversedID       *uuid.UUID      `json:"reversed_id,omitempty" db:"reversed_id"`
+	ReversalID       *uuid.UUID      `json:"reversal_id,omitempty" db:"reversal_id"`
+	SubmittedBy      *uuid.UUID      `json:"submitted_by,omitempty" db:"submitted_by"`
+	SubmittedAt      *time.Time      `json:"submitted_at,omitempty" db:"submitted_at"`
+	CreatedBy        uuid.UUID       `json:"created_by" db:"created_by"`
+	CreatedAt        time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at" db:"updated_at"`
+	DebitTotal       decimal.Decimal `json:"debit_total,omitempty" db:"debit_total"`
+	CreditTotal      decimal.Decimal `json:"credit_total,omitempty" db:"credit_total"`
+	CounterpartyName *string         `json:"counterparty_name,omitempty" db:"counterparty_name"`
 }
 
 // JournalEntryLine represents the journal_entry_lines table.

@@ -217,16 +217,16 @@ func (r *JournalRepository) UpdateStatusTx(ctx context.Context, tx pgx.Tx, tenan
 
 	// Record state transition
 	transition := &model.VoucherStateTransition{
-		ID:             uuid.New(),
-		VoucherID:      journalID,
-		TenantID:       tenantID,
-		FromStatus:     model.VoucherStatus(fmt.Sprintf("%d", oldStatus)),
-		ToStatus:       model.VoucherStatus(fmt.Sprintf("%d", newStatus)),
-		Action:         action,
-		ChangedBy:      changedBy,
-		ChangedByName:  changedByName,
-		Reason:         reason,
-		CreatedAt:      time.Now(),
+		ID:            uuid.New(),
+		VoucherID:     journalID,
+		TenantID:      tenantID,
+		FromStatus:    model.VoucherStatus(fmt.Sprintf("%d", oldStatus)),
+		ToStatus:      model.VoucherStatus(fmt.Sprintf("%d", newStatus)),
+		Action:        action,
+		ChangedBy:     changedBy,
+		ChangedByName: changedByName,
+		Reason:        reason,
+		CreatedAt:     time.Now(),
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO voucher_state_transitions (id, voucher_id, tenant_id, from_status, to_status, action, changed_by, changed_by_name, reason, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -263,16 +263,16 @@ func (r *JournalRepository) UpdateStatus(ctx context.Context, tenantID uuid.UUID
 
 	// Record state transition
 	transition := &model.VoucherStateTransition{
-		ID:             uuid.New(),
-		VoucherID:      journalID,
-		TenantID:       tenantID,
-		FromStatus:     model.VoucherStatus(fmt.Sprintf("%d", oldStatus)),
-		ToStatus:       model.VoucherStatus(fmt.Sprintf("%d", newStatus)),
-		Action:         action,
-		ChangedBy:      changedBy,
-		ChangedByName:  changedByName,
-		Reason:         reason,
-		CreatedAt:      time.Now(),
+		ID:            uuid.New(),
+		VoucherID:     journalID,
+		TenantID:      tenantID,
+		FromStatus:    model.VoucherStatus(fmt.Sprintf("%d", oldStatus)),
+		ToStatus:      model.VoucherStatus(fmt.Sprintf("%d", newStatus)),
+		Action:        action,
+		ChangedBy:     changedBy,
+		ChangedByName: changedByName,
+		Reason:        reason,
+		CreatedAt:     time.Now(),
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO voucher_state_transitions (id, voucher_id, tenant_id, from_status, to_status, action, changed_by, changed_by_name, reason, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -467,7 +467,10 @@ func (r *JournalRepository) ListVouchers(ctx context.Context, tenantID uuid.UUID
 		SELECT je.id, je.voucher_no, je.voucher_type, je.posting_date, je.company_id,
 		       je.tenant_id, je.remark, je.docstatus, je.reversed_id, je.reversal_id,
 		       je.submitted_by, je.submitted_at, je.created_by, je.created_at, je.updated_at,
-		       COALESCE(jl.debit_total, 0) AS debit_total, COALESCE(jl.credit_total, 0) AS credit_total
+		       COALESCE(jl.debit_total, 0) AS debit_total, COALESCE(jl.credit_total, 0) AS credit_total,
+		       (SELECT counterparty_name FROM bank_transactions
+		        WHERE matched_gl_entry_id = je.id AND tenant_id = je.tenant_id
+		        LIMIT 1) AS counterparty_name
 		FROM journal_entries je
 		LEFT JOIN LATERAL (
 		    SELECT SUM(jel.debit) AS debit_total, SUM(jel.credit) AS credit_total
@@ -527,7 +530,7 @@ func (r *JournalRepository) ListVouchers(ctx context.Context, tenantID uuid.UUID
 			&je.ID, &je.VoucherNo, &je.VoucherType, &je.PostingDate, &je.CompanyID,
 			&je.TenantID, &je.Remark, &je.DocStatus, &je.ReversedID, &je.ReversalID,
 			&je.SubmittedBy, &je.SubmittedAt, &je.CreatedBy, &je.CreatedAt, &je.UpdatedAt,
-			&je.DebitTotal, &je.CreditTotal,
+			&je.DebitTotal, &je.CreditTotal, &je.CounterpartyName,
 		); err != nil {
 			return nil, fmt.Errorf("scan voucher: %w", err)
 		}
