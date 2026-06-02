@@ -197,6 +197,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Delete("/vouchers/:id", voucherHandler.Delete)
 	api.Post("/vouchers/:id/submit", voucherHandler.Submit)
 	api.Post("/vouchers/:id/approve", voucherHandler.Approve)
+	api.Post("/vouchers/batch-submit", voucherHandler.BatchSubmit)
+	api.Post("/vouchers/batch-approve", voucherHandler.BatchApprove)
 	api.Post("/vouchers/:id/reject", voucherHandler.Reject)
 	api.Post("/vouchers/:id/cancel", voucherHandler.Cancel)
 	api.Post("/vouchers/:id/reverse", voucherHandler.Reverse)

@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
 	"huihua/finance/internal/service"
 )
@@ -92,6 +93,60 @@ func (h *VoucherHandler) Approve(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "voucher approved successfully"})
+}
+
+// BatchActionRequest is the body for batch submit/approve.
+type BatchActionRequest struct {
+	VoucherIDs []string `json:"voucher_ids"`
+	UserName   string   `json:"user_name"`
+}
+
+type batchFailure struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
+func (h *VoucherHandler) runBatch(c *fiber.Ctx, action string) error {
+	var req BatchActionRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if len(req.VoucherIDs) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "voucher_ids is required"})
+	}
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	succeeded := []string{}
+	failed := []batchFailure{}
+	for _, idStr := range req.VoucherIDs {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			failed = append(failed, batchFailure{ID: idStr, Reason: "invalid uuid"})
+			continue
+		}
+		if err := h.stateMachine.ExecuteTransition(c.Context(), tenantID, id, model.VoucherAction(action), userID, req.UserName, ""); err != nil {
+			failed = append(failed, batchFailure{ID: idStr, Reason: err.Error()})
+			continue
+		}
+		succeeded = append(succeeded, idStr)
+	}
+	return c.JSON(fiber.Map{
+		"action":    action,
+		"total":     len(req.VoucherIDs),
+		"succeeded": succeeded,
+		"failed":    failed,
+	})
+}
+
+// BatchSubmit handles POST /api/v1/vouchers/batch-submit
+func (h *VoucherHandler) BatchSubmit(c *fiber.Ctx) error {
+	return h.runBatch(c, "submit")
+}
+
+// BatchApprove handles POST /api/v1/vouchers/batch-approve
+func (h *VoucherHandler) BatchApprove(c *fiber.Ctx) error {
+	return h.runBatch(c, "approve")
 }
 
 // RejectRequest is the request body for rejecting a voucher.
