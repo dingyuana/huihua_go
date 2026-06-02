@@ -166,3 +166,28 @@ func (h *PeriodHandler) VoucherGaps(c *fiber.Ctx) error {
 		"has_missing":   missingCount > 0,
 	})
 }
+
+// CloseCheckSummary handles GET /api/v1/periods/close-check-summary?year=2026&month=5
+func (h *PeriodHandler) CloseCheckSummary(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	yearStr := c.Query("year")
+	monthStr := c.Query("month")
+
+	year, err := strconv.Atoi(yearStr)
+	if err != nil || year < 2000 || year > 2100 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid year"})
+	}
+
+	month, err := strconv.Atoi(monthStr)
+	if err != nil || month < 1 || month > 12 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid month"})
+	}
+
+	result, err := h.svc.GetCloseCheckSummary(c.Context(), tenantID, year, month)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(result)
+}

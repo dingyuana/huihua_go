@@ -274,3 +274,20 @@ func (r *GLEntryRepository) GetIncomeExpenseSummary(ctx context.Context, tenantI
 func (r *GLEntryRepository) GetPool() *pgxpool.Pool {
 	return r.pool
 }
+
+// GetBankGLBalance returns the net debit-credit balance for a bank account (by account code pattern) in a date range.
+// It sums all GL entries for accounts whose code starts with "1002" (bank accounts).
+func (r *GLEntryRepository) GetBankGLBalance(ctx context.Context, tenantID uuid.UUID, startDate, endDate time.Time) (decimal.Decimal, error) {
+	query := `
+		SELECT COALESCE(SUM(g.debit) - SUM(g.credit), 0) as net_balance
+		FROM gl_entries g
+		JOIN accounts a ON g.account_id = a.id AND a.tenant_id = $1
+		WHERE g.tenant_id = $1 AND g.posting_date >= $2 AND g.posting_date <= $3
+		  AND g.is_cancelled = false AND a.code LIKE '1002%'`
+	var balance decimal.NullDecimal
+	err := r.pool.QueryRow(ctx, query, tenantID, startDate, endDate).Scan(&balance)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return balance.Decimal, nil
+}

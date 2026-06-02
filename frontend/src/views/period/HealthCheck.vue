@@ -224,8 +224,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCloseFilled, CircleCheckFilled } from '@element-plus/icons-vue'
-import { fetchPreCloseCheck, closePeriod, unclosePeriod } from '@/api/modules/period'
-import type { RiskWarning, KeyIndicator, PendingAccrual } from '@/api/modules/period'
+import { fetchPreCloseCheck, fetchCloseCheckSummary, closePeriod, unclosePeriod } from '@/api/modules/period'
+import type { RiskWarning, KeyIndicator, PendingAccrual, BaseCheckItem } from '@/api/modules/period'
 import CheckResultPanel from '@/components/check/CheckResultPanel.vue'
 import CheckSummaryCard from '@/components/check/CheckSummaryCard.vue'
 import type { CheckItem, CheckSummary } from '@/types/check'
@@ -297,6 +297,19 @@ async function loadData() {
   loading.value = true
   const [year, month] = period.value.split('-').map(Number)
 
+  // Try the new close-check-summary endpoint first (7 base checks)
+  try {
+    const res: any = await fetchCloseCheckSummary(year, month)
+    const data = res?.data || res
+    if (data && data.base_checks && data.base_checks.length > 0) {
+      applyApiData(data)
+      return
+    }
+  } catch {
+    // new endpoint not available, fall through
+  }
+
+  // Fall back to pre-close-check (4 base checks + b4 from pending_accruals)
   try {
     const res: any = await fetchPreCloseCheck(year, month)
     const data = res?.data || res
@@ -305,51 +318,62 @@ async function loadData() {
       return
     }
   } catch {
-    // API 不可用，fallback
+    // API not available, fall through
   }
 
   loadFallbackData()
-  loading.value = false
 }
 
 function applyApiData(data: any) {
-  const items: CheckItem[] = [
-    {
-      id: 'b1', name: '全部凭证已记账',
-      status: (data.unposted_vouchers ?? 0) > 0 ? 'blocked' : 'passed',
-      message: `已记账 / ${data.unposted_vouchers ?? 0} 张未记账`,
-      action: (data.unposted_vouchers ?? 0) > 0 ? { label: '去审核 →', route: '/vouchers/review' } : undefined,
-    },
-    {
-      id: 'b2', name: '资产负债表平衡',
-      status: data.report_balance_ok ? 'passed' : 'blocked',
-      message: data.report_balance_ok ? '差额: 0.00' : '试算不平衡',
-      action: data.report_balance_ok ? undefined : { label: '查看试算表', route: '/period/reports' },
-    },
-    {
-      id: 'b3', name: '损益已结转',
-      status: data.profit_loss_done ? 'passed' : 'blocked',
-      message: data.profit_loss_done ? '已结转' : '损益类科目尚未结转',
-      action: data.profit_loss_done ? undefined : { label: '结转损益' },
-    },
-  ]
-  baseChecks.value = items
+  // If new format with base_checks array, use it directly
+  if (data.base_checks && Array.isArray(data.base_checks)) {
+    baseChecks.value = data.base_checks.map((bc: BaseCheckItem) => ({
+      id: bc.id,
+      name: bc.name,
+      status: bc.status as CheckItem['status'],
+      message: bc.message,
+      action: bc.action,
+    }))
+  } else {
+    // Legacy format: build from individual fields
+    const items: CheckItem[] = [
+      {
+        id: 'b1', name: '全部凭证已记账',
+        status: (data.unposted_vouchers ?? 0) > 0 ? 'blocked' : 'passed',
+        message: `已记账 / ${data.unposted_vouchers ?? 0} 张未记账`,
+        action: (data.unposted_vouchers ?? 0) > 0 ? { label: '去审核 →', route: '/vouchers/review' } : undefined,
+      },
+      {
+        id: 'b2', name: '资产负债表平衡',
+        status: data.report_balance_ok ? 'passed' : 'blocked',
+        message: data.report_balance_ok ? '差额: 0.00' : '试算不平衡',
+        action: data.report_balance_ok ? undefined : { label: '查看试算表', route: '/period/reports' },
+      },
+      {
+        id: 'b3', name: '损益已结转',
+        status: data.profit_loss_done ? 'passed' : 'blocked',
+        message: data.profit_loss_done ? '已结转' : '损益类科目尚未结转',
+        action: data.profit_loss_done ? undefined : { label: '结转损益' },
+      },
+    ]
+    baseChecks.value = items
+
+    const depAccrual = (data.pending_accruals || []).find((a: PendingAccrual) => a.type === 'depreciation')
+    if (depAccrual) {
+      baseChecks.value.push({
+        id: 'b4', name: '折旧已计提',
+        status: depAccrual.missing ? 'blocked' : 'passed',
+        message: depAccrual.missing ? (depAccrual.details || '未计提') : '已计提',
+        action: depAccrual.missing ? { label: '处理折旧 →', route: '/period/depreciation' } : undefined,
+      })
+    }
+  }
 
   riskWarnings.value = data.risk_warnings || []
   pendingAccruals.value = data.pending_accruals || []
-
-  const depAccrual = pendingAccruals.value.find((a: PendingAccrual) => a.type === 'depreciation')
-  if (depAccrual) {
-    baseChecks.value.push({
-      id: 'b4', name: '折旧已计提',
-      status: depAccrual.missing ? 'blocked' : 'passed',
-      message: depAccrual.missing ? (depAccrual.details || '未计提') : '已计提',
-      action: depAccrual.missing ? { label: '处理折旧 →', route: '/period/depreciation' } : undefined,
-    })
-  }
-
   keyIndicators.value = data.key_indicators || []
-  profitLoss.done = data.profit_loss_done || false
+  profitLoss.done = data.profit_loss_done ?? false
+  periodStatus.value = data.period_status || 'open'
   loading.value = false
 }
 

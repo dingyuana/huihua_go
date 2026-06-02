@@ -433,3 +433,50 @@ func (r *BankTransactionRepository) GetDirectionTotalsByAccount(ctx context.Cont
 	}
 	return inflow.Decimal, outflow.Decimal, nil
 }
+
+// GetBankStatementBalance returns the net balance (SUM(debit) - SUM(credit)) for a bank account within a date range.
+func (r *BankTransactionRepository) GetBankStatementBalance(ctx context.Context, tenantID, bankAccountID uuid.UUID, startDate, endDate time.Time) (decimal.Decimal, error) {
+	var balance decimal.NullDecimal
+	err := r.pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(debit) - SUM(credit), 0)
+		FROM bank_transactions
+		WHERE tenant_id = $1 AND bank_account_id = $2 AND txn_date >= $3 AND txn_date <= $4`,
+		tenantID, bankAccountID, startDate, endDate).Scan(&balance)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return balance.Decimal, nil
+}
+
+// GetUnreconciledOldCount returns the count of unmatched bank transactions older than specified days for a tenant.
+func (r *BankTransactionRepository) GetUnreconciledOldCount(ctx context.Context, tenantID uuid.UUID, days int) (int, error) {
+	var count int
+	cutoffDate := time.Now().AddDate(0, 0, -days)
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM bank_transactions
+		WHERE tenant_id = $1 AND matched = FALSE AND txn_date < $2`,
+		tenantID, cutoffDate).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// GetAllBankAccountIDs returns all distinct bank account IDs for a tenant.
+func (r *BankTransactionRepository) GetAllBankAccountIDs(ctx context.Context, tenantID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT DISTINCT bank_account_id FROM bank_transactions WHERE tenant_id = $1`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

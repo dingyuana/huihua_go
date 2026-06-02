@@ -215,12 +215,13 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Accounting period routes
 	periodRepo = repository.NewPeriodRepository(db.GetPool())
-	periodSvc := service.NewPeriodService(periodRepo, journalRepo, glEntryRepo, accountRepo, depreciationRepo)
+	periodSvc := service.NewPeriodService(periodRepo, journalRepo, glEntryRepo, accountRepo, depreciationRepo, bankTransactionRepo, invoiceRepo)
 	periodHandler := handler.NewPeriodHandler(periodSvc)
 	api.Get("/periods", periodHandler.List)
 	api.Get("/periods/current", periodHandler.GetCurrent)
 	api.Get("/periods/voucher-gaps", periodHandler.VoucherGaps)
 	api.Get("/periods/pre-close-check", periodHandler.PreCloseCheck)
+	api.Get("/periods/close-check-summary", periodHandler.CloseCheckSummary)
 	api.Post("/periods/:period_no/close", periodHandler.Close)
 	api.Post("/periods/:period_no/unclose", periodHandler.Unclose)
 
