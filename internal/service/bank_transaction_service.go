@@ -270,12 +270,15 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 			}
 		}
 
-		// Parse counterparty
+		cpIdx, cpFound := findCol(
+			"counterparty", "对方户名", "对方名称", "对方账户", "交易对方",
+			"付款人名称", "收款人名称",
+			"付款人", "收款人",
+		)
 		var counterparty *string
-		cpIdx, _ := findCol("counterparty", "对方户名", "对方名称", "对方账户", "收款人", "付款人", "交易对方")
-		if cpIdx < len(row) {
+		if cpFound && cpIdx < len(row) {
 			cp := strings.TrimSpace(row[cpIdx])
-			if cp != "" {
+			if cp != "" && !looksLikeBankCode(cp) {
 				counterparty = &cp
 			}
 		}
@@ -626,4 +629,10 @@ func extractCounterpartyName(description string) string {
 		return strings.TrimSpace(m)
 	}
 	return ""
+}
+
+var bankCodeOnlyRe = regexp.MustCompile(`^\d{4,20}$`)
+
+func looksLikeBankCode(s string) bool {
+	return bankCodeOnlyRe.MatchString(strings.TrimSpace(s))
 }
