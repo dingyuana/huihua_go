@@ -3,43 +3,80 @@
     <div class="page-header">
       <h3>银企对账</h3>
       <div>
-        <el-select v-model="bankAccount" placeholder="选择银行账户" style="width: 240px; margin-right: 8px">
-          <el-option v-for="acct in bankAccounts" :key="acct.id" :label="`${acct.bank_name} (${maskAccount(acct.account_number)})`" :value="acct.id" />
+        <el-select
+          v-model="bankAccount"
+          placeholder="选择银行账户"
+          style="width: 240px; margin-right: 8px"
+        >
+          <el-option
+            v-for="acct in bankAccounts"
+            :key="acct.id"
+            :label="`${acct.bank_name} (${maskAccount(acct.account_number)})`"
+            :value="acct.id"
+          />
         </el-select>
-        <el-button type="primary" :loading="loading" @click="runMatch">执行对账</el-button>
+        <el-button
+          type="primary"
+          :loading="loading"
+          @click="runMatch"
+        >
+          执行对账
+        </el-button>
       </div>
     </div>
 
     <!-- 统计概览 -->
-    <el-row :gutter="16" class="stat-row">
+    <el-row
+      :gutter="16"
+      class="stat-row"
+    >
       <el-col :span="6">
         <el-card shadow="never">
-          <p class="stat-val">{{ stats.total }}</p>
-          <p class="stat-lbl">总笔数</p>
+          <p class="stat-val">
+            {{ stats.total }}
+          </p>
+          <p class="stat-lbl">
+            总笔数
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="never">
-          <p class="stat-val success">{{ stats.autoMatched }}</p>
-          <p class="stat-lbl">自动勾兑</p>
+          <p class="stat-val success">
+            {{ stats.autoMatched }}
+          </p>
+          <p class="stat-lbl">
+            自动勾兑
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="never">
-          <p class="stat-val warning">{{ stats.needConfirm }}</p>
-          <p class="stat-lbl">待确认</p>
+          <p class="stat-val warning">
+            {{ stats.needConfirm }}
+          </p>
+          <p class="stat-lbl">
+            待确认
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="never">
-          <p class="stat-val danger">{{ stats.unmatched }}</p>
-          <p class="stat-lbl">未匹配</p>
+          <p class="stat-val danger">
+            {{ stats.unmatched }}
+          </p>
+          <p class="stat-lbl">
+            未匹配
+          </p>
         </el-card>
       </el-col>
     </el-row>
 
     <!-- 自动勾兑率 -->
-    <el-card shadow="never" class="rate-card">
+    <el-card
+      shadow="never"
+      class="rate-card"
+    >
       <span>自动勾兑率：</span>
       <el-progress
         :percentage="stats.autoMatchRate"
@@ -51,13 +88,31 @@
     <!-- 匹配列表 -->
     <el-card shadow="never">
       <el-tabs v-model="activeTab">
-        <el-tab-pane :label="`自动匹配 (${stats.autoMatched})`" name="auto" />
-        <el-tab-pane :label="`待确认 (${stats.needConfirm})`" name="confirm" />
-        <el-tab-pane :label="`未匹配 (${stats.unmatched})`" name="unmatched" />
+        <el-tab-pane
+          :label="`自动匹配 (${stats.autoMatched})`"
+          name="auto"
+        />
+        <el-tab-pane
+          :label="`待确认 (${stats.needConfirm})`"
+          name="confirm"
+        />
+        <el-tab-pane
+          :label="`未匹配 (${stats.unmatched})`"
+          name="unmatched"
+        />
       </el-tabs>
 
-      <el-table :data="filteredList" border stripe size="small" v-loading="loading">
-        <el-table-column label="匹配得分" width="100">
+      <el-table
+        v-loading="loading"
+        :data="filteredList"
+        border
+        stripe
+        size="small"
+      >
+        <el-table-column
+          label="匹配得分"
+          width="100"
+        >
           <template #default="{ row }">
             <el-tag
               :type="row.score >= 85 ? 'success' : row.score >= 60 ? 'warning' : 'danger'"
@@ -67,9 +122,20 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="bank_txn" label="银行流水" min-width="200" />
-        <el-table-column prop="gl_entry" label="GL 条目" min-width="200" />
-        <el-table-column label="操作" width="120">
+        <el-table-column
+          prop="bank_txn"
+          label="银行流水"
+          min-width="200"
+        />
+        <el-table-column
+          prop="gl_entry"
+          label="GL 条目"
+          min-width="200"
+        />
+        <el-table-column
+          label="操作"
+          width="120"
+        >
           <template #default="{ row }">
             <el-button
               v-if="row.needConfirm"
@@ -80,15 +146,29 @@
             >
               确认
             </el-button>
-            <el-tag v-else size="small" type="success">已匹配</el-tag>
+            <el-tag
+              v-else
+              size="small"
+              type="success"
+            >
+              已匹配
+            </el-tag>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
     <div class="rec-actions">
-      <el-button @click="$router.push('/bank-reconciliation/balance')">查看余额调节表</el-button>
-      <el-button type="primary" :loading="locking" @click="handleLock">锁定对账结果</el-button>
+      <el-button @click="$router.push('/bank-reconciliation/balance')">
+        查看余额调节表
+      </el-button>
+      <el-button
+        type="primary"
+        :loading="locking"
+        @click="handleLock"
+      >
+        锁定对账结果
+      </el-button>
     </div>
   </div>
 </template>

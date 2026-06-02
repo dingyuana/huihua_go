@@ -3,70 +3,190 @@
     <div class="page-header">
       <h3>凭证模板配置</h3>
       <div>
-        <el-button @click="seedDefaults">初始化默认模板</el-button>
-        <el-button type="primary" @click="openCreate">
+        <el-button @click="seedDefaults">
+          初始化默认模板
+        </el-button>
+        <el-button
+          type="primary"
+          @click="openCreate"
+        >
           <el-icon><Plus /></el-icon>
           新建模板
         </el-button>
       </div>
     </div>
 
-    <el-alert type="info" :closable="false" show-icon style="margin-bottom: 12px">
-      <p>凭证模板用于在自动生成凭证时按 <b>分类标识</b> 选择借/贷方科目。一级借/贷方科目在模板行中指定；占位符 <code v-text="'{{amount}}'"></code> 表示自动填入流水金额，<code v-text="'{{party}}'"></code> 表示对方户名。</p>
+    <el-alert
+      type="info"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 12px"
+    >
+      <p>凭证模板用于在自动生成凭证时按 <b>分类标识</b> 选择借/贷方科目。一级借/贷方科目在模板行中指定；占位符 <code v-text="'{{amount}}'" /> 表示自动填入流水金额，<code v-text="'{{party}}'" /> 表示对方户名。</p>
       <p>每个分类下只能有一个 <b>启用</b> 模板。</p>
     </el-alert>
 
-    <el-table :data="templates" border stripe size="small" v-loading="loading">
-      <el-table-column prop="name" label="模板名称" width="200" />
-      <el-table-column label="分类" width="160">
+    <el-table
+      v-loading="loading"
+      :data="templates"
+      border
+      stripe
+      size="small"
+    >
+      <el-table-column
+        prop="name"
+        label="模板名称"
+        width="200"
+      />
+      <el-table-column
+        label="分类"
+        width="160"
+      >
         <template #default="{ row }">
-          <el-tag v-if="row.classification" size="small" type="primary">{{ row.classification }}</el-tag>
-          <span v-else class="text-muted">通用</span>
+          <el-tag
+            v-if="row.classification"
+            size="small"
+            type="primary"
+          >
+            {{ row.classification }}
+          </el-tag>
+          <span
+            v-else
+            class="text-muted"
+          >通用</span>
         </template>
       </el-table-column>
-      <el-table-column prop="number_prefix" label="编号前缀" width="100" />
-      <el-table-column label="模板行" width="80">
+      <el-table-column
+        prop="number_prefix"
+        label="编号前缀"
+        width="100"
+      />
+      <el-table-column
+        label="模板行"
+        width="80"
+      >
         <template #default="{ row }">
-          <el-tag size="small">{{ (row.lines || []).length }} 行</el-tag>
+          <el-tag size="small">
+            {{ (row.lines || []).length }} 行
+          </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="审批流" width="120">
+      <el-table-column
+        label="审批流"
+        width="120"
+      >
         <template #default="{ row }">
-          <span v-if="row.approval_flow_id" class="text-muted">已绑定</span>
-          <span v-else class="text-muted">未绑定</span>
+          <span
+            v-if="row.approval_flow_id"
+            class="text-muted"
+          >已绑定</span>
+          <span
+            v-else
+            class="text-muted"
+          >未绑定</span>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="80">
+      <el-table-column
+        label="状态"
+        width="80"
+      >
         <template #default="{ row }">
-          <el-tag :type="row.is_active ? 'success' : 'info'" size="small">{{ row.is_active ? '启用' : '停用' }}</el-tag>
+          <el-tag
+            :type="row.is_active ? 'success' : 'info'"
+            size="small"
+          >
+            {{ row.is_active ? '启用' : '停用' }}
+          </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="description" label="说明" min-width="160" show-overflow-tooltip />
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column
+        prop="description"
+        label="说明"
+        min-width="160"
+        show-overflow-tooltip
+      />
+      <el-table-column
+        label="操作"
+        width="180"
+        fixed="right"
+      >
         <template #default="{ row }">
-          <el-button link type="primary" size="small" @click="editTemplate(row)">编辑</el-button>
-          <el-button link :type="row.is_active ? 'warning' : 'success'" size="small" @click="toggleActive(row)">
+          <el-button
+            link
+            type="primary"
+            size="small"
+            @click="editTemplate(row)"
+          >
+            编辑
+          </el-button>
+          <el-button
+            link
+            :type="row.is_active ? 'warning' : 'success'"
+            size="small"
+            @click="toggleActive(row)"
+          >
             {{ row.is_active ? '停用' : '启用' }}
           </el-button>
-          <el-button link type="danger" size="small" @click="deleteTemplate(row)">删除</el-button>
+          <el-button
+            link
+            type="danger"
+            size="small"
+            @click="deleteTemplate(row)"
+          >
+            删除
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="showDialog" :title="editingId ? '编辑凭证模板' : '新建凭证模板'" width="720px" :close-on-click-modal="false">
-      <el-form ref="formRef" :model="form" :rules="formRules" label-width="120px">
-        <el-form-item label="模板名称" prop="name">
-          <el-input v-model="form.name" placeholder="如：银行手续费" maxlength="100" />
+    <el-dialog
+      v-model="showDialog"
+      :title="editingId ? '编辑凭证模板' : '新建凭证模板'"
+      width="720px"
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="formRules"
+        label-width="120px"
+      >
+        <el-form-item
+          label="模板名称"
+          prop="name"
+        >
+          <el-input
+            v-model="form.name"
+            placeholder="如：银行手续费"
+            maxlength="100"
+          />
         </el-form-item>
-        <el-form-item label="分类标识" prop="classification">
-          <el-select v-model="form.classification" clearable placeholder="选择分类（必填，启用后该分类下唯一）" style="width: 100%">
-            <el-option v-for="opt in classificationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+        <el-form-item
+          label="分类标识"
+          prop="classification"
+        >
+          <el-select
+            v-model="form.classification"
+            clearable
+            placeholder="选择分类（必填，启用后该分类下唯一）"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="opt in classificationOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
           </el-select>
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="编号前缀">
-              <el-input v-model="form.number_prefix" placeholder="如：PZ" maxlength="20" />
+              <el-input
+                v-model="form.number_prefix"
+                placeholder="如：PZ"
+                maxlength="20"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -76,47 +196,109 @@
           </el-col>
         </el-row>
         <el-form-item label="说明">
-          <el-input v-model="form.description" type="textarea" :rows="2" maxlength="200" />
+          <el-input
+            v-model="form.description"
+            type="textarea"
+            :rows="2"
+            maxlength="200"
+          />
         </el-form-item>
-        <el-form-item label="模板行" required>
-          <el-table :data="form.lines" border size="small">
-            <el-table-column label="行序" width="70">
-              <template #default="{ $index }">{{ $index + 1 }}</template>
+        <el-form-item
+          label="模板行"
+          required
+        >
+          <el-table
+            :data="form.lines"
+            border
+            size="small"
+          >
+            <el-table-column
+              label="行序"
+              width="70"
+            >
+              <template #default="{ $index }">
+                {{ $index + 1 }}
+              </template>
             </el-table-column>
-            <el-table-column label="会计科目" min-width="220">
+            <el-table-column
+              label="会计科目"
+              min-width="220"
+            >
               <template #default="{ $index }">
                 <AccountSelector v-model="form.lines[$index].account" />
               </template>
             </el-table-column>
-            <el-table-column label="借方金额" width="130">
+            <el-table-column
+              label="借方金额"
+              width="130"
+            >
               <template #default="{ $index }">
-                <el-input v-model="form.lines[$index].dr_amount_template" placeholder="如：{{amount}}" />
+                <el-input
+                  v-model="form.lines[$index].dr_amount_template"
+                  placeholder="如：{{amount}}"
+                />
               </template>
             </el-table-column>
-            <el-table-column label="贷方金额" width="130">
+            <el-table-column
+              label="贷方金额"
+              width="130"
+            >
               <template #default="{ $index }">
-                <el-input v-model="form.lines[$index].cr_amount_template" placeholder="如：0" />
+                <el-input
+                  v-model="form.lines[$index].cr_amount_template"
+                  placeholder="如：0"
+                />
               </template>
             </el-table-column>
-            <el-table-column label="摘要" min-width="140">
+            <el-table-column
+              label="摘要"
+              min-width="140"
+            >
               <template #default="{ $index }">
-                <el-input v-model="form.lines[$index].summary_template" placeholder="如：手续费" />
+                <el-input
+                  v-model="form.lines[$index].summary_template"
+                  placeholder="如：手续费"
+                />
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="60">
+            <el-table-column
+              label="操作"
+              width="60"
+            >
               <template #default="{ $index }">
-                <el-button link type="danger" size="small" @click="form.lines.splice($index, 1)">×</el-button>
+                <el-button
+                  link
+                  type="danger"
+                  size="small"
+                  @click="form.lines.splice($index, 1)"
+                >
+                  ×
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
           <div style="margin-top: 8px">
-            <el-button text type="primary" @click="addLine">+ 添加模板行</el-button>
+            <el-button
+              text
+              type="primary"
+              @click="addLine"
+            >
+              + 添加模板行
+            </el-button>
           </div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showDialog = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveTemplate">保存</el-button>
+        <el-button @click="showDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="saveTemplate"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </div>

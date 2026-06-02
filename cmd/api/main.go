@@ -162,25 +162,37 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	bankTransactionRepo := repository.NewBankTransactionRepository(db.GetPool())
 	bankTxnSvc := service.NewBankTransactionService(bankTransactionRepo, classificationRuleSvc, bankRepo, partySvc)
 	bankTxnHandler := handler.NewBankTransactionHandler(bankTxnSvc)
-	api.Get("/bank-transactions", bankTxnHandler.List)
-	api.Post("/bank-transactions/preview", bankTxnHandler.PreviewExcel)
-	api.Post("/bank-transactions/import", bankTxnHandler.Import)
-	api.Post("/bank-transactions/classify-all", bankTxnHandler.ClassifyAll)
-	api.Post("/bank-transactions/:id/classify", bankTxnHandler.Classify)
-	api.Post("/bank-transactions/:id/mark-matched", bankTxnHandler.MarkMatched)
-	api.Get("/bank-transactions/unmatched", bankTxnHandler.GetUnmatched)
-	api.Get("/bank-transactions/:id", bankTxnHandler.GetByID)
-	api.Delete("/bank-transactions/:id", bankTxnHandler.Delete)
+
+	// Payment entry repo — needed for auto-gen service
+	paymentRepo := repository.NewPaymentEntryRepository(db.GetPool())
+
+	// Voucher auto-generate service (templateSvc and approvalSvc can be nil for preview)
+	autoGenSvc := service.NewVoucherAutoGenerateService(
+		journalRepo, glEntryRepo, bankTransactionRepo,
+		bankRepo, invoiceRepo, paymentRepo, accountRepo, classificationRuleSvc, nil, nil,
+	)
 
 	// Bank transaction review workflow routes (TASK-BANK-01.4 + TASK-BANK-01.AI)
+	// IMPORTANT: These must be registered BEFORE /bank-transactions/:id to avoid route conflicts
 	bankTxnAISvc := service.NewBankTxnAIService(service.NewDeepSeekClient(), bankTransactionRepo)
-	bankTxnReviewSvc := service.NewBankTxnReviewService(db.GetPool(), bankTransactionRepo, nil, nil, bankTxnAISvc)
+	bankTxnReviewSvc := service.NewBankTxnReviewService(db.GetPool(), bankTransactionRepo, autoGenSvc, nil, bankTxnAISvc)
 	bankTxnReviewHandler := handler.NewBankTxnReviewHandler(bankTxnReviewSvc, bankTransactionRepo)
 	api.Get("/bank-transactions/review-list", bankTxnReviewHandler.ReviewList)
 	api.Get("/bank-transactions/review-stats", bankTxnReviewHandler.ReviewStats)
 	api.Post("/bank-transactions/preview-draft/:id", bankTxnReviewHandler.PreviewDraft)
 	api.Post("/bank-transactions/submit-review", bankTxnReviewHandler.SubmitReview)
 	api.Post("/bank-transactions/reject-manual", bankTxnReviewHandler.RejectManual)
+
+	// Bank transaction CRUD routes (specific paths first, then :id paths)
+	api.Get("/bank-transactions", bankTxnHandler.List)
+	api.Post("/bank-transactions/preview", bankTxnHandler.PreviewExcel)
+	api.Post("/bank-transactions/import", bankTxnHandler.Import)
+	api.Post("/bank-transactions/classify-all", bankTxnHandler.ClassifyAll)
+	api.Get("/bank-transactions/unmatched", bankTxnHandler.GetUnmatched)
+	api.Post("/bank-transactions/:id/classify", bankTxnHandler.Classify)
+	api.Post("/bank-transactions/:id/mark-matched", bankTxnHandler.MarkMatched)
+	api.Get("/bank-transactions/:id", bankTxnHandler.GetByID)
+	api.Delete("/bank-transactions/:id", bankTxnHandler.Delete)
 
 	// Voucher template routes
 	voucherTemplateRepo := repository.NewVoucherTemplateRepository(db.GetPool())
@@ -283,12 +295,9 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Put("/approval-flows/:id", approvalHandler.UpdateApprovalFlow)
 	api.Delete("/approval-flows/:id", approvalHandler.DeleteApprovalFlow)
 
-	// Payment entry repo — used by auto-gen service and payment handler
-	paymentRepo := repository.NewPaymentEntryRepository(db.GetPool())
-
 	// Voucher auto-generate routes (from bank transactions & payment entries)
-	// Placed after approvalSvc is initialized so it can be injected
-	autoGenSvc := service.NewVoucherAutoGenerateService(
+	// Re-create with full dependencies for post-import voucher auto-generation
+	autoGenSvc = service.NewVoucherAutoGenerateService(
 		journalRepo, glEntryRepo, bankTransactionRepo,
 		bankRepo, invoiceRepo, paymentRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
 	)

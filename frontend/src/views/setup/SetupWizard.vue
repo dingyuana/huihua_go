@@ -3,21 +3,47 @@
     <div class="wizard-header">
       <div class="header-icon">
         <span class="icon-bg">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 9h1M14 9h1M9 13h1M14 13h1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 9h1M14 9h1M9 13h1M14 13h1"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
           </svg>
         </span>
       </div>
       <h2>创建公司账套</h2>
-      <p class="wizard-subtitle">分步完成公司信息、会计期间和初始化设置</p>
+      <p class="wizard-subtitle">
+        分步完成公司信息、会计期间和初始化设置
+      </p>
     </div>
 
     <!-- 已初始化提示 -->
-    <div v-if="alreadyInitialized" class="initialized-card">
+    <div
+      v-if="alreadyInitialized"
+      class="initialized-card"
+    >
       <div class="card-header">
         <div class="status-badge">
-          <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            width="18"
+            height="18"
+          >
+            <path
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
           </svg>
           <span>账套已创建</span>
         </div>
@@ -43,7 +69,10 @@
           </div>
         </div>
         <div class="card-actions">
-          <el-button type="primary" @click="$router.push('/setup/accounts')">
+          <el-button
+            type="primary"
+            @click="$router.push('/setup/accounts')"
+          >
             <el-icon><Setting /></el-icon>
             配置科目表
           </el-button>
@@ -56,64 +85,171 @@
     </div>
 
     <!-- 向导步骤 -->
-    <el-card v-if="!alreadyInitialized" class="wizard-card" shadow="never">
-      <el-steps :active="activeStep" finish-status="success" align-center class="wizard-steps">
+    <el-card
+      v-if="!alreadyInitialized"
+      class="wizard-card"
+      shadow="never"
+    >
+      <el-steps
+        :active="activeStep"
+        finish-status="success"
+        align-center
+        class="wizard-steps"
+      >
         <el-step title="公司信息" />
         <el-step title="会计期间" />
         <el-step title="初始化设置" />
         <el-step title="完成" />
       </el-steps>
 
-      <div v-show="activeStep === 0" class="step-content">
-        <el-form ref="formRef1" :model="form" :rules="rules" label-width="100px">
-          <el-form-item label="公司名称" prop="name">
-            <el-input v-model="form.name" placeholder="请输入公司全称" maxlength="100" size="large" />
+      <div
+        v-show="activeStep === 0"
+        class="step-content"
+      >
+        <el-form
+          ref="formRef1"
+          :model="form"
+          :rules="rules"
+          label-width="100px"
+        >
+          <el-form-item
+            label="公司名称"
+            prop="name"
+          >
+            <el-input
+              v-model="form.name"
+              placeholder="请输入公司全称"
+              maxlength="100"
+              size="large"
+            />
           </el-form-item>
-          <el-form-item label="启用日期" prop="enableDate">
-            <el-date-picker v-model="form.enableDate" type="date" placeholder="选择启用日期" size="large" style="width: 100%" />
+          <el-form-item
+            label="启用日期"
+            prop="enableDate"
+          >
+            <el-date-picker
+              v-model="form.enableDate"
+              type="date"
+              placeholder="选择启用日期"
+              size="large"
+              style="width: 100%"
+            />
           </el-form-item>
           <el-form-item label="本位币">
-            <el-select v-model="form.currency" size="large" style="width: 100%">
-              <el-option label="人民币 (CNY)" value="CNY" />
-              <el-option label="美元 (USD)" value="USD" />
-              <el-option label="港币 (HKD)" value="HKD" />
+            <el-select
+              v-model="form.currency"
+              size="large"
+              style="width: 100%"
+            >
+              <el-option
+                label="人民币 (CNY)"
+                value="CNY"
+              />
+              <el-option
+                label="美元 (USD)"
+                value="USD"
+              />
+              <el-option
+                label="港币 (HKD)"
+                value="HKD"
+              />
             </el-select>
           </el-form-item>
         </el-form>
       </div>
 
-      <div v-show="activeStep === 1" class="step-content">
+      <div
+        v-show="activeStep === 1"
+        class="step-content"
+      >
         <el-form label-width="120px">
           <el-form-item label="财务年度起始">
-            <el-select v-model="form.fiscalStartMonth" size="large" style="width: 100%">
-              <el-option v-for="m in 12" :key="m" :label="`${m}月`" :value="m" />
+            <el-select
+              v-model="form.fiscalStartMonth"
+              size="large"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="m in 12"
+                :key="m"
+                :label="`${m}月`"
+                :value="m"
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="期间类型">
-            <el-radio-group v-model="form.periodType" size="large">
-              <el-radio-button value="monthly">自然月度（12期）</el-radio-button>
-              <el-radio-button value="custom">自定义</el-radio-button>
+            <el-radio-group
+              v-model="form.periodType"
+              size="large"
+            >
+              <el-radio-button value="monthly">
+                自然月度（12期）
+              </el-radio-button>
+              <el-radio-button value="custom">
+                自定义
+              </el-radio-button>
             </el-radio-group>
           </el-form-item>
-          <el-form-item v-if="form.periodType === 'custom'" label="期间数">
-            <el-input-number v-model="form.periodCount" :min="1" :max="12" size="large" />
+          <el-form-item
+            v-if="form.periodType === 'custom'"
+            label="期间数"
+          >
+            <el-input-number
+              v-model="form.periodCount"
+              :min="1"
+              :max="12"
+              size="large"
+            />
           </el-form-item>
           <el-form-item label="期间预览">
-            <el-table :data="previewPeriods" size="small" max-height="240" stripe border>
-              <el-table-column prop="index" label="#" width="60" align="center" />
-              <el-table-column prop="start" label="开始日期" align="center" />
-              <el-table-column prop="end" label="结束日期" align="center" />
+            <el-table
+              :data="previewPeriods"
+              size="small"
+              max-height="240"
+              stripe
+              border
+            >
+              <el-table-column
+                prop="index"
+                label="#"
+                width="60"
+                align="center"
+              />
+              <el-table-column
+                prop="start"
+                label="开始日期"
+                align="center"
+              />
+              <el-table-column
+                prop="end"
+                label="结束日期"
+                align="center"
+              />
             </el-table>
           </el-form-item>
         </el-form>
       </div>
 
-      <div v-show="activeStep === 2" class="step-content">
+      <div
+        v-show="activeStep === 2"
+        class="step-content"
+      >
         <div class="init-features">
           <div class="feature-item">
             <div class="feature-icon green">
-              <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
-                <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                width="22"
+                height="22"
+              >
+                <path
+                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </div>
             <div class="feature-text">
@@ -123,8 +259,19 @@
           </div>
           <div class="feature-item">
             <div class="feature-icon blue">
-              <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
-                <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                width="22"
+                height="22"
+              >
+                <path
+                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </div>
             <div class="feature-text">
@@ -135,23 +282,55 @@
         </div>
       </div>
 
-      <div v-show="activeStep === 3" class="step-content step-done">
+      <div
+        v-show="activeStep === 3"
+        class="step-content step-done"
+      >
         <div class="done-animation">
           <div class="success-circle">
-            <svg viewBox="0 0 64 64" width="64" height="64">
-              <circle cx="32" cy="32" r="28" fill="#e8f5e9" stroke="#4caf50" stroke-width="2"/>
-              <path d="M20 32l8 8 16-16" stroke="#4caf50" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg
+              viewBox="0 0 64 64"
+              width="64"
+              height="64"
+            >
+              <circle
+                cx="32"
+                cy="32"
+                r="28"
+                fill="#e8f5e9"
+                stroke="#4caf50"
+                stroke-width="2"
+              />
+              <path
+                d="M20 32l8 8 16-16"
+                stroke="#4caf50"
+                stroke-width="3"
+                fill="none"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
             </svg>
           </div>
         </div>
-        <h3 class="done-title">账套创建成功</h3>
-        <p class="done-desc">{{ form.name }} 已准备就绪</p>
+        <h3 class="done-title">
+          账套创建成功
+        </h3>
+        <p class="done-desc">
+          {{ form.name }} 已准备就绪
+        </p>
         <div class="done-actions">
-          <el-button type="primary" size="large" @click="$router.push('/setup/accounts')">
+          <el-button
+            type="primary"
+            size="large"
+            @click="$router.push('/setup/accounts')"
+          >
             <el-icon><Setting /></el-icon>
             配置科目表
           </el-button>
-          <el-button size="large" @click="$router.push('/bank/import')">
+          <el-button
+            size="large"
+            @click="$router.push('/bank/import')"
+          >
             <el-icon><Upload /></el-icon>
             导入银行流水
           </el-button>
@@ -159,13 +338,28 @@
       </div>
 
       <div class="wizard-actions">
-        <el-button v-if="activeStep > 0 && activeStep < 3" @click="prevStep">上一步</el-button>
+        <el-button
+          v-if="activeStep > 0 && activeStep < 3"
+          @click="prevStep"
+        >
+          上一步
+        </el-button>
         <div class="spacer" />
-        <el-button v-if="activeStep < 2" type="primary" @click="nextStep">
+        <el-button
+          v-if="activeStep < 2"
+          type="primary"
+          @click="nextStep"
+        >
           下一步
           <el-icon><ArrowRight /></el-icon>
         </el-button>
-        <el-button v-if="activeStep === 2" type="primary" size="large" :loading="submitting" @click="handleSubmit">
+        <el-button
+          v-if="activeStep === 2"
+          type="primary"
+          size="large"
+          :loading="submitting"
+          @click="handleSubmit"
+        >
           {{ submitting ? '创建中...' : '完成创建' }}
         </el-button>
       </div>

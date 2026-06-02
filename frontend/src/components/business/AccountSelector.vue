@@ -16,7 +16,15 @@
       >
         <span class="node-code">{{ node.code }}</span>
         <span class="node-name">{{ node.name }}</span>
-        <el-tag v-if="node.is_group" size="small" type="info" effect="plain" style="margin-left: 8px">汇总</el-tag>
+        <el-tag
+          v-if="node.is_group"
+          size="small"
+          type="info"
+          effect="plain"
+          style="margin-left: 8px"
+        >
+          汇总
+        </el-tag>
       </el-option>
     </el-select>
 
@@ -36,7 +44,15 @@
       >
         <span class="node-code">{{ node.code }}</span>
         <span class="node-name">{{ node.name }}</span>
-        <el-tag v-if="node.is_group" size="small" type="info" effect="plain" style="margin-left: 8px">汇总</el-tag>
+        <el-tag
+          v-if="node.is_group"
+          size="small"
+          type="info"
+          effect="plain"
+          style="margin-left: 8px"
+        >
+          汇总
+        </el-tag>
       </el-option>
     </el-select>
 
@@ -56,7 +72,15 @@
       >
         <span class="node-code">{{ node.code }}</span>
         <span class="node-name">{{ node.name }}</span>
-        <el-tag v-if="node.is_group" size="small" type="info" effect="plain" style="margin-left: 8px">汇总</el-tag>
+        <el-tag
+          v-if="node.is_group"
+          size="small"
+          type="info"
+          effect="plain"
+          style="margin-left: 8px"
+        >
+          汇总
+        </el-tag>
       </el-option>
     </el-select>
   </div>

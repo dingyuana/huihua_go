@@ -1,30 +1,51 @@
 <template>
   <div class="dashboard">
     <h2>欢迎使用慧财智能财务平台</h2>
-    <p class="company-name">{{ companyName }}</p>
-    <el-row :gutter="16" class="stat-cards">
+    <p class="company-name">
+      {{ companyName }}
+    </p>
+    <el-row
+      :gutter="16"
+      class="stat-cards"
+    >
       <el-col :span="6">
         <el-card shadow="hover">
-          <p class="stat-label">本月流水</p>
-          <p class="stat-value">{{ stats.monthlyTxns }} 笔</p>
+          <p class="stat-label">
+            本月流水
+          </p>
+          <p class="stat-value">
+            {{ stats.monthlyTxns }} 笔
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
-          <p class="stat-label">待审核凭证</p>
-          <p class="stat-value warning">{{ stats.pendingVouchers }} 张</p>
+          <p class="stat-label">
+            待审核凭证
+          </p>
+          <p class="stat-value warning">
+            {{ stats.pendingVouchers }} 张
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
-          <p class="stat-label">本月净利润</p>
-          <p class="stat-value positive">¥{{ stats.monthlyProfit }}</p>
+          <p class="stat-label">
+            本月净利润
+          </p>
+          <p class="stat-value positive">
+            ¥{{ stats.monthlyProfit }}
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
-          <p class="stat-label">待处理流水</p>
-          <p class="stat-value danger">{{ stats.pendingTxns }} 条</p>
+          <p class="stat-label">
+            待处理流水
+          </p>
+          <p class="stat-value danger">
+            {{ stats.pendingTxns }} 条
+          </p>
         </el-card>
       </el-col>
     </el-row>
@@ -33,9 +54,18 @@
         <span>快速入口</span>
       </template>
       <el-space wrap>
-        <el-button type="primary" @click="$router.push('/bank/import')">导入银行流水</el-button>
-        <el-button @click="$router.push('/vouchers/create')">新增凭证</el-button>
-        <el-button @click="$router.push('/period/health-check')">结账体检</el-button>
+        <el-button
+          type="primary"
+          @click="$router.push('/bank/import')"
+        >
+          导入银行流水
+        </el-button>
+        <el-button @click="$router.push('/vouchers/create')">
+          新增凭证
+        </el-button>
+        <el-button @click="$router.push('/period/health-check')">
+          结账体检
+        </el-button>
       </el-space>
     </el-card>
   </div>

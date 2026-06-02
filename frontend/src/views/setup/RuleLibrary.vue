@@ -1,61 +1,105 @@
 <template>
   <div class="rule-library">
-    <PageLayout title="智能分类规则库" icon="⚙️" subtitle="配置银行流水自动分类规则，支持正则和关键词匹配">
+    <PageLayout
+      title="智能分类规则库"
+      icon="⚙️"
+      subtitle="配置银行流水自动分类规则，支持正则和关键词匹配"
+    >
       <template #actions>
         <el-button @click="seedRules">
           <el-icon><Download /></el-icon>
           初始化默认规则
         </el-button>
-        <el-button type="primary" @click="openCreate">
+        <el-button
+          type="primary"
+          @click="openCreate"
+        >
           <el-icon><Plus /></el-icon>
           新建规则
         </el-button>
       </template>
 
       <el-table
+        v-loading="loading"
         :data="rules"
         border
         stripe
         size="small"
         row-key="id"
-        v-loading="loading"
       >
-        <el-table-column label="优先级" width="80">
+        <el-table-column
+          label="优先级"
+          width="80"
+        >
           <template #default="{ $index }">
-            <el-tag size="small" type="info">{{ $index + 1 }}</el-tag>
+            <el-tag
+              size="small"
+              type="info"
+            >
+              {{ $index + 1 }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="规则名称" min-width="150" />
-        <el-table-column label="匹配模式" width="120">
+        <el-table-column
+          prop="name"
+          label="规则名称"
+          min-width="150"
+        />
+        <el-table-column
+          label="匹配模式"
+          width="120"
+        >
           <template #default="{ row }">
-            <el-tag size="small" :type="getRuleTypeTag(row.rule_type)">
+            <el-tag
+              size="small"
+              :type="getRuleTypeTag(row.rule_type)"
+            >
               {{ getRuleTypeLabel(row.rule_type) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="匹配字段" width="100">
+        <el-table-column
+          label="匹配字段"
+          width="100"
+        >
           <template #default="{ row }">
             {{ row.match_field === 'counterparty' ? '对方户名' : '摘要' }}
           </template>
         </el-table-column>
-        <el-table-column prop="pattern" label="匹配内容" min-width="200">
+        <el-table-column
+          prop="pattern"
+          label="匹配内容"
+          min-width="200"
+        >
           <template #default="{ row }">
             <code class="pattern-code">{{ row.pattern }}</code>
           </template>
         </el-table-column>
-        <el-table-column label="金额方向" width="90">
+        <el-table-column
+          label="金额方向"
+          width="90"
+        >
           <template #default="{ row }">
             {{ row.direction === 'in' ? '收款' : row.direction === 'out' ? '付款' : '不限' }}
           </template>
         </el-table-column>
-        <el-table-column label="目标分类" width="130">
+        <el-table-column
+          label="目标分类"
+          width="130"
+        >
           <template #default="{ row }">
-            <el-tag :type="getClassificationTagType(row.classification)" size="small">
+            <el-tag
+              :type="getClassificationTagType(row.classification)"
+              size="small"
+            >
               {{ getClassificationLabel(row.classification) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="80">
+        <el-table-column
+          label="状态"
+          width="80"
+        >
           <template #default="{ row }">
             <el-switch
               v-model="row.is_active"
@@ -64,89 +108,232 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column
+          label="操作"
+          width="160"
+          fixed="right"
+        >
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="testPattern(row)">测试</el-button>
-            <el-button link type="primary" size="small" @click="editRule(row)">编辑</el-button>
-            <el-button link type="danger" size="small" @click="deleteRule(row)">删除</el-button>
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="testPattern(row)"
+            >
+              测试
+            </el-button>
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="editRule(row)"
+            >
+              编辑
+            </el-button>
+            <el-button
+              link
+              type="danger"
+              size="small"
+              @click="deleteRule(row)"
+            >
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
     </PageLayout>
 
-    <el-dialog v-model="showTestDialog" :title="`测试规则: ${testRule?.name}`" width="520px">
-      <p class="test-label">输入测试文本：</p>
+    <el-dialog
+      v-model="showTestDialog"
+      :title="`测试规则: ${testRule?.name}`"
+      width="520px"
+    >
+      <p class="test-label">
+        输入测试文本：
+      </p>
       <el-input
         v-model="testInput"
         type="textarea"
         :rows="3"
         placeholder="输入摘要或对方户名进行匹配测试"
       />
-      <div v-if="testResult !== null" class="test-result">
-        <el-tag :type="testResult ? 'success' : 'danger'" size="large">
+      <div
+        v-if="testResult !== null"
+        class="test-result"
+      >
+        <el-tag
+          :type="testResult ? 'success' : 'danger'"
+          size="large"
+        >
           {{ testResult ? '✅ 匹配成功' : '❌ 未匹配' }}
         </el-tag>
       </div>
       <template #footer>
-        <el-button @click="showTestDialog = false">关闭</el-button>
-        <el-button type="primary" @click="runTest">执行测试</el-button>
+        <el-button @click="showTestDialog = false">
+          关闭
+        </el-button>
+        <el-button
+          type="primary"
+          @click="runTest"
+        >
+          执行测试
+        </el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showDialog" :title="editingRule ? '编辑规则' : '新建规则'" width="560px">
-      <el-form :model="form" label-width="110px" :rules="formRules" ref="formRef">
-        <el-form-item label="规则名称" prop="name">
-          <el-input v-model="form.name" placeholder="如：银行手续费匹配" />
+    <el-dialog
+      v-model="showDialog"
+      :title="editingRule ? '编辑规则' : '新建规则'"
+      width="560px"
+    >
+      <el-form
+        ref="formRef"
+        :model="form"
+        label-width="110px"
+        :rules="formRules"
+      >
+        <el-form-item
+          label="规则名称"
+          prop="name"
+        >
+          <el-input
+            v-model="form.name"
+            placeholder="如：银行手续费匹配"
+          />
         </el-form-item>
-        <el-form-item label="规则类型" prop="rule_type">
+        <el-form-item
+          label="规则类型"
+          prop="rule_type"
+        >
           <el-radio-group v-model="form.rule_type">
-            <el-radio value="keyword">关键词</el-radio>
-            <el-radio value="keyword_regex">正则表达式</el-radio>
-            <el-radio value="counterparty_match">客户匹配</el-radio>
+            <el-radio value="keyword">
+              关键词
+            </el-radio>
+            <el-radio value="keyword_regex">
+              正则表达式
+            </el-radio>
+            <el-radio value="counterparty_match">
+              客户匹配
+            </el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="匹配字段" prop="match_field">
-          <el-select v-model="form.match_field" style="width: 100%">
-            <el-option label="摘要" value="description" />
-            <el-option label="对方户名" value="counterparty" />
+        <el-form-item
+          label="匹配字段"
+          prop="match_field"
+        >
+          <el-select
+            v-model="form.match_field"
+            style="width: 100%"
+          >
+            <el-option
+              label="摘要"
+              value="description"
+            />
+            <el-option
+              label="对方户名"
+              value="counterparty"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item label="匹配内容" prop="pattern">
+        <el-form-item
+          label="匹配内容"
+          prop="pattern"
+        >
           <el-input
             v-model="form.pattern"
             :placeholder="form.rule_type === 'keyword_regex' ? '如：手续费|管理费|年费' : '如：银行手续费'"
           />
-          <p v-if="form.rule_type === 'keyword_regex'" class="form-hint">
+          <p
+            v-if="form.rule_type === 'keyword_regex'"
+            class="form-hint"
+          >
             使用 | 分隔多个模式；支持正则表达式语法
           </p>
         </el-form-item>
-        <el-form-item label="金额方向" prop="direction">
-          <el-select v-model="form.direction" style="width: 100%">
-            <el-option label="不限" value="" />
-            <el-option label="收款" value="in" />
-            <el-option label="付款" value="out" />
+        <el-form-item
+          label="金额方向"
+          prop="direction"
+        >
+          <el-select
+            v-model="form.direction"
+            style="width: 100%"
+          >
+            <el-option
+              label="不限"
+              value=""
+            />
+            <el-option
+              label="收款"
+              value="in"
+            />
+            <el-option
+              label="付款"
+              value="out"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item label="目标分类" prop="classification">
-          <el-select v-model="form.classification" style="width: 100%">
-            <el-option label="业务收款" value="business_receipt" />
-            <el-option label="业务付款" value="business_payment" />
-            <el-option label="银行手续费" value="bank_fee" />
-            <el-option label="利息收入" value="interest_income" />
-            <el-option label="内部转账" value="internal_transfer" />
+        <el-form-item
+          label="目标分类"
+          prop="classification"
+        >
+          <el-select
+            v-model="form.classification"
+            style="width: 100%"
+          >
+            <el-option
+              label="业务收款"
+              value="business_receipt"
+            />
+            <el-option
+              label="业务付款"
+              value="business_payment"
+            />
+            <el-option
+              label="银行手续费"
+              value="bank_fee"
+            />
+            <el-option
+              label="利息收入"
+              value="interest_income"
+            />
+            <el-option
+              label="内部转账"
+              value="internal_transfer"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item label="优先级" prop="priority">
-          <el-input-number v-model="form.priority" :min="1" :max="999" style="width: 100%" />
-          <p class="form-hint">数字越小优先级越高；匹配成功后不再检测后续规则</p>
+        <el-form-item
+          label="优先级"
+          prop="priority"
+        >
+          <el-input-number
+            v-model="form.priority"
+            :min="1"
+            :max="999"
+            style="width: 100%"
+          />
+          <p class="form-hint">
+            数字越小优先级越高；匹配成功后不再检测后续规则
+          </p>
         </el-form-item>
-        <el-form-item label="启用状态" prop="is_active">
+        <el-form-item
+          label="启用状态"
+          prop="is_active"
+        >
           <el-switch v-model="form.is_active" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showDialog = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveRule">保存</el-button>
+        <el-button @click="showDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="saveRule"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </div>

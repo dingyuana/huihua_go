@@ -1,63 +1,152 @@
 <template>
   <div class="bank-account-page">
-    <PageLayout title="资金账户管理" icon="💰" subtitle="管理银行存款和库存现金账户，实时监控余额变动">
+    <PageLayout
+      title="资金账户管理"
+      icon="💰"
+      subtitle="管理银行存款和库存现金账户，实时监控余额变动"
+    >
       <template #actions>
-        <el-button type="primary" @click="openCreate">
+        <el-button
+          type="primary"
+          @click="openCreate"
+        >
           <el-icon><Plus /></el-icon>
           新增账户
         </el-button>
       </template>
 
-      <el-row :gutter="16" class="balance-cards">
-        <el-col v-for="acct in accounts" :key="acct.id" :span="6">
-          <el-card shadow="hover" :class="['balance-card', acct.bank_account_type]">
+      <el-row
+        :gutter="16"
+        class="balance-cards"
+      >
+        <el-col
+          v-for="acct in accounts"
+          :key="acct.id"
+          :span="6"
+        >
+          <el-card
+            shadow="hover"
+            :class="['balance-card', acct.bank_account_type]"
+          >
             <div class="card-header">
               <span class="bank-name">{{ acct.bank_name }}</span>
-              <el-tag v-if="!acct.is_active" size="small" type="danger">已停用</el-tag>
+              <el-tag
+                v-if="!acct.is_active"
+                size="small"
+                type="danger"
+              >
+                已停用
+              </el-tag>
             </div>
-            <p class="account-number">{{ maskAccount(acct.account_number) }}</p>
-            <p class="balance">{{ acct.balance || '0.00' }}</p>
-            <p class="balance-label">{{ acct.currency }} 余额</p>
+            <p class="account-number">
+              {{ maskAccount(acct.account_number) }}
+            </p>
+            <p class="balance">
+              {{ acct.balance || '0.00' }}
+            </p>
+            <p class="balance-label">
+              {{ acct.currency }} 余额
+            </p>
           </el-card>
         </el-col>
       </el-row>
 
-      <el-table :data="accounts" border stripe size="small">
-        <el-table-column prop="bank_name" label="账户名称" width="140" />
-        <el-table-column prop="account_number" label="账号" width="180">
-          <template #default="{ row }">{{ maskAccount(row.account_number) }}</template>
-        </el-table-column>
-        <el-table-column label="类型" width="90">
+      <el-table
+        :data="accounts"
+        border
+        stripe
+        size="small"
+      >
+        <el-table-column
+          prop="bank_name"
+          label="账户名称"
+          width="140"
+        />
+        <el-table-column
+          prop="account_number"
+          label="账号"
+          width="180"
+        >
           <template #default="{ row }">
-            <el-tag :type="row.bank_account_type === 'bank' ? 'primary' : 'success'" size="small">
+            {{ maskAccount(row.account_number) }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="类型"
+          width="90"
+        >
+          <template #default="{ row }">
+            <el-tag
+              :type="row.bank_account_type === 'bank' ? 'primary' : 'success'"
+              size="small"
+            >
               {{ row.bank_account_type === 'bank' ? '银行存款' : '库存现金' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="关联科目" width="160">
-          <template #default="{ row }">{{ row.clearing_account_code || '-' }}</template>
+        <el-table-column
+          label="关联科目"
+          width="160"
+        >
+          <template #default="{ row }">
+            {{ row.clearing_account_code || '-' }}
+          </template>
         </el-table-column>
-        <el-table-column v-if="hasCashAccount" label="保管人/位置" width="200">
+        <el-table-column
+          v-if="hasCashAccount"
+          label="保管人/位置"
+          width="200"
+        >
           <template #default="{ row }">
             <template v-if="row.bank_account_type === 'cash'">
               <div style="line-height: 1.4">
                 <div>👤 {{ row.custodian || '未指定' }}</div>
-                <div style="font-size: 12px; color: #999">📍 {{ row.location || '未指定' }}</div>
+                <div style="font-size: 12px; color: #999">
+                  📍 {{ row.location || '未指定' }}
+                </div>
               </div>
             </template>
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="currency" label="币种" width="60" />
-        <el-table-column label="状态" width="70">
+        <el-table-column
+          prop="currency"
+          label="币种"
+          width="60"
+        />
+        <el-table-column
+          label="状态"
+          width="70"
+        >
           <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'danger'" size="small">{{ row.is_active ? '启用' : '停用' }}</el-tag>
+            <el-tag
+              :type="row.is_active ? 'success' : 'danger'"
+              size="small"
+            >
+              {{ row.is_active ? '启用' : '停用' }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="130" fixed="right">
+        <el-table-column
+          label="操作"
+          width="130"
+          fixed="right"
+        >
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="editAccount(row)">编辑</el-button>
-            <el-button link :type="row.is_active ? 'warning' : 'success'" size="small" @click="toggleActive(row)">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="editAccount(row)"
+            >
+              编辑
+            </el-button>
+            <el-button
+              link
+              :type="row.is_active ? 'warning' : 'success'"
+              size="small"
+              @click="toggleActive(row)"
+            >
               {{ row.is_active ? '停用' : '启用' }}
             </el-button>
           </template>
@@ -65,65 +154,139 @@
       </el-table>
     </PageLayout>
 
-    <el-dialog v-model="showDialog" :title="editingId ? '编辑账户' : '新增资金账户'" width="560px" :close-on-click-modal="false">
-      <el-form ref="formRef" :model="form" :rules="formRules" label-width="120px">
-        <el-form-item label="账户名称" prop="bankName">
-          <el-input v-model="form.bankName" placeholder="如：工商银行-基本户" />
+    <el-dialog
+      v-model="showDialog"
+      :title="editingId ? '编辑账户' : '新增资金账户'"
+      width="560px"
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="formRules"
+        label-width="120px"
+      >
+        <el-form-item
+          label="账户名称"
+          prop="bankName"
+        >
+          <el-input
+            v-model="form.bankName"
+            placeholder="如：工商银行-基本户"
+          />
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="账号" prop="accountNumber">
-              <el-input v-model="form.accountNumber" placeholder="银行账号" maxlength="30" />
+            <el-form-item
+              label="账号"
+              prop="accountNumber"
+            >
+              <el-input
+                v-model="form.accountNumber"
+                placeholder="银行账号"
+                maxlength="30"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="账户类型">
               <el-radio-group v-model="form.accountType">
-                <el-radio value="bank">银行存款</el-radio>
-                <el-radio value="cash">库存现金</el-radio>
+                <el-radio value="bank">
+                  银行存款
+                </el-radio>
+                <el-radio value="cash">
+                  库存现金
+                </el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" v-if="form.accountType === 'bank'">
+        <el-row
+          v-if="form.accountType === 'bank'"
+          :gutter="16"
+        >
           <el-col :span="12">
             <el-form-item label="IBAN">
-              <el-input v-model="form.iban" placeholder="国际银行账户号码" />
+              <el-input
+                v-model="form.iban"
+                placeholder="国际银行账户号码"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="SWIFT Code">
-              <el-input v-model="form.swiftCode" placeholder="如：ICBKCNBJ" maxlength="11" />
+              <el-input
+                v-model="form.swiftCode"
+                placeholder="如：ICBKCNBJ"
+                maxlength="11"
+              />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="16" v-if="form.accountType === 'cash'">
+        <el-row
+          v-if="form.accountType === 'cash'"
+          :gutter="16"
+        >
           <el-col :span="12">
             <el-form-item label="保管人">
-              <el-input v-model="form.custodian" placeholder="如：出纳姓名" maxlength="50" />
+              <el-input
+                v-model="form.custodian"
+                placeholder="如：出纳姓名"
+                maxlength="50"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="存放位置">
-              <el-input v-model="form.location" placeholder="如：财务部保险柜" maxlength="100" />
+              <el-input
+                v-model="form.location"
+                placeholder="如：财务部保险柜"
+                maxlength="100"
+              />
             </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="关联GL科目">
-          <AccountSelector v-model="form.clearingAccount" :ledger-only="true" :disabled="!!editingId" />
-          <p class="form-hint">必须选择资产类 Ledger 科目{{ editingId ? '（创建后不可修改）' : '' }}</p>
+          <AccountSelector
+            v-model="form.clearingAccount"
+            :ledger-only="true"
+            :disabled="!!editingId"
+          />
+          <p class="form-hint">
+            必须选择资产类 Ledger 科目{{ editingId ? '（创建后不可修改）' : '' }}
+          </p>
         </el-form-item>
         <el-form-item label="币种">
-          <el-select v-model="form.currency" style="width: 120px">
-            <el-option label="CNY" value="CNY" />
-            <el-option label="USD" value="USD" />
-            <el-option label="HKD" value="HKD" />
+          <el-select
+            v-model="form.currency"
+            style="width: 120px"
+          >
+            <el-option
+              label="CNY"
+              value="CNY"
+            />
+            <el-option
+              label="USD"
+              value="USD"
+            />
+            <el-option
+              label="HKD"
+              value="HKD"
+            />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showDialog = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveAccount">保存</el-button>
+        <el-button @click="showDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="saveAccount"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </div>

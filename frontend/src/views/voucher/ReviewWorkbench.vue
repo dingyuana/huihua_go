@@ -2,28 +2,90 @@
   <div class="review-page">
     <div class="page-header">
       <h3>凭证审核工作台</h3>
-      <el-tag type="warning" size="large">待审核: {{ pendingCount }} 张</el-tag>
+      <el-tag
+        type="warning"
+        size="large"
+      >
+        待审核: {{ pendingCount }} 张
+      </el-tag>
     </div>
 
     <el-card>
       <!-- 批量操作 -->
       <div class="batch-bar">
-        <el-checkbox v-model="selectAll" @change="toggleAll">全选</el-checkbox>
+        <el-checkbox
+          v-model="selectAll"
+          @change="toggleAll"
+        >
+          全选
+        </el-checkbox>
         <span class="selected-count">已选 {{ selectedIds.length }} 张</span>
-        <el-button size="small" type="primary" :disabled="selectedIds.length === 0" @click="batchApprove">审核通过</el-button>
-        <el-button size="small" :disabled="selectedIds.length === 0" @click="showRejectDialog = true">驳回</el-button>
+        <el-button
+          size="small"
+          type="primary"
+          :disabled="selectedIds.length === 0"
+          @click="batchApprove"
+        >
+          审核通过
+        </el-button>
+        <el-button
+          size="small"
+          :disabled="selectedIds.length === 0"
+          @click="showRejectDialog = true"
+        >
+          驳回
+        </el-button>
       </div>
 
-      <el-table :data="pendingVouchers" border stripe size="small" @selection-change="onSelection" @row-click="openDetail">
-        <el-table-column type="selection" width="40" @click.stop />
-        <el-table-column prop="voucher_no" label="凭证号" width="140" />
-        <el-table-column prop="date" label="日期" width="80" />
-        <el-table-column prop="remark" label="摘要" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="amount" label="金额" width="120" align="right" />
-        <el-table-column prop="creator" label="制单人" width="80" />
-        <el-table-column label="AI 风控" width="100">
+      <el-table
+        :data="pendingVouchers"
+        border
+        stripe
+        size="small"
+        @selection-change="onSelection"
+        @row-click="openDetail"
+      >
+        <el-table-column
+          type="selection"
+          width="40"
+          @click.stop
+        />
+        <el-table-column
+          prop="voucher_no"
+          label="凭证号"
+          width="140"
+        />
+        <el-table-column
+          prop="date"
+          label="日期"
+          width="80"
+        />
+        <el-table-column
+          prop="remark"
+          label="摘要"
+          min-width="200"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="amount"
+          label="金额"
+          width="120"
+          align="right"
+        />
+        <el-table-column
+          prop="creator"
+          label="制单人"
+          width="80"
+        />
+        <el-table-column
+          label="AI 风控"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-popover trigger="hover" :width="280">
+            <el-popover
+              trigger="hover"
+              :width="280"
+            >
               <template #reference>
                 <el-tag
                   :type="row.risk.level === 'high' ? 'danger' : row.risk.level === 'low' ? 'success' : 'warning'"
@@ -36,8 +98,16 @@
               <div class="risk-card">
                 <h4>AI 风控详情</h4>
                 <ul>
-                  <li v-for="(item, i) in row.risk.items" :key="i" :class="'risk-' + item.severity">
-                    <el-tag :type="item.severity === 'error' ? 'danger' : 'warning'" size="small" style="margin-right:4px">
+                  <li
+                    v-for="(item, i) in row.risk.items"
+                    :key="i"
+                    :class="'risk-' + item.severity"
+                  >
+                    <el-tag
+                      :type="item.severity === 'error' ? 'danger' : 'warning'"
+                      size="small"
+                      style="margin-right:4px"
+                    >
                       {{ item.severity === 'error' ? '风险' : '提示' }}
                     </el-tag>
                     {{ item.message }}
@@ -51,65 +121,170 @@
     </el-card>
 
     <!-- 详情抽屉：分屏审核 -->
-    <el-drawer v-model="showDetail" :title="`审核凭证: ${currentVoucher?.voucher_no}`" size="600px">
+    <el-drawer
+      v-model="showDetail"
+      :title="`审核凭证: ${currentVoucher?.voucher_no}`"
+      size="600px"
+    >
       <template v-if="currentVoucher">
         <el-tabs v-model="detailTab">
-          <el-tab-pane label="凭证信息" name="voucher">
-            <el-descriptions :column="2" border size="small">
-              <el-descriptions-item label="凭证号">{{ currentVoucher.voucher_no }}</el-descriptions-item>
-              <el-descriptions-item label="日期">{{ currentVoucher.date }}</el-descriptions-item>
-              <el-descriptions-item label="摘要" :span="2">{{ currentVoucher.remark }}</el-descriptions-item>
-              <el-descriptions-item label="制单人">{{ currentVoucher.creator }}</el-descriptions-item>
-              <el-descriptions-item label="金额">{{ currentVoucher.amount }}</el-descriptions-item>
+          <el-tab-pane
+            label="凭证信息"
+            name="voucher"
+          >
+            <el-descriptions
+              :column="2"
+              border
+              size="small"
+            >
+              <el-descriptions-item label="凭证号">
+                {{ currentVoucher.voucher_no }}
+              </el-descriptions-item>
+              <el-descriptions-item label="日期">
+                {{ currentVoucher.date }}
+              </el-descriptions-item>
+              <el-descriptions-item
+                label="摘要"
+                :span="2"
+              >
+                {{ currentVoucher.remark }}
+              </el-descriptions-item>
+              <el-descriptions-item label="制单人">
+                {{ currentVoucher.creator }}
+              </el-descriptions-item>
+              <el-descriptions-item label="金额">
+                {{ currentVoucher.amount }}
+              </el-descriptions-item>
             </el-descriptions>
 
-            <h4 class="section-title">分录明细</h4>
-            <el-table :data="currentVoucher.lines || []" size="small" border>
-              <el-table-column prop="account" label="科目" min-width="160" />
-              <el-table-column prop="debit" label="借方" width="120" align="right" />
-              <el-table-column prop="credit" label="贷方" width="120" align="right" />
+            <h4 class="section-title">
+              分录明细
+            </h4>
+            <el-table
+              :data="currentVoucher.lines || []"
+              size="small"
+              border
+            >
+              <el-table-column
+                prop="account"
+                label="科目"
+                min-width="160"
+              />
+              <el-table-column
+                prop="debit"
+                label="借方"
+                width="120"
+                align="right"
+              />
+              <el-table-column
+                prop="credit"
+                label="贷方"
+                width="120"
+                align="right"
+              />
             </el-table>
 
             <!-- AI 风险详情 -->
-            <h4 class="section-title">AI 风控分析</h4>
-            <el-card v-if="currentVoucher.risk.items.length" shadow="never" class="risk-detail-card">
-              <div v-for="(item, i) in currentVoucher.risk.items" :key="i" class="risk-item">
-                <el-tag :type="item.severity === 'error' ? 'danger' : 'warning'" size="small">
+            <h4 class="section-title">
+              AI 风控分析
+            </h4>
+            <el-card
+              v-if="currentVoucher.risk.items.length"
+              shadow="never"
+              class="risk-detail-card"
+            >
+              <div
+                v-for="(item, i) in currentVoucher.risk.items"
+                :key="i"
+                class="risk-item"
+              >
+                <el-tag
+                  :type="item.severity === 'error' ? 'danger' : 'warning'"
+                  size="small"
+                >
                   {{ item.severity === 'error' ? '⚠️ 风险' : '💡 提示' }}
                 </el-tag>
                 <span class="risk-msg">{{ item.message }}</span>
-                <p v-if="item.suggestion" class="risk-suggestion">{{ item.suggestion }}</p>
+                <p
+                  v-if="item.suggestion"
+                  class="risk-suggestion"
+                >
+                  {{ item.suggestion }}
+                </p>
               </div>
             </el-card>
-            <el-empty v-else description="AI 风控未发现异常" :image-size="60" />
+            <el-empty
+              v-else
+              description="AI 风控未发现异常"
+              :image-size="60"
+            />
           </el-tab-pane>
 
-          <el-tab-pane label="原始单据" name="source">
-            <el-empty description="关联原始单据（待对接）" :image-size="60" />
-            <p class="source-hint">审核时可联查银行流水/发票等原始单据</p>
+          <el-tab-pane
+            label="原始单据"
+            name="source"
+          >
+            <el-empty
+              description="关联原始单据（待对接）"
+              :image-size="60"
+            />
+            <p class="source-hint">
+              审核时可联查银行流水/发票等原始单据
+            </p>
           </el-tab-pane>
         </el-tabs>
       </template>
 
       <template #footer>
         <div class="drawer-actions">
-          <el-button @click="showDetail = false">关闭</el-button>
-          <el-button type="danger" @click="openRejectFromDrawer">驳回</el-button>
-          <el-button type="primary" @click="approveCurrent">审核通过</el-button>
+          <el-button @click="showDetail = false">
+            关闭
+          </el-button>
+          <el-button
+            type="danger"
+            @click="openRejectFromDrawer"
+          >
+            驳回
+          </el-button>
+          <el-button
+            type="primary"
+            @click="approveCurrent"
+          >
+            审核通过
+          </el-button>
         </div>
       </template>
     </el-drawer>
 
     <!-- 驳回弹窗 -->
-    <el-dialog v-model="showRejectDialog" title="驳回凭证" width="420px">
+    <el-dialog
+      v-model="showRejectDialog"
+      title="驳回凭证"
+      width="420px"
+    >
       <el-form>
-        <el-form-item label="驳回原因" required>
-          <el-input v-model="rejectReason" type="textarea" :rows="3" placeholder="请填写驳回原因" />
+        <el-form-item
+          label="驳回原因"
+          required
+        >
+          <el-input
+            v-model="rejectReason"
+            type="textarea"
+            :rows="3"
+            placeholder="请填写驳回原因"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showRejectDialog = false">取消</el-button>
-        <el-button type="primary" @click="reject">确认驳回</el-button>
+        <el-button @click="showRejectDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          @click="reject"
+        >
+          确认驳回
+        </el-button>
       </template>
     </el-dialog>
   </div>

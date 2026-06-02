@@ -1,5 +1,9 @@
 <template>
-  <el-tag :type="tagType" :size="size" effect="plain">
+  <el-tag
+    :type="tagType"
+    :size="size"
+    effect="plain"
+  >
     {{ label }}
   </el-tag>
 </template>

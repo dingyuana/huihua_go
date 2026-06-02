@@ -7,7 +7,7 @@ export function getReviewList(params: {
   page?: number
   page_size?: number
 }): Promise<ApiResponse<PageResult<BankTransaction>>> {
-  return request.get('/api/v1/bank-transactions/review-list', { params })
+  return request.get('/bank-transactions/review-list', { params })
 }
 
 export function getReviewStats(): Promise<ApiResponse<{
@@ -16,7 +16,7 @@ export function getReviewStats(): Promise<ApiResponse<{
   ai_processed_count: number
   manual_pending_count: number
 }>> {
-  return request.get('/api/v1/bank-transactions/review-stats')
+  return request.get('/bank-transactions/review-stats')
 }
 
 export function previewDraft(id: string): Promise<ApiResponse<{
@@ -33,7 +33,7 @@ export function previewDraft(id: string): Promise<ApiResponse<{
   }
   or_draft_payment?: Record<string, any>
 }>> {
-  return request.post(`/api/v1/bank-transactions/preview-draft/${id}`)
+  return request.post(`/bank-transactions/preview-draft/${id}`)
 }
 
 export function submitReview(data: {
@@ -43,9 +43,9 @@ export function submitReview(data: {
   approved_count: number
   results: Array<{ txn_id: string; outcome: string; voucher_id?: string; payment_id?: string }>
 }>> {
-  return request.post('/api/v1/bank-transactions/submit-review', data)
+  return request.post('/bank-transactions/submit-review', data)
 }
 
 export function rejectManual(data: { txn_ids: string[] }): Promise<ApiResponse<{ rejected_count: number }>> {
-  return request.post('/api/v1/bank-transactions/reject-manual', data)
+  return request.post('/bank-transactions/reject-manual', data)
 }

@@ -2,121 +2,303 @@
   <div class="voucher-edit">
     <div class="page-header">
       <h3>{{ isNew ? '新增凭证' : (readonly ? '查看凭证' : '编辑凭证') }}</h3>
-      <DocStatusTag v-if="!isNew" :docstatus="docstatus" size="default" />
+      <DocStatusTag
+        v-if="!isNew"
+        :docstatus="docstatus"
+        size="default"
+      />
     </div>
 
     <el-card>
       <!-- 头部信息 -->
-      <el-form :inline="true" size="small">
+      <el-form
+        :inline="true"
+        size="small"
+      >
         <el-form-item label="日期">
-          <el-date-picker v-model="form.date" type="date" style="width: 140px" :disabled="readonly" />
+          <el-date-picker
+            v-model="form.date"
+            type="date"
+            style="width: 140px"
+            :disabled="readonly"
+          />
         </el-form-item>
         <el-form-item label="类型">
-          <el-select v-model="form.type" style="width: 80px" :disabled="readonly">
-            <el-option v-for="t in ['记','银','现','转']" :key="t" :label="t" :value="t" />
+          <el-select
+            v-model="form.type"
+            style="width: 80px"
+            :disabled="readonly"
+          >
+            <el-option
+              v-for="t in ['记','银','现','转']"
+              :key="t"
+              :label="t"
+              :value="t"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="编号">
-          <el-input :model-value="voucherNo" disabled style="width: 160px" />
+          <el-input
+            :model-value="voucherNo"
+            disabled
+            style="width: 160px"
+          />
         </el-form-item>
-        <el-form-item v-if="!isNew && reversalId" label="关联冲销">
-          <el-tag type="warning" size="small">冲销凭证: {{ reversalId }}</el-tag>
+        <el-form-item
+          v-if="!isNew && reversalId"
+          label="关联冲销"
+        >
+          <el-tag
+            type="warning"
+            size="small"
+          >
+            冲销凭证: {{ reversalId }}
+          </el-tag>
         </el-form-item>
-        <el-form-item label="摘要" style="flex:1">
-          <el-input v-model="form.remark" :disabled="readonly" placeholder="请输入摘要" />
+        <el-form-item
+          label="摘要"
+          style="flex:1"
+        >
+          <el-input
+            v-model="form.remark"
+            :disabled="readonly"
+            placeholder="请输入摘要"
+          />
         </el-form-item>
       </el-form>
 
       <!-- 分录行表格 -->
-      <el-table :data="lines" size="small" border>
-        <el-table-column label="科目" min-width="240">
+      <el-table
+        :data="lines"
+        size="small"
+        border
+      >
+        <el-table-column
+          label="科目"
+          min-width="240"
+        >
           <template #default="{ $index }">
-            <AccountSelector v-model="lines[$index].account" :disabled="readonly" />
+            <AccountSelector
+              v-model="lines[$index].account"
+              :disabled="readonly"
+            />
           </template>
         </el-table-column>
-        <el-table-column label="借方金额" width="180">
+        <el-table-column
+          label="借方金额"
+          width="180"
+        >
           <template #default="{ $index }">
-            <el-input v-model="lines[$index].debit" :disabled="readonly" placeholder="0.00" @input="onLineChange($index, 'debit')" />
+            <el-input
+              v-model="lines[$index].debit"
+              :disabled="readonly"
+              placeholder="0.00"
+              @input="onLineChange($index, 'debit')"
+            />
           </template>
         </el-table-column>
-        <el-table-column label="贷方金额" width="180">
+        <el-table-column
+          label="贷方金额"
+          width="180"
+        >
           <template #default="{ $index }">
-            <el-input v-model="lines[$index].credit" :disabled="readonly" placeholder="0.00" @input="onLineChange($index, 'credit')" />
+            <el-input
+              v-model="lines[$index].credit"
+              :disabled="readonly"
+              placeholder="0.00"
+              @input="onLineChange($index, 'credit')"
+            />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="60">
+        <el-table-column
+          label="操作"
+          width="60"
+        >
           <template #default="{ $index }">
-            <el-button v-if="!readonly" link type="danger" size="small" @click="lines.splice($index, 1)">×</el-button>
+            <el-button
+              v-if="!readonly"
+              link
+              type="danger"
+              size="small"
+              @click="lines.splice($index, 1)"
+            >
+              ×
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <div v-if="!readonly" class="add-line">
-        <el-button text type="primary" @click="addLine">+ 添加分录行</el-button>
+      <div
+        v-if="!readonly"
+        class="add-line"
+      >
+        <el-button
+          text
+          type="primary"
+          @click="addLine"
+        >
+          + 添加分录行
+        </el-button>
       </div>
 
       <!-- 合计 -->
       <div class="totals">
         <span>借方合计: <b class="amount-positive">¥{{ totalDebit }}</b></span>
         <span>贷方合计: <b class="amount-negative">¥{{ totalCredit }}</b></span>
-        <el-tag v-if="totalDebit === '0.00' && totalCredit === '0.00'" type="info" size="large">请添加分录</el-tag>
-        <el-tag v-else-if="isBalanced" type="success" size="large">✅ 借贷平衡</el-tag>
-        <el-tag v-else type="danger" size="large">❌ 借贷不平衡 (差额 ¥{{ diff }})</el-tag>
+        <el-tag
+          v-if="totalDebit === '0.00' && totalCredit === '0.00'"
+          type="info"
+          size="large"
+        >
+          请添加分录
+        </el-tag>
+        <el-tag
+          v-else-if="isBalanced"
+          type="success"
+          size="large"
+        >
+          ✅ 借贷平衡
+        </el-tag>
+        <el-tag
+          v-else
+          type="danger"
+          size="large"
+        >
+          ❌ 借贷不平衡 (差额 ¥{{ diff }})
+        </el-tag>
       </div>
 
       <!-- 操作按钮 -->
       <div class="edit-actions">
-        <el-button @click="$router.back()">返回</el-button>
+        <el-button @click="$router.back()">
+          返回
+        </el-button>
 
         <!-- 草稿状态: 可编辑 -->
         <template v-if="!readonly">
-          <el-button @click="saveDraft">保存草稿</el-button>
-          <el-button type="primary" :disabled="!canSubmit" @click="submit">提交审核</el-button>
+          <el-button @click="saveDraft">
+            保存草稿
+          </el-button>
+          <el-button
+            type="primary"
+            :disabled="!canSubmit"
+            @click="submit"
+          >
+            提交审核
+          </el-button>
         </template>
 
         <!-- 已审核状态: 可红字冲销 -->
         <template v-if="docstatus === 1">
-          <el-button type="warning" @click="showReverseDialog = true">🔴 红字冲销</el-button>
+          <el-button
+            type="warning"
+            @click="showReverseDialog = true"
+          >
+            🔴 红字冲销
+          </el-button>
         </template>
       </div>
     </el-card>
 
     <!-- 红字冲销弹窗 -->
-    <el-dialog v-model="showReverseDialog" title="红字冲销" width="480px">
-      <el-alert type="warning" :closable="false" show-icon>
+    <el-dialog
+      v-model="showReverseDialog"
+      title="红字冲销"
+      width="480px"
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+      >
         <p>冲销后将生成一张与原凭证借贷方向完全相反的新凭证。</p>
         <p>原凭证标记为「已作废」，两张凭证均保留可查。</p>
       </el-alert>
       <el-form class="reverse-form">
-        <el-form-item label="冲销日期" required>
-          <el-date-picker v-model="reverseDate" type="date" style="width: 100%" />
+        <el-form-item
+          label="冲销日期"
+          required
+        >
+          <el-date-picker
+            v-model="reverseDate"
+            type="date"
+            style="width: 100%"
+          />
         </el-form-item>
-        <el-form-item label="冲销原因" required>
-          <el-input v-model="reverseReason" type="textarea" :rows="3" placeholder="请详细说明冲销原因" />
+        <el-form-item
+          label="冲销原因"
+          required
+        >
+          <el-input
+            v-model="reverseReason"
+            type="textarea"
+            :rows="3"
+            placeholder="请详细说明冲销原因"
+          />
         </el-form-item>
       </el-form>
 
       <!-- 冲销分录预览 -->
       <el-divider>冲销分录预览</el-divider>
-      <el-table :data="reverseLines" size="small" border>
-        <el-table-column prop="account_name" label="科目" min-width="160" />
-        <el-table-column label="原借方" width="100" align="right">
-          <template #default="{ row }">{{ row.original_debit }}</template>
+      <el-table
+        :data="reverseLines"
+        size="small"
+        border
+      >
+        <el-table-column
+          prop="account_name"
+          label="科目"
+          min-width="160"
+        />
+        <el-table-column
+          label="原借方"
+          width="100"
+          align="right"
+        >
+          <template #default="{ row }">
+            {{ row.original_debit }}
+          </template>
         </el-table-column>
-        <el-table-column label="原贷方" width="100" align="right">
-          <template #default="{ row }">{{ row.original_credit }}</template>
+        <el-table-column
+          label="原贷方"
+          width="100"
+          align="right"
+        >
+          <template #default="{ row }">
+            {{ row.original_credit }}
+          </template>
         </el-table-column>
-        <el-table-column label="冲销借方" width="100" align="right">
-          <template #default="{ row }">{{ row.reverse_debit }}</template>
+        <el-table-column
+          label="冲销借方"
+          width="100"
+          align="right"
+        >
+          <template #default="{ row }">
+            {{ row.reverse_debit }}
+          </template>
         </el-table-column>
-        <el-table-column label="冲销贷方" width="100" align="right">
-          <template #default="{ row }">{{ row.reverse_credit }}</template>
+        <el-table-column
+          label="冲销贷方"
+          width="100"
+          align="right"
+        >
+          <template #default="{ row }">
+            {{ row.reverse_credit }}
+          </template>
         </el-table-column>
       </el-table>
 
       <template #footer>
-        <el-button @click="showReverseDialog = false">取消</el-button>
-        <el-button type="warning" :disabled="!reverseReason || !reverseDate" @click="executeReverse">确认冲销</el-button>
+        <el-button @click="showReverseDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="warning"
+          :disabled="!reverseReason || !reverseDate"
+          @click="executeReverse"
+        >
+          确认冲销
+        </el-button>
       </template>
     </el-dialog>
   </div>

@@ -11,12 +11,30 @@
           placeholder="选择期间"
           style="width: 160px; margin-right: 8px"
         />
-        <el-button type="primary" :loading="loading" @click="loadData">查询状态</el-button>
-        <el-button @click="exportReport">导出报告</el-button>
-        <el-tag v-if="periodStatus === 'closed'" type="danger" effect="dark" style="margin-left: 8px">
+        <el-button
+          type="primary"
+          :loading="loading"
+          @click="loadData"
+        >
+          查询状态
+        </el-button>
+        <el-button @click="exportReport">
+          导出报告
+        </el-button>
+        <el-tag
+          v-if="periodStatus === 'closed'"
+          type="danger"
+          effect="dark"
+          style="margin-left: 8px"
+        >
           已结账
         </el-tag>
-        <el-tag v-else type="success" effect="plain" style="margin-left: 8px">
+        <el-tag
+          v-else
+          type="success"
+          effect="plain"
+          style="margin-left: 8px"
+        >
           未结账
         </el-tag>
       </div>
@@ -24,8 +42,13 @@
 
     <!-- ═══ 一、基础检查 ═══ -->
     <section class="wizard-section">
-      <h4 class="section-title">一、基础检查</h4>
-      <CheckSummaryCard :summary="summary" :loading="loading" />
+      <h4 class="section-title">
+        一、基础检查
+      </h4>
+      <CheckSummaryCard
+        :summary="summary"
+        :loading="loading"
+      />
       <CheckResultPanel
         :checks="baseChecks"
         :loading="loading"
@@ -34,15 +57,28 @@
     </section>
 
     <!-- ═══ 二、风险预警 ═══ -->
-    <section v-if="riskWarnings.length > 0 || pendingAccruals.length > 0" class="wizard-section">
-      <h4 class="section-title">二、风险预警</h4>
-      <el-card shadow="never" class="warn-card">
+    <section
+      v-if="riskWarnings.length > 0 || pendingAccruals.length > 0"
+      class="wizard-section"
+    >
+      <h4 class="section-title">
+        二、风险预警
+      </h4>
+      <el-card
+        shadow="never"
+        class="warn-card"
+      >
         <div
           v-for="w in riskWarnings"
           :key="w.subject_code"
           :class="['warn-item', 'severity-' + w.severity]"
         >
-          <el-tag :type="w.severity === 'critical' ? 'danger' : w.severity === 'warning' ? 'warning' : 'info'" size="small" effect="dark" class="warn-tag">
+          <el-tag
+            :type="w.severity === 'critical' ? 'danger' : w.severity === 'warning' ? 'warning' : 'info'"
+            size="small"
+            effect="dark"
+            class="warn-tag"
+          >
             {{ w.severity === 'critical' ? '阻断' : w.severity === 'warning' ? '预警' : '提示' }}
           </el-tag>
           <span class="warn-text">{{ w.message }}</span>
@@ -52,65 +88,133 @@
           :key="a.type"
           class="warn-item severity-warning"
         >
-          <el-tag :type="a.missing ? 'danger' : 'success'" size="small" effect="dark" class="warn-tag">
+          <el-tag
+            :type="a.missing ? 'danger' : 'success'"
+            size="small"
+            effect="dark"
+            class="warn-tag"
+          >
             {{ a.missing ? '未完成' : '已完成' }}
           </el-tag>
           <span class="warn-text">{{ a.item }}{{ a.details ? '：' + a.details : '' }}</span>
         </div>
       </el-card>
     </section>
-    <section v-else-if="!loading" class="wizard-section">
-      <h4 class="section-title">二、风险预警</h4>
-      <el-card shadow="never" class="warn-card">
-        <el-result icon="success" title="无风险预警" sub-title="所有检查项正常" />
+    <section
+      v-else-if="!loading"
+      class="wizard-section"
+    >
+      <h4 class="section-title">
+        二、风险预警
+      </h4>
+      <el-card
+        shadow="never"
+        class="warn-card"
+      >
+        <el-result
+          icon="success"
+          title="无风险预警"
+          sub-title="所有检查项正常"
+        />
       </el-card>
     </section>
 
     <!-- ═══ 三、关键指标 ═══ -->
     <section class="wizard-section">
-      <h4 class="section-title">三、关键指标</h4>
+      <h4 class="section-title">
+        三、关键指标
+      </h4>
       <el-card shadow="never">
-        <el-table v-if="keyIndicators.length > 0" :data="keyIndicators" border stripe size="small">
-          <el-table-column prop="name" label="指标" min-width="160" />
-          <el-table-column label="本期" width="130" align="right">
+        <el-table
+          v-if="keyIndicators.length > 0"
+          :data="keyIndicators"
+          border
+          stripe
+          size="small"
+        >
+          <el-table-column
+            prop="name"
+            label="指标"
+            min-width="160"
+          />
+          <el-table-column
+            label="本期"
+            width="130"
+            align="right"
+          >
             <template #default="{ row }">
               <span :class="row.alert ? 'indicator-alert' : ''">
                 {{ row.current_value !== null ? row.current_value + (row.unit || '') : '-' }}
               </span>
             </template>
           </el-table-column>
-          <el-table-column label="上月" width="120" align="right">
+          <el-table-column
+            label="上月"
+            width="120"
+            align="right"
+          >
             <template #default="{ row }">
               {{ row.last_value !== null ? row.last_value + (row.unit || '') : '-' }}
             </template>
           </el-table-column>
-          <el-table-column width="60" align="center">
+          <el-table-column
+            width="60"
+            align="center"
+          >
             <template #header>
-              <el-tooltip content="异常预警" placement="top">
+              <el-tooltip
+                content="异常预警"
+                placement="top"
+              >
                 <span>预警</span>
               </el-tooltip>
             </template>
             <template #default="{ row }">
-              <el-icon v-if="row.alert" color="#f56c6c" :size="18"><CircleCloseFilled /></el-icon>
-              <el-icon v-else color="#67c23a" :size="18"><CircleCheckFilled /></el-icon>
+              <el-icon
+                v-if="row.alert"
+                color="#f56c6c"
+                :size="18"
+              >
+                <CircleCloseFilled />
+              </el-icon>
+              <el-icon
+                v-else
+                color="#67c23a"
+                :size="18"
+              >
+                <CircleCheckFilled />
+              </el-icon>
             </template>
           </el-table-column>
-          <el-table-column prop="message" label="说明" min-width="220" />
+          <el-table-column
+            prop="message"
+            label="说明"
+            min-width="220"
+          />
         </el-table>
-        <el-empty v-else description="暂无指标数据" :image-size="50" />
+        <el-empty
+          v-else
+          description="暂无指标数据"
+          :image-size="50"
+        />
       </el-card>
     </section>
 
     <!-- ═══ 四、人工确认 ═══ -->
     <section class="wizard-section">
-      <h4 class="section-title">四、人工确认清单</h4>
+      <h4 class="section-title">
+        四、人工确认清单
+      </h4>
       <el-card shadow="never">
         <div
           v-for="item in confirmItems"
           :key="item.key"
           class="confirm-item"
         >
-          <el-checkbox v-model="item.checked" :disabled="loading">
+          <el-checkbox
+            v-model="item.checked"
+            :disabled="loading"
+          >
             {{ item.label }}
           </el-checkbox>
         </div>
@@ -128,9 +232,14 @@
 
     <!-- ═══ 五、损益结转 ═══ -->
     <section class="wizard-section">
-      <h4 class="section-title">五、损益结转</h4>
+      <h4 class="section-title">
+        五、损益结转
+      </h4>
       <el-card shadow="never">
-        <el-row :gutter="16" align="middle">
+        <el-row
+          :gutter="16"
+          align="middle"
+        >
           <el-col :span="6">
             <div class="pl-stat">
               <span class="pl-label">收入</span>
@@ -149,8 +258,16 @@
               <span class="pl-value profit">¥{{ profitLoss.profit }}</span>
             </div>
           </el-col>
-          <el-col :span="6" class="pl-actions">
-            <el-button size="small" @click="previewClosing">预览结转分录</el-button>
+          <el-col
+            :span="6"
+            class="pl-actions"
+          >
+            <el-button
+              size="small"
+              @click="previewClosing"
+            >
+              预览结转分录
+            </el-button>
             <el-button
               size="small"
               type="primary"
@@ -166,12 +283,17 @@
 
     <!-- ═══ 六、结账操作 ═══ -->
     <section class="wizard-section">
-      <h4 class="section-title">六、结账操作</h4>
+      <h4 class="section-title">
+        六、结账操作
+      </h4>
       <el-card shadow="never">
         <div class="close-bar">
           <span class="close-status">
             期间状态：
-            <el-tag :type="periodStatus === 'closed' ? 'danger' : 'success'" size="small">
+            <el-tag
+              :type="periodStatus === 'closed' ? 'danger' : 'success'"
+              size="small"
+            >
               {{ periodStatus === 'closed' ? '已结账' : '未结账' }}
             </el-tag>
           </span>
@@ -196,24 +318,47 @@
             </el-button>
           </div>
         </div>
-        <div v-if="periodStatus !== 'closed' && !canClose" class="close-hints">
-          <p v-if="!checksAllPassed">存在未通过的基础检查项</p>
-          <p v-if="!allConfirmed">人工确认清单尚未全部勾选</p>
-          <p v-if="!profitLoss.done">损益尚未结转</p>
+        <div
+          v-if="periodStatus !== 'closed' && !canClose"
+          class="close-hints"
+        >
+          <p v-if="!checksAllPassed">
+            存在未通过的基础检查项
+          </p>
+          <p v-if="!allConfirmed">
+            人工确认清单尚未全部勾选
+          </p>
+          <p v-if="!profitLoss.done">
+            损益尚未结转
+          </p>
         </div>
       </el-card>
     </section>
 
     <!-- 现金盘点弹窗 -->
-    <el-dialog v-model="showCountDialog" title="录入现金盘点" width="400px">
+    <el-dialog
+      v-model="showCountDialog"
+      title="录入现金盘点"
+      width="400px"
+    >
       <el-form>
         <el-form-item label="实盘库存现金">
-          <el-input v-model="countAmount" placeholder="请输入盘点金额" />
+          <el-input
+            v-model="countAmount"
+            placeholder="请输入盘点金额"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCountDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveCount">保存</el-button>
+        <el-button @click="showCountDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          @click="saveCount"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </div>

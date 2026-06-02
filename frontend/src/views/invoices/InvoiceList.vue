@@ -2,32 +2,91 @@
   <div class="invoice-page">
     <div class="page-header">
       <h3>发票管理</h3>
-      <el-button type="primary" @click="showUpload = true">+ 上传发票</el-button>
+      <el-button
+        type="primary"
+        @click="showUpload = true"
+      >
+        + 上传发票
+      </el-button>
     </div>
 
     <!-- 进项税务池 Tabs -->
     <el-card class="tax-tabs-card">
       <el-tabs v-model="invoiceView">
-        <el-tab-pane label="发票列表" name="list" />
-        <el-tab-pane label="进项税务池" name="tax-pool">
-          <el-table :data="taxPool" border stripe size="small">
-            <el-table-column prop="invoice_no" label="发票号" width="140" />
-            <el-table-column prop="supplier" label="供应商" min-width="140" />
-            <el-table-column prop="amount" label="金额" width="120" align="right" />
-            <el-table-column label="认证状态" width="130">
+        <el-tab-pane
+          label="发票列表"
+          name="list"
+        />
+        <el-tab-pane
+          label="进项税务池"
+          name="tax-pool"
+        >
+          <el-table
+            :data="taxPool"
+            border
+            stripe
+            size="small"
+          >
+            <el-table-column
+              prop="invoice_no"
+              label="发票号"
+              width="140"
+            />
+            <el-table-column
+              prop="supplier"
+              label="供应商"
+              min-width="140"
+            />
+            <el-table-column
+              prop="amount"
+              label="金额"
+              width="120"
+              align="right"
+            />
+            <el-table-column
+              label="认证状态"
+              width="130"
+            >
               <template #default="{ row }">
-                <el-tag :type="taxStatusTag(row.taxStatus)" size="small">{{ row.taxStatusLabel }}</el-tag>
+                <el-tag
+                  :type="taxStatusTag(row.taxStatus)"
+                  size="small"
+                >
+                  {{ row.taxStatusLabel }}
+                </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="due_date" label="到期日" width="100">
+            <el-table-column
+              prop="due_date"
+              label="到期日"
+              width="100"
+            >
               <template #default="{ row }">
                 <span :class="{ expiring: row.daysLeft > 0 && row.daysLeft < 30 }">{{ row.due_date }}</span>
-                <el-tag v-if="row.daysLeft > 0 && row.daysLeft < 30" type="danger" size="small" style="margin-left:4px">{{ row.daysLeft }}天</el-tag>
+                <el-tag
+                  v-if="row.daysLeft > 0 && row.daysLeft < 30"
+                  type="danger"
+                  size="small"
+                  style="margin-left:4px"
+                >
+                  {{ row.daysLeft }}天
+                </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="80">
+            <el-table-column
+              label="操作"
+              width="80"
+            >
               <template #default="{ row }">
-                <el-button v-if="row.taxStatus === 'unverified'" size="small" type="primary" link @click="markVerified(row)">认证</el-button>
+                <el-button
+                  v-if="row.taxStatus === 'unverified'"
+                  size="small"
+                  type="primary"
+                  link
+                  @click="markVerified(row)"
+                >
+                  认证
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -36,148 +95,397 @@
     </el-card>
 
     <!-- 筛选 -->
-    <el-card v-if="invoiceView === 'list'" class="filter-card">
-      <el-form :inline="true" size="small">
+    <el-card
+      v-if="invoiceView === 'list'"
+      class="filter-card"
+    >
+      <el-form
+        :inline="true"
+        size="small"
+      >
         <el-form-item label="状态">
-          <el-select v-model="filter.status" placeholder="全部" style="width: 130px" clearable>
-            <el-option label="待核销" value="unpaid" />
-            <el-option label="部分核销" value="partially_paid" />
-            <el-option label="已核销" value="paid" />
+          <el-select
+            v-model="filter.status"
+            placeholder="全部"
+            style="width: 130px"
+            clearable
+          >
+            <el-option
+              label="待核销"
+              value="unpaid"
+            />
+            <el-option
+              label="部分核销"
+              value="partially_paid"
+            />
+            <el-option
+              label="已核销"
+              value="paid"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="类型">
-          <el-select v-model="filter.type" placeholder="全部" style="width: 120px" clearable>
-            <el-option label="销项" value="sale" />
-            <el-option label="进项" value="purchase" />
+          <el-select
+            v-model="filter.type"
+            placeholder="全部"
+            style="width: 120px"
+            clearable
+          >
+            <el-option
+              label="销项"
+              value="sale"
+            />
+            <el-option
+              label="进项"
+              value="purchase"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="日期">
-          <el-date-picker v-model="filter.dateRange" type="daterange" range-separator="~" start-placeholder="开始" end-placeholder="结束" style="width: 240px" />
+          <el-date-picker
+            v-model="filter.dateRange"
+            type="daterange"
+            range-separator="~"
+            start-placeholder="开始"
+            end-placeholder="结束"
+            style="width: 240px"
+          />
         </el-form-item>
         <el-form-item>
-          <el-input v-model="filter.keyword" placeholder="发票号/对方名称" clearable style="width: 200px" />
+          <el-input
+            v-model="filter.keyword"
+            placeholder="发票号/对方名称"
+            clearable
+            style="width: 200px"
+          />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="loadData">查询</el-button>
+          <el-button
+            type="primary"
+            @click="loadData"
+          >
+            查询
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <!-- 列表 -->
     <el-card v-if="invoiceView === 'list'">
-      <el-table :data="invoices" border stripe size="small">
-        <el-table-column prop="invoice_no" label="发票号" width="140" />
-        <el-table-column label="类型" width="70">
+      <el-table
+        :data="invoices"
+        border
+        stripe
+        size="small"
+      >
+        <el-table-column
+          prop="invoice_no"
+          label="发票号"
+          width="140"
+        />
+        <el-table-column
+          label="类型"
+          width="70"
+        >
           <template #default="{ row }">
-            <el-tag :type="row.type === 'sale' ? 'success' : 'warning'" size="small">
+            <el-tag
+              :type="row.type === 'sale' ? 'success' : 'warning'"
+              size="small"
+            >
               {{ row.type === 'sale' ? '销项' : '进项' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="customer_name" label="对方单位" min-width="150" />
-        <el-table-column prop="posting_date" label="开票日期" width="100" />
-        <el-table-column prop="total_amount" label="价税合计" width="120" align="right" />
-        <el-table-column label="未核销" width="120" align="right">
+        <el-table-column
+          prop="customer_name"
+          label="对方单位"
+          min-width="150"
+        />
+        <el-table-column
+          prop="posting_date"
+          label="开票日期"
+          width="100"
+        />
+        <el-table-column
+          prop="total_amount"
+          label="价税合计"
+          width="120"
+          align="right"
+        />
+        <el-table-column
+          label="未核销"
+          width="120"
+          align="right"
+        >
           <template #default="{ row }">
-            <span v-if="parseFloat(row.outstanding) > 0" class="amount-positive">{{ row.outstanding }}</span>
-            <span v-else class="amount-negative">已核销</span>
+            <span
+              v-if="parseFloat(row.outstanding) > 0"
+              class="amount-positive"
+            >{{ row.outstanding }}</span>
+            <span
+              v-else
+              class="amount-negative"
+            >已核销</span>
           </template>
         </el-table-column>
-        <el-table-column prop="due_date" label="到期日" width="100">
+        <el-table-column
+          prop="due_date"
+          label="到期日"
+          width="100"
+        >
           <template #default="{ row }">
             <span :class="{ 'expiring': isExpiring(row.due_date) }">{{ row.due_date }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="80">
+        <el-table-column
+          label="状态"
+          width="80"
+        >
           <template #default="{ row }">
-            <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+            <el-tag
+              :type="statusTag(row.status)"
+              size="small"
+            >
+              {{ statusLabel(row.status) }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        <el-table-column
+          label="操作"
+          width="80"
+          fixed="right"
+        >
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="showDetail = row">详情</el-button>
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="showDetail = row"
+            >
+              详情
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
     <!-- 上传弹窗 -->
-    <el-dialog v-model="showUpload" title="上传发票" width="500px">
+    <el-dialog
+      v-model="showUpload"
+      title="上传发票"
+      width="500px"
+    >
       <el-tabs v-model="uploadTab">
-        <el-tab-pane label="OCR识别" name="ocr">
-          <el-upload drag accept=".pdf,.ofd,.jpg,.png" :auto-upload="false" :on-change="handleUpload" class="upload-area">
-            <el-icon :size="40"><UploadFilled /></el-icon>
+        <el-tab-pane
+          label="OCR识别"
+          name="ocr"
+        >
+          <el-upload
+            drag
+            accept=".pdf,.ofd,.jpg,.png"
+            :auto-upload="false"
+            :on-change="handleUpload"
+            class="upload-area"
+          >
+            <el-icon :size="40">
+              <UploadFilled />
+            </el-icon>
             <p>拖拽发票文件或点击上传</p>
-            <p class="upload-hint">支持 PDF / OFD / 图片格式</p>
+            <p class="upload-hint">
+              支持 PDF / OFD / 图片格式
+            </p>
           </el-upload>
-          <div v-if="ocrResult" class="ocr-result">
+          <div
+            v-if="ocrResult"
+            class="ocr-result"
+          >
             <h4>OCR 识别结果</h4>
-            <el-descriptions :column="2" size="small" border>
-              <el-descriptions-item label="发票号">{{ ocrResult.invoice_no }}</el-descriptions-item>
-              <el-descriptions-item label="金额">{{ ocrResult.amount }}</el-descriptions-item>
-              <el-descriptions-item label="开票日期">{{ ocrResult.date }}</el-descriptions-item>
-              <el-descriptions-item label="对方">{{ ocrResult.party }}</el-descriptions-item>
+            <el-descriptions
+              :column="2"
+              size="small"
+              border
+            >
+              <el-descriptions-item label="发票号">
+                {{ ocrResult.invoice_no }}
+              </el-descriptions-item>
+              <el-descriptions-item label="金额">
+                {{ ocrResult.amount }}
+              </el-descriptions-item>
+              <el-descriptions-item label="开票日期">
+                {{ ocrResult.date }}
+              </el-descriptions-item>
+              <el-descriptions-item label="对方">
+                {{ ocrResult.party }}
+              </el-descriptions-item>
               <el-descriptions-item label="置信度">
-                <el-tag :type="ocrResult.confidence > 85 ? 'success' : 'warning'" size="small">
+                <el-tag
+                  :type="ocrResult.confidence > 85 ? 'success' : 'warning'"
+                  size="small"
+                >
                   {{ ocrResult.confidence }}%
                 </el-tag>
               </el-descriptions-item>
             </el-descriptions>
-            <el-alert v-if="fieldErrors.length" :title="`发现 ${fieldErrors.length} 个字段问题`" type="warning" :closable="false" show-icon style="margin-top:8px">
+            <el-alert
+              v-if="fieldErrors.length"
+              :title="`发现 ${fieldErrors.length} 个字段问题`"
+              type="warning"
+              :closable="false"
+              show-icon
+              style="margin-top:8px"
+            >
               <ul>
-                <li v-for="(err, i) in fieldErrors" :key="i">{{ err }}</li>
+                <li
+                  v-for="(err, i) in fieldErrors"
+                  :key="i"
+                >
+                  {{ err }}
+                </li>
               </ul>
             </el-alert>
           </div>
         </el-tab-pane>
-        <el-tab-pane label="批量导入" name="batch">
-          <el-upload drag accept=".xlsx,.xls,.csv" :auto-upload="false" :on-change="handleBatchUpload" :limit="1" :show-file-list="false" class="upload-area">
-            <el-icon :size="40"><UploadFilled /></el-icon>
+        <el-tab-pane
+          label="批量导入"
+          name="batch"
+        >
+          <el-upload
+            drag
+            accept=".xlsx,.xls,.csv"
+            :auto-upload="false"
+            :on-change="handleBatchUpload"
+            :limit="1"
+            :show-file-list="false"
+            class="upload-area"
+          >
+            <el-icon :size="40">
+              <UploadFilled />
+            </el-icon>
             <p>拖拽 Excel/CSV 文件或点击上传</p>
-            <p class="upload-hint">支持 .xlsx / .xls / .csv 格式</p>
+            <p class="upload-hint">
+              支持 .xlsx / .xls / .csv 格式
+            </p>
           </el-upload>
-          <div v-if="importResult" class="import-result">
-            <el-result :icon="importResult.failed === 0 ? 'success' : 'warning'"
+          <div
+            v-if="importResult"
+            class="import-result"
+          >
+            <el-result
+              :icon="importResult.failed === 0 ? 'success' : 'warning'"
               :title="`导入完成：成功 ${importResult.imported} 条`"
-              :sub-title="importResult.failed > 0 ? `失败 ${importResult.failed} 条` : ''">
-            </el-result>
-            <div v-if="importResult.failed_rows && importResult.failed_rows.length" style="margin-top:8px">
-              <h4 style="color:#e6a23c;margin-bottom:8px;">失败详情</h4>
-              <el-table :data="importResult.failed_rows" size="small" border max-height="200">
-                <el-table-column prop="row" label="行号" width="60" />
-                <el-table-column prop="date" label="发票号" width="140" />
-                <el-table-column prop="reason" label="原因" min-width="160" />
+              :sub-title="importResult.failed > 0 ? `失败 ${importResult.failed} 条` : ''"
+            />
+            <div
+              v-if="importResult.failed_rows && importResult.failed_rows.length"
+              style="margin-top:8px"
+            >
+              <h4 style="color:#e6a23c;margin-bottom:8px;">
+                失败详情
+              </h4>
+              <el-table
+                :data="importResult.failed_rows"
+                size="small"
+                border
+                max-height="200"
+              >
+                <el-table-column
+                  prop="row"
+                  label="行号"
+                  width="60"
+                />
+                <el-table-column
+                  prop="date"
+                  label="发票号"
+                  width="140"
+                />
+                <el-table-column
+                  prop="reason"
+                  label="原因"
+                  min-width="160"
+                />
               </el-table>
             </div>
           </div>
         </el-tab-pane>
       </el-tabs>
       <template #footer>
-        <el-button @click="closeUpload">取消</el-button>
-        <el-button v-if="uploadTab === 'ocr'" type="primary" :disabled="!ocrResult" @click="confirmUpload">确认保存</el-button>
-        <el-button v-else type="primary" :loading="batchLoading" :disabled="batchLoading" @click="closeUpload">关闭</el-button>
+        <el-button @click="closeUpload">
+          取消
+        </el-button>
+        <el-button
+          v-if="uploadTab === 'ocr'"
+          type="primary"
+          :disabled="!ocrResult"
+          @click="confirmUpload"
+        >
+          确认保存
+        </el-button>
+        <el-button
+          v-else
+          type="primary"
+          :loading="batchLoading"
+          :disabled="batchLoading"
+          @click="closeUpload"
+        >
+          关闭
+        </el-button>
       </template>
     </el-dialog>
 
     <!-- 详情抽屉 -->
-    <el-drawer v-model="showDetail" :title="`发票 ${showDetail?.invoice_no}`" size="400px">
+    <el-drawer
+      v-model="showDetail"
+      :title="`发票 ${showDetail?.invoice_no}`"
+      size="400px"
+    >
       <template v-if="showDetail">
-        <el-descriptions :column="1" border size="small">
-          <el-descriptions-item label="发票号">{{ showDetail.invoice_no }}</el-descriptions-item>
-          <el-descriptions-item label="类型">{{ showDetail.type === 'sale' ? '销项' : '进项' }}</el-descriptions-item>
-          <el-descriptions-item label="对方单位">{{ showDetail.customer_name }}</el-descriptions-item>
-          <el-descriptions-item label="开票日期">{{ showDetail.posting_date }}</el-descriptions-item>
-          <el-descriptions-item label="到期日">{{ showDetail.due_date }}</el-descriptions-item>
-          <el-descriptions-item label="价税合计">{{ showDetail.total_amount }}</el-descriptions-item>
-          <el-descriptions-item label="税额">{{ showDetail.tax_amount }}</el-descriptions-item>
-          <el-descriptions-item label="不含税金额">{{ showDetail.net_amount }}</el-descriptions-item>
-          <el-descriptions-item label="未核销金额">{{ showDetail.outstanding }}</el-descriptions-item>
+        <el-descriptions
+          :column="1"
+          border
+          size="small"
+        >
+          <el-descriptions-item label="发票号">
+            {{ showDetail.invoice_no }}
+          </el-descriptions-item>
+          <el-descriptions-item label="类型">
+            {{ showDetail.type === 'sale' ? '销项' : '进项' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="对方单位">
+            {{ showDetail.customer_name }}
+          </el-descriptions-item>
+          <el-descriptions-item label="开票日期">
+            {{ showDetail.posting_date }}
+          </el-descriptions-item>
+          <el-descriptions-item label="到期日">
+            {{ showDetail.due_date }}
+          </el-descriptions-item>
+          <el-descriptions-item label="价税合计">
+            {{ showDetail.total_amount }}
+          </el-descriptions-item>
+          <el-descriptions-item label="税额">
+            {{ showDetail.tax_amount }}
+          </el-descriptions-item>
+          <el-descriptions-item label="不含税金额">
+            {{ showDetail.net_amount }}
+          </el-descriptions-item>
+          <el-descriptions-item label="未核销金额">
+            {{ showDetail.outstanding }}
+          </el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="statusTag(showDetail.status)" size="small">{{ statusLabel(showDetail.status) }}</el-tag>
+            <el-tag
+              :type="statusTag(showDetail.status)"
+              size="small"
+            >
+              {{ statusLabel(showDetail.status) }}
+            </el-tag>
           </el-descriptions-item>
         </el-descriptions>
         <div style="margin-top:16px;text-align:center">
-          <el-button type="primary" :loading="genLoading" @click="handleGenerateVoucher(showDetail)">
+          <el-button
+            type="primary"
+            :loading="genLoading"
+            @click="handleGenerateVoucher(showDetail)"
+          >
             生成凭证
           </el-button>
         </div>

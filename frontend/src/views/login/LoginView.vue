@@ -1,26 +1,61 @@
 <template>
   <div class="login-container">
     <div class="login-card">
-      <h1 class="login-title">慧财智能财务平台</h1>
-      <p class="login-subtitle">银行流水驱动业财一体化</p>
-      <el-form ref="formRef" :model="form" :rules="rules" class="login-form" @keyup.enter="handleLogin">
+      <h1 class="login-title">
+        慧财智能财务平台
+      </h1>
+      <p class="login-subtitle">
+        银行流水驱动业财一体化
+      </p>
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        class="login-form"
+        @keyup.enter="handleLogin"
+      >
         <el-form-item prop="account">
-          <el-input v-model="form.account" placeholder="账号" size="large">
-            <template #prefix><el-icon><User /></el-icon></template>
+          <el-input
+            v-model="form.account"
+            placeholder="账号"
+            size="large"
+          >
+            <template #prefix>
+              <el-icon><User /></el-icon>
+            </template>
           </el-input>
         </el-form-item>
         <el-form-item prop="password">
-          <el-input v-model="form.password" type="password" placeholder="密码" size="large" show-password>
-            <template #prefix><el-icon><Lock /></el-icon></template>
+          <el-input
+            v-model="form.password"
+            type="password"
+            placeholder="密码"
+            size="large"
+            show-password
+          >
+            <template #prefix>
+              <el-icon><Lock /></el-icon>
+            </template>
           </el-input>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" size="large" class="login-btn" :loading="loading" @click="handleLogin">
+          <el-button
+            type="primary"
+            size="large"
+            class="login-btn"
+            :loading="loading"
+            @click="handleLogin"
+          >
             {{ loading ? '登录中...' : '登 录' }}
           </el-button>
         </el-form-item>
       </el-form>
-      <p v-if="errorMsg" class="login-error">{{ errorMsg }}</p>
+      <p
+        v-if="errorMsg"
+        class="login-error"
+      >
+        {{ errorMsg }}
+      </p>
       <div class="login-hint">
         <p>演示账号：</p>
         <p><b>admin</b> / admin123（财务主管）</p>

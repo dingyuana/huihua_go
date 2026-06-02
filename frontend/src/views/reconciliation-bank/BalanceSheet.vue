@@ -3,39 +3,77 @@
     <div class="page-header">
       <h3>余额调节表</h3>
       <div>
-        <el-select v-model="bankAccount" placeholder="选择银行账户" style="width: 240px; margin-right: 8px">
-          <el-option v-for="acct in bankAccounts" :key="acct.id" :label="`${acct.bank_name} (${maskAccount(acct.account_number)})`" :value="acct.id" />
+        <el-select
+          v-model="bankAccount"
+          placeholder="选择银行账户"
+          style="width: 240px; margin-right: 8px"
+        >
+          <el-option
+            v-for="acct in bankAccounts"
+            :key="acct.id"
+            :label="`${acct.bank_name} (${maskAccount(acct.account_number)})`"
+            :value="acct.id"
+          />
         </el-select>
-        <el-button @click="loadData">刷新</el-button>
-        <el-button @click="exportPdf">导出 PDF</el-button>
+        <el-button @click="loadData">
+          刷新
+        </el-button>
+        <el-button @click="exportPdf">
+          导出 PDF
+        </el-button>
       </div>
     </div>
 
     <!-- 余额概要 -->
-    <el-row :gutter="16" class="balance-summary" v-loading="loading">
+    <el-row
+      v-loading="loading"
+      :gutter="16"
+      class="balance-summary"
+    >
       <el-col :span="6">
         <el-card shadow="never">
-          <p class="b-label">银行对账单余额</p>
-          <p class="b-value">¥{{ balanceData.bankBalance }}</p>
+          <p class="b-label">
+            银行对账单余额
+          </p>
+          <p class="b-value">
+            ¥{{ balanceData.bankBalance }}
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="never">
-          <p class="b-label">企业日记账余额</p>
-          <p class="b-value">¥{{ balanceData.bookBalance }}</p>
+          <p class="b-label">
+            企业日记账余额
+          </p>
+          <p class="b-value">
+            ¥{{ balanceData.bookBalance }}
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="never">
-          <p class="b-label">差额</p>
-          <p class="b-value diff">¥{{ balanceData.diff }}</p>
+          <p class="b-label">
+            差额
+          </p>
+          <p class="b-value diff">
+            ¥{{ balanceData.diff }}
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" :class="balanceData.isBalanced ? 'balanced' : 'unbalanced'">
-          <p class="b-label">调节后余额</p>
-          <p class="b-value">¥{{ balanceData.adjustedBalance }}</p>
-          <p class="b-status">{{ balanceData.isBalanced ? '✅ 平衡' : '❌ 不平衡' }}</p>
+        <el-card
+          shadow="never"
+          :class="balanceData.isBalanced ? 'balanced' : 'unbalanced'"
+        >
+          <p class="b-label">
+            调节后余额
+          </p>
+          <p class="b-value">
+            ¥{{ balanceData.adjustedBalance }}
+          </p>
+          <p class="b-status">
+            {{ balanceData.isBalanced ? '✅ 平衡' : '❌ 不平衡' }}
+          </p>
         </el-card>
       </el-col>
     </el-row>
@@ -43,58 +81,180 @@
     <!-- 四类差异 -->
     <el-row :gutter="16">
       <el-col :span="12">
-        <el-card shadow="never" class="diff-card">
-          <template #header><span class="diff-title bank-receipt">🏦 银行已收企业未达</span></template>
-          <el-table v-if="balanceData.bankReceiptNotInGL.length" :data="balanceData.bankReceiptNotInGL" size="small" border>
-            <el-table-column prop="date" label="日期" width="80" />
-            <el-table-column prop="desc" label="摘要" min-width="140" />
-            <el-table-column prop="amount" label="金额" width="100" align="right" />
+        <el-card
+          shadow="never"
+          class="diff-card"
+        >
+          <template #header>
+            <span class="diff-title bank-receipt">🏦 银行已收企业未达</span>
+          </template>
+          <el-table
+            v-if="balanceData.bankReceiptNotInGL.length"
+            :data="balanceData.bankReceiptNotInGL"
+            size="small"
+            border
+          >
+            <el-table-column
+              prop="date"
+              label="日期"
+              width="80"
+            />
+            <el-table-column
+              prop="desc"
+              label="摘要"
+              min-width="140"
+            />
+            <el-table-column
+              prop="amount"
+              label="金额"
+              width="100"
+              align="right"
+            />
           </el-table>
-          <el-empty v-else description="无未达项" :image-size="40" />
+          <el-empty
+            v-else
+            description="无未达项"
+            :image-size="40"
+          />
         </el-card>
       </el-col>
       <el-col :span="12">
-        <el-card shadow="never" class="diff-card">
-          <template #header><span class="diff-title bank-payment">🏦 银行已付企业未达</span></template>
-          <el-table v-if="balanceData.bankPaymentNotInGL.length" :data="balanceData.bankPaymentNotInGL" size="small" border>
-            <el-table-column prop="date" label="日期" width="80" />
-            <el-table-column prop="desc" label="摘要" min-width="140" />
-            <el-table-column prop="amount" label="金额" width="100" align="right" />
+        <el-card
+          shadow="never"
+          class="diff-card"
+        >
+          <template #header>
+            <span class="diff-title bank-payment">🏦 银行已付企业未达</span>
+          </template>
+          <el-table
+            v-if="balanceData.bankPaymentNotInGL.length"
+            :data="balanceData.bankPaymentNotInGL"
+            size="small"
+            border
+          >
+            <el-table-column
+              prop="date"
+              label="日期"
+              width="80"
+            />
+            <el-table-column
+              prop="desc"
+              label="摘要"
+              min-width="140"
+            />
+            <el-table-column
+              prop="amount"
+              label="金额"
+              width="100"
+              align="right"
+            />
           </el-table>
-          <el-empty v-else description="无未达项" :image-size="40" />
+          <el-empty
+            v-else
+            description="无未达项"
+            :image-size="40"
+          />
         </el-card>
       </el-col>
     </el-row>
-    <el-row :gutter="16" style="margin-top: 16px">
+    <el-row
+      :gutter="16"
+      style="margin-top: 16px"
+    >
       <el-col :span="12">
-        <el-card shadow="never" class="diff-card">
-          <template #header><span class="diff-title gl-receipt">📒 企业已收银行未达</span></template>
-          <el-table v-if="balanceData.glReceiptNotInBank.length" :data="balanceData.glReceiptNotInBank" size="small" border>
-            <el-table-column prop="date" label="日期" width="80" />
-            <el-table-column prop="desc" label="摘要" min-width="140" />
-            <el-table-column prop="amount" label="金额" width="100" align="right" />
+        <el-card
+          shadow="never"
+          class="diff-card"
+        >
+          <template #header>
+            <span class="diff-title gl-receipt">📒 企业已收银行未达</span>
+          </template>
+          <el-table
+            v-if="balanceData.glReceiptNotInBank.length"
+            :data="balanceData.glReceiptNotInBank"
+            size="small"
+            border
+          >
+            <el-table-column
+              prop="date"
+              label="日期"
+              width="80"
+            />
+            <el-table-column
+              prop="desc"
+              label="摘要"
+              min-width="140"
+            />
+            <el-table-column
+              prop="amount"
+              label="金额"
+              width="100"
+              align="right"
+            />
           </el-table>
-          <el-empty v-else description="无未达项" :image-size="40" />
+          <el-empty
+            v-else
+            description="无未达项"
+            :image-size="40"
+          />
         </el-card>
       </el-col>
       <el-col :span="12">
-        <el-card shadow="never" class="diff-card">
-          <template #header><span class="diff-title gl-payment">📒 企业已付银行未达</span></template>
-          <el-table v-if="balanceData.glPaymentNotInBank.length" :data="balanceData.glPaymentNotInBank" size="small" border>
-            <el-table-column prop="date" label="日期" width="80" />
-            <el-table-column prop="desc" label="摘要" min-width="140" />
-            <el-table-column prop="amount" label="金额" width="100" align="right" />
+        <el-card
+          shadow="never"
+          class="diff-card"
+        >
+          <template #header>
+            <span class="diff-title gl-payment">📒 企业已付银行未达</span>
+          </template>
+          <el-table
+            v-if="balanceData.glPaymentNotInBank.length"
+            :data="balanceData.glPaymentNotInBank"
+            size="small"
+            border
+          >
+            <el-table-column
+              prop="date"
+              label="日期"
+              width="80"
+            />
+            <el-table-column
+              prop="desc"
+              label="摘要"
+              min-width="140"
+            />
+            <el-table-column
+              prop="amount"
+              label="金额"
+              width="100"
+              align="right"
+            />
           </el-table>
-          <el-empty v-else description="无未达项" :image-size="40" />
+          <el-empty
+            v-else
+            description="无未达项"
+            :image-size="40"
+          />
         </el-card>
       </el-col>
     </el-row>
 
     <!-- 调节计算 -->
-    <el-card shadow="never" class="calc-card">
-      <el-descriptions :column="2" border size="small">
-        <el-descriptions-item label="银行对账单余额">¥{{ balanceData.bankBalance }}</el-descriptions-item>
-        <el-descriptions-item label="企业日记账余额">¥{{ balanceData.bookBalance }}</el-descriptions-item>
+    <el-card
+      shadow="never"
+      class="calc-card"
+    >
+      <el-descriptions
+        :column="2"
+        border
+        size="small"
+      >
+        <el-descriptions-item label="银行对账单余额">
+          ¥{{ balanceData.bankBalance }}
+        </el-descriptions-item>
+        <el-descriptions-item label="企业日记账余额">
+          ¥{{ balanceData.bookBalance }}
+        </el-descriptions-item>
         <el-descriptions-item label="+ 银行已收企业未达">
           ¥{{ bankReceiptTotal }}
         </el-descriptions-item>
@@ -107,12 +267,18 @@
         <el-descriptions-item label="- 企业已付银行未达">
           ¥{{ glPaymentTotal }}
         </el-descriptions-item>
-        <el-descriptions-item label="调整后银行余额" :span="2">
+        <el-descriptions-item
+          label="调整后银行余额"
+          :span="2"
+        >
           <b :class="balanceData.isBalanced ? 'balanced-text' : 'unbalanced-text'">
             ¥{{ balanceData.adjustedBalance }}
           </b>
         </el-descriptions-item>
-        <el-descriptions-item label="调整后企业余额" :span="2">
+        <el-descriptions-item
+          label="调整后企业余额"
+          :span="2"
+        >
           <b :class="balanceData.isBalanced ? 'balanced-text' : 'unbalanced-text'">
             ¥{{ balanceData.adjustedBalance }}
           </b>
@@ -121,8 +287,15 @@
     </el-card>
 
     <div class="actions">
-      <el-button type="primary" @click="confirmAndLock">确认并锁定对账</el-button>
-      <el-button @click="$router.push('/bank-reconciliation/match')">返回对账</el-button>
+      <el-button
+        type="primary"
+        @click="confirmAndLock"
+      >
+        确认并锁定对账
+      </el-button>
+      <el-button @click="$router.push('/bank-reconciliation/match')">
+        返回对账
+      </el-button>
     </div>
   </div>
 </template>

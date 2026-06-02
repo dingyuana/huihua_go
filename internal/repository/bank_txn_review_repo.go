@@ -21,6 +21,7 @@ type BankTxnStats struct {
 
 // ListByStatus returns bank transactions filtered by status with pagination.
 // It supports the review workflow AC8.
+// If status is empty, returns all transactions (no status filter).
 func (r *BankTransactionRepository) ListByStatus(
 	ctx context.Context,
 	tenantID uuid.UUID,
@@ -35,28 +36,53 @@ func (r *BankTransactionRepository) ListByStatus(
 	}
 	offset := (page - 1) * pageSize
 
-	// Count total first.
 	var total int64
-	countQuery := `
-		SELECT COUNT(*)
-		FROM bank_transactions
-		WHERE tenant_id = $1 AND status = $2`
-	err := r.pool.QueryRow(ctx, countQuery, tenantID, status).Scan(&total)
+	var countQuery string
+	var countArgs []interface{}
+
+	if status == "" {
+		countQuery = `SELECT COUNT(*) FROM bank_transactions WHERE tenant_id = $1`
+		countArgs = []interface{}{tenantID}
+	} else {
+		countQuery = `SELECT COUNT(*) FROM bank_transactions WHERE tenant_id = $1 AND status = $2`
+		countArgs = []interface{}{tenantID, status}
+	}
+
+	err := r.pool.QueryRow(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list by status count: %w", err)
 	}
 
-	// Fetch page of results ordered by txn_date DESC.
-	query := `
-		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
-			reference_no, counterparty_name, classification, matched, confirmed,
-			matched_payment_entry_id, matched_gl_entry_id,
-			imported_from, raw_data, company_id, created_at
-		FROM bank_transactions
-		WHERE tenant_id = $1 AND status = $2
-		ORDER BY txn_date DESC, created_at DESC
-		LIMIT $3 OFFSET $4`
-	rows, err := r.pool.Query(ctx, query, tenantID, status, pageSize, offset)
+	var query string
+	var args []interface{}
+
+	if status == "" {
+		query = `
+			SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
+				reference_no, counterparty_name, classification, matched, confirmed,
+				matched_payment_entry_id, matched_gl_entry_id,
+				imported_from, raw_data, company_id, created_at, status,
+				ai_confidence, ai_suggested_action, ai_business_scene
+			FROM bank_transactions
+			WHERE tenant_id = $1
+			ORDER BY txn_date DESC, created_at DESC
+			LIMIT $2 OFFSET $3`
+		args = []interface{}{tenantID, pageSize, offset}
+	} else {
+		query = `
+			SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
+				reference_no, counterparty_name, classification, matched, confirmed,
+				matched_payment_entry_id, matched_gl_entry_id,
+				imported_from, raw_data, company_id, created_at, status,
+				ai_confidence, ai_suggested_action, ai_business_scene
+			FROM bank_transactions
+			WHERE tenant_id = $1 AND status = $2
+			ORDER BY txn_date DESC, created_at DESC
+			LIMIT $3 OFFSET $4`
+		args = []interface{}{tenantID, status, pageSize, offset}
+	}
+
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list by status: %w", err)
 	}
@@ -70,7 +96,8 @@ func (r *BankTransactionRepository) ListByStatus(
 			&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
 			&txn.Classification,
 			&txn.Matched, &txn.Confirmed, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID,
-			&txn.ImportedFrom, &txn.RawData, &txn.CompanyID, &txn.CreatedAt,
+			&txn.ImportedFrom, &txn.RawData, &txn.CompanyID, &txn.CreatedAt, &txn.Status,
+			&txn.AIConfidence, &txn.AISuggestedAction, &txn.AIBusinessScene,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("scan transaction: %w", err)

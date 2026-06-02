@@ -2,12 +2,23 @@
   <div class="page-container">
     <div class="page-header">
       <div class="page-title">
-        <div v-if="icon" class="page-icon" :style="{ background: iconBg || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }">
-          <slot name="icon">{{ icon }}</slot>
+        <div
+          v-if="icon"
+          class="page-icon"
+          :style="{ background: iconBg || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }"
+        >
+          <slot name="icon">
+            {{ icon }}
+          </slot>
         </div>
         <div>
           <h3>{{ title }}</h3>
-          <p v-if="subtitle" class="page-subtitle">{{ subtitle }}</p>
+          <p
+            v-if="subtitle"
+            class="page-subtitle"
+          >
+            {{ subtitle }}
+          </p>
         </div>
       </div>
       <div class="page-actions">

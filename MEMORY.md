@@ -1,6 +1,30 @@
 ---
 ## 📌 Changelog
 
+### 🔴 Major Change — 2026-06-02
+- **Change type**: scope expansion — AI-powered bank transaction review (TASK-BANK-01.AI)
+- **Summary**: 新增银行流水AI审阅模块（TASK-BANK-01），接入DeepSeek大模型，支持AI反馈学习
+- **Trigger**: 今日26条commit，峰值活跃日，银行流水审阅功能正式进入AI阶段
+- **Impact**: F3银行流水、F4凭证状态机扩展；新增BankTxnReview完整链路
+- **Details**:
+  - 新增 `internal/service/deepseek_client.go` — DeepSeek AI客户端（环境变量配置）
+  - 新增 `internal/model/ai_feedback_log.go` — AI反馈日志模型（HumanModifiedFields JSONB存储）
+  - 新增 `internal/repository/ai_feedback_log_repo.go` — AIFeedbackLog数据访问层
+  - 新增 `internal/service/ai_feedback_service.go` — AI反馈服务层
+  - 新增 `BankTxnReviewHandler` — 5个审阅工作流API（AC1-AC5）
+  - 新增 `BankTxnReviewService` — 业务逻辑层（含事务锁）
+  - 新增 `BankTxnReviewRepository` — 数据访问层
+  - 前端：`bank_txn_review` API模块 + 3个Vue视图
+  - `PreviewDraft` 接入AI分析能力（main.go wiring）
+  - 对方解析按方向感知选列（感知方向bank_direction）
+  - 导入流水后默认生成草稿凭证（opt-in模式）
+  - 凭证列表显示对方名称
+  - 银行流水导入时自动创建对方档案
+  - 新增Dashboard统计端点（5个指标）
+  - 期间结账close-check-summary端点（7项检查）
+- **Corresponding commit**: `a93d826d feat: wire AI analysis into PreviewDraft and main.go [TASK-BANK-01.AI]`
+- **完成度变化**: ~83% → ~88%（新增BankTxnReview AI模块，核心功能基本完成）
+
 ### 🔴 Major Change — 2026-05-30
 - **Change type**: documentation update / build fix / testing + assessment
 - **Summary**: 
@@ -56,6 +80,7 @@
 | Deploy | **Docker Compose** — PostgreSQL 15 + Redis 7-alpine |
 | Database | **PostgreSQL 15** + RLS 多租户隔离 |
 | Excel | **xuri/excelize v2.10** — 发票/流水 Excel 导入 |
+| AI | **DeepSeek API** — 银行流水AI审阅（TASK-BANK-01）via `internal/service/deepseek_client.go` |
 
 ## 项目结构
 
@@ -215,12 +240,13 @@ CREATE POLICY tenant_isolation ON <table> FOR ALL
 - 存储在 `approval_flows.threshold_amount_level2/level3`
 - 币种：`approval_flows.currency`
 
-## 当前状态（2026-05-30）
+## 当前状态（2026-06-02）
 
 - 全栈构建通过：Go 后端 + Vue 前端均正常编译
 - 后端测试：**7 个单元测试全部 PASS**（middleware 4 个 + jwt 3 个）
 - 前端测试：**vitest 无配置文件**，**Playwright 无配置文件**（测试框架已安装但未配置）
 - 测试 token 有效期至 2026-05-29（已过期，需重新生成或替换硬编码 Token）
+- **今日新增（2026-06-02）：** 26条commit，峰值活跃日；TASK-BANK-01 AI审阅模块完整链路打通（DeepSeek接入）
 
 ## 本地启动
 

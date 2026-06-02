@@ -1,24 +1,44 @@
 <template>
   <div class="precheck">
-    <div class="page-header"><h3>核销预检</h3></div>
+    <div class="page-header">
+      <h3>核销预检</h3>
+    </div>
 
     <!-- 选择区 -->
-    <el-row :gutter="16" class="selection-row">
+    <el-row
+      :gutter="16"
+      class="selection-row"
+    >
       <el-col :span="8">
         <el-card shadow="never">
-          <template #header>选择收款单</template>
-          <el-select v-model="selectedPayment" placeholder="搜索收款单" filterable style="width: 100%">
-          </el-select>
+          <template #header>
+            选择收款单
+          </template>
+          <el-select
+            v-model="selectedPayment"
+            placeholder="搜索收款单"
+            filterable
+            style="width: 100%"
+          />
         </el-card>
       </el-col>
       <el-col :span="8">
         <el-card shadow="never">
-          <template #header>选择发票</template>
-          <el-select v-model="selectedInvoice" placeholder="搜索发票" filterable style="width: 100%">
-          </el-select>
+          <template #header>
+            选择发票
+          </template>
+          <el-select
+            v-model="selectedInvoice"
+            placeholder="搜索发票"
+            filterable
+            style="width: 100%"
+          />
         </el-card>
       </el-col>
-      <el-col :span="8" class="action-col">
+      <el-col
+        :span="8"
+        class="action-col"
+      >
         <el-button
           type="primary"
           size="large"
@@ -31,8 +51,14 @@
     </el-row>
 
     <!-- 预检结果 -->
-    <el-card v-if="precheckDone" shadow="never" class="result-card">
-      <template #header>核销预检结果</template>
+    <el-card
+      v-if="precheckDone"
+      shadow="never"
+      class="result-card"
+    >
+      <template #header>
+        核销预检结果
+      </template>
 
       <CheckSummaryCard :summary="summary" />
 
@@ -43,8 +69,14 @@
       />
 
       <div class="precheck-actions">
-        <BlockingGuard :blocked="blockerCount > 0" :blocked-count="blockerCount">
-          <el-button type="primary" @click="showForcePassDialog = true">
+        <BlockingGuard
+          :blocked="blockerCount > 0"
+          :blocked-count="blockerCount"
+        >
+          <el-button
+            type="primary"
+            @click="showForcePassDialog = true"
+          >
             强制通过并核销
           </el-button>
         </BlockingGuard>
@@ -52,17 +84,32 @@
     </el-card>
 
     <!-- 强制通过弹窗 -->
-    <el-dialog v-model="showForcePassDialog" title="强制通过核销" width="450px">
-      <el-alert type="warning" :closable="false" show-icon>
+    <el-dialog
+      v-model="showForcePassDialog"
+      title="强制通过核销"
+      width="450px"
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+      >
         <p>以下检查项未通过，强制通过需备注原因：</p>
         <ul>
-          <li v-for="c in blockedChecks" :key="c.id" style="margin:4px 0">
+          <li
+            v-for="c in blockedChecks"
+            :key="c.id"
+            style="margin:4px 0"
+          >
             {{ c.name }}: {{ c.message }}
           </li>
         </ul>
       </el-alert>
       <el-form class="force-form">
-        <el-form-item label="备注原因" required>
+        <el-form-item
+          label="备注原因"
+          required
+        >
           <el-input
             v-model="forcePassReason"
             type="textarea"
@@ -72,8 +119,14 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showForcePassDialog = false">取消</el-button>
-        <el-button type="primary" :disabled="!forcePassReason" @click="executeForcePass">
+        <el-button @click="showForcePassDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :disabled="!forcePassReason"
+          @click="executeForcePass"
+        >
           确认强制通过
         </el-button>
       </template>

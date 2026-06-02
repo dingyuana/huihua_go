@@ -2,27 +2,63 @@
   <div class="check-summary">
     <el-row :gutter="16">
       <el-col :span="6">
-        <el-card shadow="never" class="stat-card total" v-loading="loading" element-loading-background="rgba(0,0,0,0.02)">
-          <p class="stat-val">{{ summary.total }}</p>
-          <p class="stat-lbl">总检查项</p>
+        <el-card
+          v-loading="loading"
+          shadow="never"
+          class="stat-card total"
+          element-loading-background="rgba(0,0,0,0.02)"
+        >
+          <p class="stat-val">
+            {{ summary.total }}
+          </p>
+          <p class="stat-lbl">
+            总检查项
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" class="stat-card passed" v-loading="loading" element-loading-background="rgba(0,0,0,0.02)">
-          <p class="stat-val passed">{{ summary.passed }}</p>
-          <p class="stat-lbl">通过</p>
+        <el-card
+          v-loading="loading"
+          shadow="never"
+          class="stat-card passed"
+          element-loading-background="rgba(0,0,0,0.02)"
+        >
+          <p class="stat-val passed">
+            {{ summary.passed }}
+          </p>
+          <p class="stat-lbl">
+            通过
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" class="stat-card warning" v-loading="loading" element-loading-background="rgba(0,0,0,0.02)">
-          <p class="stat-val warning">{{ summary.warning }}</p>
-          <p class="stat-lbl">警告</p>
+        <el-card
+          v-loading="loading"
+          shadow="never"
+          class="stat-card warning"
+          element-loading-background="rgba(0,0,0,0.02)"
+        >
+          <p class="stat-val warning">
+            {{ summary.warning }}
+          </p>
+          <p class="stat-lbl">
+            警告
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" class="stat-card blocked" v-loading="loading" element-loading-background="rgba(0,0,0,0.02)">
-          <p class="stat-val blocked">{{ summary.blocked }}</p>
-          <p class="stat-lbl">阻断</p>
+        <el-card
+          v-loading="loading"
+          shadow="never"
+          class="stat-card blocked"
+          element-loading-background="rgba(0,0,0,0.02)"
+        >
+          <p class="stat-val blocked">
+            {{ summary.blocked }}
+          </p>
+          <p class="stat-lbl">
+            阻断
+          </p>
         </el-card>
       </el-col>
     </el-row>

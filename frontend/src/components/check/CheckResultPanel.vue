@@ -1,15 +1,26 @@
 <template>
   <div class="check-result-panel">
-    <h4 v-if="title" class="panel-title">{{ title }}</h4>
+    <h4
+      v-if="title"
+      class="panel-title"
+    >
+      {{ title }}
+    </h4>
 
     <!-- 加载中 -->
     <template v-if="loading">
-      <el-skeleton :rows="4" animated />
+      <el-skeleton
+        :rows="4"
+        animated
+      />
     </template>
 
     <!-- 空状态 -->
     <template v-else-if="checks.length === 0">
-      <el-empty description="暂无检查数据" :image-size="60" />
+      <el-empty
+        description="暂无检查数据"
+        :image-size="60"
+      />
     </template>
 
     <!-- 检查结果列表 -->
@@ -21,17 +32,36 @@
       size="small"
       :row-class-name="rowClass"
     >
-      <el-table-column label="#" width="50">
-        <template #default="{ $index }">{{ $index + 1 }}</template>
+      <el-table-column
+        label="#"
+        width="50"
+      >
+        <template #default="{ $index }">
+          {{ $index + 1 }}
+        </template>
       </el-table-column>
-      <el-table-column prop="name" label="检查项" min-width="160" />
-      <el-table-column label="状态" width="90">
+      <el-table-column
+        prop="name"
+        label="检查项"
+        min-width="160"
+      />
+      <el-table-column
+        label="状态"
+        width="90"
+      >
         <template #default="{ row }">
           <CheckStatusBadge :status="row.status" />
         </template>
       </el-table-column>
-      <el-table-column prop="message" label="详情" min-width="240" />
-      <el-table-column label="操作" width="130">
+      <el-table-column
+        prop="message"
+        label="详情"
+        min-width="240"
+      />
+      <el-table-column
+        label="操作"
+        width="130"
+      >
         <template #default="{ row }">
           <el-button
             v-if="row.action"

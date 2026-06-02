@@ -1,28 +1,45 @@
 <template>
   <header class="app-header">
     <div class="header-left">
-      <el-button text @click="appStore.toggleSidebar">
+      <el-button
+        text
+        @click="appStore.toggleSidebar"
+      >
         <el-icon :size="20">
           <component :is="appStore.sidebarCollapsed ? 'Expand' : 'Fold'" />
         </el-icon>
       </el-button>
       <el-breadcrumb class="header-breadcrumb">
-        <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
-        <el-breadcrumb-item v-if="route.meta.title">{{ route.meta.title }}</el-breadcrumb-item>
+        <el-breadcrumb-item :to="{ path: '/' }">
+          首页
+        </el-breadcrumb-item>
+        <el-breadcrumb-item v-if="route.meta.title">
+          {{ route.meta.title }}
+        </el-breadcrumb-item>
       </el-breadcrumb>
     </div>
     <div class="header-right">
-      <el-tag v-if="tenantStore.watermark" type="warning" size="small" effect="dark">
+      <el-tag
+        v-if="tenantStore.watermark"
+        type="warning"
+        size="small"
+        effect="dark"
+      >
         {{ tenantStore.watermark }}
       </el-tag>
       <el-dropdown trigger="click">
         <span class="header-user">
-          <el-avatar :size="28" icon="UserFilled" />
+          <el-avatar
+            :size="28"
+            icon="UserFilled"
+          />
           <span class="user-name">{{ authStore.user?.name || '用户' }}</span>
         </span>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item @click="handleLogout">退出登录</el-dropdown-item>
+            <el-dropdown-item @click="handleLogout">
+              退出登录
+            </el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>

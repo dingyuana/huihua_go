@@ -5,109 +5,328 @@
     </div>
 
     <el-card class="step-card">
-      <div class="step-title">1. 选择银行账户</div>
-      <el-select v-model="bankAccountId" placeholder="选择银行账户" style="width: 320px">
-        <el-option v-for="acct in bankAccounts" :key="acct.id" :label="`${acct.bank_name} (${maskAccount(acct.account_number)})`" :value="acct.id" />
+      <div class="step-title">
+        1. 选择银行账户
+      </div>
+      <el-select
+        v-model="bankAccountId"
+        placeholder="选择银行账户"
+        style="width: 320px"
+      >
+        <el-option
+          v-for="acct in bankAccounts"
+          :key="acct.id"
+          :label="`${acct.bank_name} (${maskAccount(acct.account_number)})`"
+          :value="acct.id"
+        />
       </el-select>
-      <el-button v-if="bankAccountId" style="margin-left:8px" @click="fetchOnline">📡 银企直连抓取</el-button>
+      <el-button
+        v-if="bankAccountId"
+        style="margin-left:8px"
+        @click="fetchOnline"
+      >
+        📡 银企直连抓取
+      </el-button>
     </el-card>
 
     <el-card class="step-card">
-      <div class="step-title">2. 上传对账单文件</div>
-      <el-upload drag accept=".xlsx,.xls,.csv,.xml" :auto-upload="false" :on-change="handleFileChange" class="upload-area">
-        <el-icon :size="48"><UploadFilled /></el-icon>
-        <p class="upload-text">拖拽文件到此区域，或 <em>点击上传</em></p>
-        <p class="upload-hint">支持 CSV / Excel / CAMT053 / MT940 格式</p>
+      <div class="step-title">
+        2. 上传对账单文件
+      </div>
+      <el-upload
+        drag
+        accept=".xlsx,.xls,.csv,.xml"
+        :auto-upload="false"
+        :on-change="handleFileChange"
+        class="upload-area"
+      >
+        <el-icon :size="48">
+          <UploadFilled />
+        </el-icon>
+        <p class="upload-text">
+          拖拽文件到此区域，或 <em>点击上传</em>
+        </p>
+        <p class="upload-hint">
+          支持 CSV / Excel / CAMT053 / MT940 格式
+        </p>
       </el-upload>
-      <div v-if="uploadedFile" class="file-info">
-        <el-tag type="success" size="small">已选择</el-tag>
+      <div
+        v-if="uploadedFile"
+        class="file-info"
+      >
+        <el-tag
+          type="success"
+          size="small"
+        >
+          已选择
+        </el-tag>
         <span class="file-name">{{ uploadedFile.name }}</span>
         <span class="file-size">({{ (uploadedFile.size / 1024).toFixed(1) }} KB)</span>
-        <el-tag :type="formatTagType" size="small" style="margin:0 8px">{{ detectedFormat }}</el-tag>
-        <el-button text type="primary" size="small" @click="handlePreview">预览并解析文件</el-button>
+        <el-tag
+          :type="formatTagType"
+          size="small"
+          style="margin:0 8px"
+        >
+          {{ detectedFormat }}
+        </el-tag>
+        <el-button
+          text
+          type="primary"
+          size="small"
+          @click="handlePreview"
+        >
+          预览并解析文件
+        </el-button>
       </div>
     </el-card>
 
     <!-- 字段映射 -->
-    <el-card v-if="showMapping" class="step-card">
-      <div class="step-title">3. 字段映射确认</div>
-      <p class="step-hint">系统已从文件中读取列名，请确认映射关系（自动匹配相似列名）</p>
-      <el-table :data="fieldMappings" size="small" border>
-        <el-table-column prop="field" label="系统字段" width="160" />
-        <el-table-column prop="required" label="必填" width="60">
+    <el-card
+      v-if="showMapping"
+      class="step-card"
+    >
+      <div class="step-title">
+        3. 字段映射确认
+      </div>
+      <p class="step-hint">
+        系统已从文件中读取列名，请确认映射关系（自动匹配相似列名）
+      </p>
+      <el-table
+        :data="fieldMappings"
+        size="small"
+        border
+      >
+        <el-table-column
+          prop="field"
+          label="系统字段"
+          width="160"
+        />
+        <el-table-column
+          prop="required"
+          label="必填"
+          width="60"
+        >
           <template #default="{ row }">
-            <el-tag v-if="row.required" type="danger" size="small">*</el-tag>
+            <el-tag
+              v-if="row.required"
+              type="danger"
+              size="small"
+            >
+              *
+            </el-tag>
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="匹配状态" width="100">
+        <el-table-column
+          label="匹配状态"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-tag :type="row.matched ? 'success' : 'warning'" size="small">{{ row.matched ? '已匹配' : '待确认' }}</el-tag>
+            <el-tag
+              :type="row.matched ? 'success' : 'warning'"
+              size="small"
+            >
+              {{ row.matched ? '已匹配' : '待确认' }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="文件列名" min-width="200">
+        <el-table-column
+          label="文件列名"
+          min-width="200"
+        >
           <template #default="{ row }">
-            <el-select v-model="row.mappedColumn" placeholder="请选择对应的列" style="width: 100%" filterable allow-create clearable>
-              <el-option v-for="col in fileColumns" :key="col" :label="col" :value="col" />
+            <el-select
+              v-model="row.mappedColumn"
+              placeholder="请选择对应的列"
+              style="width: 100%"
+              filterable
+              allow-create
+              clearable
+            >
+              <el-option
+                v-for="col in fileColumns"
+                :key="col"
+                :label="col"
+                :value="col"
+              />
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="样本数据" min-width="150">
+        <el-table-column
+          label="样本数据"
+          min-width="150"
+        >
           <template #default="{ row }">
-            <span v-if="row.mappedColumn && row.sampleValue" class="sample-value">{{ row.sampleValue }}</span>
-            <span v-else class="no-sample">-</span>
+            <span
+              v-if="row.mappedColumn && row.sampleValue"
+              class="sample-value"
+            >{{ row.sampleValue }}</span>
+            <span
+              v-else
+              class="no-sample"
+            >-</span>
           </template>
         </el-table-column>
       </el-table>
-      <div v-if="parseErrors.length" style="margin-top:12px">
-        <el-alert :title="`解析完成，发现 ${parseErrors.length} 条异常记录`" type="warning" :closable="false" show-icon />
+      <div
+        v-if="parseErrors.length"
+        style="margin-top:12px"
+      >
+        <el-alert
+          :title="`解析完成，发现 ${parseErrors.length} 条异常记录`"
+          type="warning"
+          :closable="false"
+          show-icon
+        />
       </div>
       <div style="margin-top:12px; display:flex; gap:8px;">
-        <el-button type="primary" size="small" @click="showPreview = true; showMapping = false">确认映射，预览数据</el-button>
-        <el-button size="small" @click="showMapping = false">重新上传</el-button>
+        <el-button
+          type="primary"
+          size="small"
+          @click="showPreview = true; showMapping = false"
+        >
+          确认映射，预览数据
+        </el-button>
+        <el-button
+          size="small"
+          @click="showMapping = false"
+        >
+          重新上传
+        </el-button>
       </div>
     </el-card>
 
     <!-- 预览 -->
-    <el-card v-if="showPreview" class="step-card">
-      <div class="step-title">4. 数据预览</div>
+    <el-card
+      v-if="showPreview"
+      class="step-card"
+    >
+      <div class="step-title">
+        4. 数据预览
+      </div>
       <div class="preview-stats">
         <span>总识别: <b>{{ totalRows }}</b> 条</span>
         <span>正常: <b class="success">{{ normalCount }}</b> 条</span>
         <span>异常: <b class="danger">{{ parseErrors.length }}</b> 条</span>
       </div>
       <el-tabs v-model="previewTab">
-        <el-tab-pane label="全部数据" name="all">
-          <el-table :data="previewData" size="small" border stripe max-height="300">
-            <el-table-column prop="date" label="日期" width="100" />
-            <el-table-column prop="amount" label="金额" width="120">
+        <el-tab-pane
+          label="全部数据"
+          name="all"
+        >
+          <el-table
+            :data="previewData"
+            size="small"
+            border
+            stripe
+            max-height="300"
+          >
+            <el-table-column
+              prop="date"
+              label="日期"
+              width="100"
+            />
+            <el-table-column
+              prop="amount"
+              label="金额"
+              width="120"
+            >
               <template #default="{ row }">
                 <span :class="row.direction === 'in' ? 'amount-positive' : 'amount-negative'">
                   {{ row.direction === 'in' ? '+' : '-' }}{{ row.amount }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column prop="direction" label="方向" width="60">
-              <template #default="{ row }">{{ row.direction === 'in' ? '收入' : '支出' }}</template>
+            <el-table-column
+              prop="direction"
+              label="方向"
+              width="60"
+            >
+              <template #default="{ row }">
+                {{ row.direction === 'in' ? '收入' : '支出' }}
+              </template>
             </el-table-column>
-            <el-table-column prop="counterparty" label="对方户名" width="140" />
-            <el-table-column prop="description" label="摘要" min-width="180" show-overflow-tooltip />
-            <el-table-column prop="ref" label="流水号" width="130" />
-            <el-table-column prop="transaction_type" label="交易类型" width="80" />
-            <el-table-column prop="payer_account" label="付款人账号" width="130" />
-            <el-table-column prop="payer_bank" label="付款人开户行" min-width="140" />
+            <el-table-column
+              prop="counterparty"
+              label="对方户名"
+              width="140"
+            />
+            <el-table-column
+              prop="description"
+              label="摘要"
+              min-width="180"
+              show-overflow-tooltip
+            />
+            <el-table-column
+              prop="ref"
+              label="流水号"
+              width="130"
+            />
+            <el-table-column
+              prop="transaction_type"
+              label="交易类型"
+              width="80"
+            />
+            <el-table-column
+              prop="payer_account"
+              label="付款人账号"
+              width="130"
+            />
+            <el-table-column
+              prop="payer_bank"
+              label="付款人开户行"
+              min-width="140"
+            />
           </el-table>
         </el-tab-pane>
-        <el-tab-pane :label="`异常记录 (${parseErrors.length})`" name="errors">
-          <el-table :data="parseErrors" size="small" border stripe>
-            <el-table-column prop="row" label="行号" width="60" />
-            <el-table-column prop="field" label="字段" width="100" />
-            <el-table-column prop="value" label="原始值" width="140" />
-            <el-table-column prop="issue" label="问题" min-width="200" />
-            <el-table-column label="操作" width="100">
+        <el-tab-pane
+          :label="`异常记录 (${parseErrors.length})`"
+          name="errors"
+        >
+          <el-table
+            :data="parseErrors"
+            size="small"
+            border
+            stripe
+          >
+            <el-table-column
+              prop="row"
+              label="行号"
+              width="60"
+            />
+            <el-table-column
+              prop="field"
+              label="字段"
+              width="100"
+            />
+            <el-table-column
+              prop="value"
+              label="原始值"
+              width="140"
+            />
+            <el-table-column
+              prop="issue"
+              label="问题"
+              min-width="200"
+            />
+            <el-table-column
+              label="操作"
+              width="100"
+            >
               <template #default="{ $index }">
-                <el-button size="small" @click="skipRow($index)">跳过</el-button>
-                <el-button size="small" type="primary" @click="editRow($index)">补录</el-button>
+                <el-button
+                  size="small"
+                  @click="skipRow($index)"
+                >
+                  跳过
+                </el-button>
+                <el-button
+                  size="small"
+                  type="primary"
+                  @click="editRow($index)"
+                >
+                  补录
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -115,80 +334,213 @@
       </el-tabs>
     </el-card>
 
-    <div v-if="showPreview" class="import-actions">
-      <el-button size="large" @click="resetImport">重新选择</el-button>
-      <el-button size="large" type="primary" :loading="importing" @click="confirmBeforeImport">确认导入 ({{ normalCount }} 条)</el-button>
+    <div
+      v-if="showPreview"
+      class="import-actions"
+    >
+      <el-button
+        size="large"
+        @click="resetImport"
+      >
+        重新选择
+      </el-button>
+      <el-button
+        size="large"
+        type="primary"
+        :loading="importing"
+        @click="confirmBeforeImport"
+      >
+        确认导入 ({{ normalCount }} 条)
+      </el-button>
     </div>
 
     <!-- 导入确认弹窗（仅当有多个银行账户时弹出） -->
-    <el-dialog v-model="showConfirmDialog" title="确认导入" width="420px">
+    <el-dialog
+      v-model="showConfirmDialog"
+      title="确认导入"
+      width="420px"
+    >
       <div style="padding:8px 0">
-        <el-descriptions :column="1" size="small" border>
-          <el-descriptions-item label="银行账户">{{ selectedBankName }}</el-descriptions-item>
-          <el-descriptions-item label="导入文件">{{ uploadedFile?.name }}</el-descriptions-item>
-          <el-descriptions-item label="文件格式">{{ detectedFormat }}</el-descriptions-item>
-          <el-descriptions-item label="导入条数">{{ normalCount }} 条</el-descriptions-item>
+        <el-descriptions
+          :column="1"
+          size="small"
+          border
+        >
+          <el-descriptions-item label="银行账户">
+            {{ selectedBankName }}
+          </el-descriptions-item>
+          <el-descriptions-item label="导入文件">
+            {{ uploadedFile?.name }}
+          </el-descriptions-item>
+          <el-descriptions-item label="文件格式">
+            {{ detectedFormat }}
+          </el-descriptions-item>
+          <el-descriptions-item label="导入条数">
+            {{ normalCount }} 条
+          </el-descriptions-item>
         </el-descriptions>
-        <el-alert v-if="parseErrors.length" title="存在异常记录将被跳过" type="warning" :description="`${parseErrors.length} 条记录无法解析`" show-icon style="margin-top:12px" :closable="false" />
+        <el-alert
+          v-if="parseErrors.length"
+          title="存在异常记录将被跳过"
+          type="warning"
+          :description="`${parseErrors.length} 条记录无法解析`"
+          show-icon
+          style="margin-top:12px"
+          :closable="false"
+        />
       </div>
       <template #footer>
-        <el-button @click="showConfirmDialog = false">取消</el-button>
-        <el-button type="primary" :loading="importing" @click="handleImport">确认导入</el-button>
+        <el-button @click="showConfirmDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="importing"
+          @click="handleImport"
+        >
+          确认导入
+        </el-button>
       </template>
     </el-dialog>
 
     <!-- 导入结果弹窗 -->
-    <el-dialog v-model="showResultDialog" title="导入完成" width="640px">
-      <el-result icon="success" title="导入完成">
+    <el-dialog
+      v-model="showResultDialog"
+      title="导入完成"
+      width="640px"
+    >
+      <el-result
+        icon="success"
+        title="导入完成"
+      >
         <template #extra>
-          <el-descriptions :column="3" size="small" border>
-            <el-descriptions-item label="银行账户">{{ selectedBankName }}</el-descriptions-item>
-            <el-descriptions-item label="总条数">{{ importResult.total_rows }}</el-descriptions-item>
-            <el-descriptions-item label="成功">{{ importResult.success_count }}</el-descriptions-item>
-            <el-descriptions-item label="失败">{{ importResult.failed_count }}</el-descriptions-item>
+          <el-descriptions
+            :column="3"
+            size="small"
+            border
+          >
+            <el-descriptions-item label="银行账户">
+              {{ selectedBankName }}
+            </el-descriptions-item>
+            <el-descriptions-item label="总条数">
+              {{ importResult.total_rows }}
+            </el-descriptions-item>
+            <el-descriptions-item label="成功">
+              {{ importResult.success_count }}
+            </el-descriptions-item>
+            <el-descriptions-item label="失败">
+              {{ importResult.failed_count }}
+            </el-descriptions-item>
           </el-descriptions>
 
-          <el-divider style="margin: 12px 0">自动化处理</el-divider>
-          <el-descriptions :column="3" size="small" border>
+          <el-divider style="margin: 12px 0">
+            自动化处理
+          </el-divider>
+          <el-descriptions
+            :column="3"
+            size="small"
+            border
+          >
             <el-descriptions-item label="自动生成草稿凭证">
-              <el-tag :type="importResult.auto_generated > 0 ? 'success' : 'info'" size="small">
+              <el-tag
+                :type="importResult.auto_generated > 0 ? 'success' : 'info'"
+                size="small"
+              >
                 {{ importResult.auto_generated }} 张
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="新建对方档案">
-              <el-tag :type="importResult.auto_created_parties > 0 ? 'success' : 'info'" size="small">
+              <el-tag
+                :type="importResult.auto_created_parties > 0 ? 'success' : 'info'"
+                size="small"
+              >
                 {{ importResult.auto_created_parties }} 家
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="跳过（待人工）">
-              <el-tag :type="importResult.auto_skipped > 0 ? 'warning' : 'info'" size="small">
+              <el-tag
+                :type="importResult.auto_skipped > 0 ? 'warning' : 'info'"
+                size="small"
+              >
                 {{ importResult.auto_skipped }} 条
               </el-tag>
             </el-descriptions-item>
           </el-descriptions>
 
-          <el-collapse v-if="importResult.auto_skipped_items?.length" v-model="skippedExpanded" style="margin-top: 12px">
-            <el-collapse-item :title="`查看 ${importResult.auto_skipped_items.length} 条跳过明细`" name="skipped">
-              <el-table :data="importResult.auto_skipped_items" size="small" border stripe max-height="240">
-                <el-table-column prop="txn_date" label="日期" width="100" />
-                <el-table-column prop="classification" label="分类" width="100" />
-                <el-table-column prop="direction" label="方向" width="60" />
-                <el-table-column label="金额" width="100">
+          <el-collapse
+            v-if="importResult.auto_skipped_items?.length"
+            v-model="skippedExpanded"
+            style="margin-top: 12px"
+          >
+            <el-collapse-item
+              :title="`查看 ${importResult.auto_skipped_items.length} 条跳过明细`"
+              name="skipped"
+            >
+              <el-table
+                :data="importResult.auto_skipped_items"
+                size="small"
+                border
+                stripe
+                max-height="240"
+              >
+                <el-table-column
+                  prop="txn_date"
+                  label="日期"
+                  width="100"
+                />
+                <el-table-column
+                  prop="classification"
+                  label="分类"
+                  width="100"
+                />
+                <el-table-column
+                  prop="direction"
+                  label="方向"
+                  width="60"
+                />
+                <el-table-column
+                  label="金额"
+                  width="100"
+                >
                   <template #default="{ row }">
-                    <span v-if="parseFloat(row.credit) > 0" class="amount-negative">-{{ row.credit }}</span>
-                    <span v-else class="amount-positive">+{{ row.debit }}</span>
+                    <span
+                      v-if="parseFloat(row.credit) > 0"
+                      class="amount-negative"
+                    >-{{ row.credit }}</span>
+                    <span
+                      v-else
+                      class="amount-positive"
+                    >+{{ row.debit }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column prop="description" label="摘要" min-width="180" show-overflow-tooltip />
-                <el-table-column prop="skip_reason" label="跳过原因" min-width="220" />
+                <el-table-column
+                  prop="description"
+                  label="摘要"
+                  min-width="180"
+                  show-overflow-tooltip
+                />
+                <el-table-column
+                  prop="skip_reason"
+                  label="跳过原因"
+                  min-width="220"
+                />
               </el-table>
             </el-collapse-item>
           </el-collapse>
 
           <div style="margin-top:16px">
-            <el-button type="primary" @click="$router.push('/vouchers')">查看凭证列表 ({{ importResult.auto_generated }})</el-button>
-            <el-button @click="$router.push('/bank/workbench')">前往核对工作台</el-button>
-            <el-button @click="closeResultDialog">继续导入</el-button>
+            <el-button
+              type="primary"
+              @click="$router.push('/vouchers')"
+            >
+              查看凭证列表 ({{ importResult.auto_generated }})
+            </el-button>
+            <el-button @click="$router.push('/bank/workbench')">
+              前往核对工作台
+            </el-button>
+            <el-button @click="closeResultDialog">
+              继续导入
+            </el-button>
           </div>
         </template>
       </el-result>

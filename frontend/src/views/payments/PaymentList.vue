@@ -6,85 +6,200 @@
 
     <!-- 筛选 -->
     <el-card class="filter-card">
-      <el-form :inline="true" size="small">
+      <el-form
+        :inline="true"
+        size="small"
+      >
         <el-form-item label="单据类型">
-          <el-select v-model="filter.paymentType" placeholder="全部" style="width: 120px" clearable>
-            <el-option label="收款单" value="receive" />
-            <el-option label="付款单" value="pay" />
+          <el-select
+            v-model="filter.paymentType"
+            placeholder="全部"
+            style="width: 120px"
+            clearable
+          >
+            <el-option
+              label="收款单"
+              value="receive"
+            />
+            <el-option
+              label="付款单"
+              value="pay"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="日期">
-          <el-date-picker v-model="filter.dateRange" type="daterange" range-separator="~"
-            start-placeholder="开始" end-placeholder="结束" style="width: 240px" value-format="YYYY-MM-DD" />
+          <el-date-picker
+            v-model="filter.dateRange"
+            type="daterange"
+            range-separator="~"
+            start-placeholder="开始"
+            end-placeholder="结束"
+            style="width: 240px"
+            value-format="YYYY-MM-DD"
+          />
         </el-form-item>
         <el-form-item>
-          <el-input v-model="filter.keyword" placeholder="单据号/对方单位" clearable style="width: 180px" />
+          <el-input
+            v-model="filter.keyword"
+            placeholder="单据号/对方单位"
+            clearable
+            style="width: 180px"
+          />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="loadData">查询</el-button>
-          <el-button @click="resetFilter">重置</el-button>
+          <el-button
+            type="primary"
+            @click="loadData"
+          >
+            查询
+          </el-button>
+          <el-button @click="resetFilter">
+            重置
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <!-- 统计卡片 -->
-    <el-row :gutter="12" class="stat-row">
+    <el-row
+      :gutter="12"
+      class="stat-row"
+    >
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
-          <p class="stat-num">{{ stats.total }}</p>
-          <p class="stat-label">单据总数</p>
+        <el-card
+          shadow="hover"
+          class="stat-card"
+        >
+          <p class="stat-num">
+            {{ stats.total }}
+          </p>
+          <p class="stat-label">
+            单据总数
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card receive">
-          <p class="stat-num">{{ stats.receiveCount }}</p>
-          <p class="stat-label">收款单</p>
+        <el-card
+          shadow="hover"
+          class="stat-card receive"
+        >
+          <p class="stat-num">
+            {{ stats.receiveCount }}
+          </p>
+          <p class="stat-label">
+            收款单
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card pay">
-          <p class="stat-num">{{ stats.payCount }}</p>
-          <p class="stat-label">付款单</p>
+        <el-card
+          shadow="hover"
+          class="stat-card pay"
+        >
+          <p class="stat-num">
+            {{ stats.payCount }}
+          </p>
+          <p class="stat-label">
+            付款单
+          </p>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
-          <p class="stat-num">{{ stats.totalAmount }}</p>
-          <p class="stat-label">收付总额(元)</p>
+        <el-card
+          shadow="hover"
+          class="stat-card"
+        >
+          <p class="stat-num">
+            {{ stats.totalAmount }}
+          </p>
+          <p class="stat-label">
+            收付总额(元)
+          </p>
         </el-card>
       </el-col>
     </el-row>
 
     <!-- 列表 -->
     <el-card>
-      <el-table :data="payments" border stripe size="small" v-loading="loading">
-        <el-table-column prop="payment_no" label="单据号" width="160" />
-        <el-table-column label="类型" width="80">
+      <el-table
+        v-loading="loading"
+        :data="payments"
+        border
+        stripe
+        size="small"
+      >
+        <el-table-column
+          prop="payment_no"
+          label="单据号"
+          width="160"
+        />
+        <el-table-column
+          label="类型"
+          width="80"
+        >
           <template #default="{ row }">
-            <el-tag :type="row.payment_type === 'receive' ? 'success' : 'danger'" size="small">
+            <el-tag
+              :type="row.payment_type === 'receive' ? 'success' : 'danger'"
+              size="small"
+            >
               {{ row.payment_type === 'receive' ? '收款' : '付款' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="counterparty_name" label="对方单位" min-width="140" />
-        <el-table-column prop="paid_amount" label="金额" width="120" align="right">
+        <el-table-column
+          prop="counterparty_name"
+          label="对方单位"
+          min-width="140"
+        />
+        <el-table-column
+          prop="paid_amount"
+          label="金额"
+          width="120"
+          align="right"
+        >
           <template #default="{ row }">
             <span :class="row.payment_type === 'receive' ? 'amount-income' : 'amount-expense'">
               {{ row.payment_type === 'receive' ? '+' : '-' }}{{ formatAmount(row.paid_amount) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="posting_date" label="日期" width="100" />
-        <el-table-column prop="reference_no" label="参考号" width="130" />
-        <el-table-column label="单据状态" width="90">
+        <el-table-column
+          prop="posting_date"
+          label="日期"
+          width="100"
+        />
+        <el-table-column
+          prop="reference_no"
+          label="参考号"
+          width="130"
+        />
+        <el-table-column
+          label="单据状态"
+          width="90"
+        >
           <template #default="{ row }">
             <DocStatusTag :docstatus="row.docstatus" />
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="160" />
-        <el-table-column label="操作" width="80" fixed="right">
+        <el-table-column
+          prop="created_at"
+          label="创建时间"
+          width="160"
+        />
+        <el-table-column
+          label="操作"
+          width="80"
+          fixed="right"
+        >
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="showDetail(row)">详情</el-button>
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="showDetail(row)"
+            >
+              详情
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -102,34 +217,75 @@
     </el-card>
 
     <!-- 详情抽屉 -->
-    <el-drawer v-model="showDrawer" :title="`收付款单 ${currentPayment?.payment_no || ''}`" size="480px">
+    <el-drawer
+      v-model="showDrawer"
+      :title="`收付款单 ${currentPayment?.payment_no || ''}`"
+      size="480px"
+    >
       <template v-if="currentPayment">
-        <el-descriptions :column="1" border size="small">
-          <el-descriptions-item label="单据号">{{ currentPayment.payment_no }}</el-descriptions-item>
+        <el-descriptions
+          :column="1"
+          border
+          size="small"
+        >
+          <el-descriptions-item label="单据号">
+            {{ currentPayment.payment_no }}
+          </el-descriptions-item>
           <el-descriptions-item label="类型">
-            <el-tag :type="currentPayment.payment_type === 'receive' ? 'success' : 'danger'" size="small">
+            <el-tag
+              :type="currentPayment.payment_type === 'receive' ? 'success' : 'danger'"
+              size="small"
+            >
               {{ currentPayment.payment_type === 'receive' ? '收款' : '付款' }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="对方单位">{{ currentPayment.counterparty_name }}</el-descriptions-item>
+          <el-descriptions-item label="对方单位">
+            {{ currentPayment.counterparty_name }}
+          </el-descriptions-item>
           <el-descriptions-item label="金额">
             <b :class="currentPayment.payment_type === 'receive' ? 'amount-income' : 'amount-expense'">
               {{ currentPayment.payment_type === 'receive' ? '+' : '-' }}{{ formatAmount(currentPayment.paid_amount) }}
             </b>
           </el-descriptions-item>
-          <el-descriptions-item label="参考号">{{ currentPayment.reference_no || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="日期">{{ currentPayment.posting_date }}</el-descriptions-item>
+          <el-descriptions-item label="参考号">
+            {{ currentPayment.reference_no || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="日期">
+            {{ currentPayment.posting_date }}
+          </el-descriptions-item>
           <el-descriptions-item label="单据状态">
             <DocStatusTag :docstatus="currentPayment.docstatus" />
           </el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ currentPayment.created_at }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">
+            {{ currentPayment.created_at }}
+          </el-descriptions-item>
         </el-descriptions>
 
         <div style="margin-top: 20px; text-align: center">
-          <el-button v-if="currentPayment.docstatus === 0" type="primary" :loading="voucherLoading" @click="handleGenerateVoucher">生成凭证</el-button>
-          <el-button v-if="currentPayment.docstatus === 0" type="primary" plain>提交审核</el-button>
-          <el-button v-if="currentPayment.docstatus === 1" type="danger">作废</el-button>
-          <el-button @click="showDrawer = false">关闭</el-button>
+          <el-button
+            v-if="currentPayment.docstatus === 0"
+            type="primary"
+            :loading="voucherLoading"
+            @click="handleGenerateVoucher"
+          >
+            生成凭证
+          </el-button>
+          <el-button
+            v-if="currentPayment.docstatus === 0"
+            type="primary"
+            plain
+          >
+            提交审核
+          </el-button>
+          <el-button
+            v-if="currentPayment.docstatus === 1"
+            type="danger"
+          >
+            作废
+          </el-button>
+          <el-button @click="showDrawer = false">
+            关闭
+          </el-button>
         </div>
       </template>
     </el-drawer>

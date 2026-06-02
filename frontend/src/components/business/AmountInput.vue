@@ -7,10 +7,19 @@
     @blur="handleBlur"
   >
     <template #prefix>
-      <el-tag size="small" type="info" effect="plain">{{ currencySymbol }}</el-tag>
+      <el-tag
+        size="small"
+        type="info"
+        effect="plain"
+      >
+        {{ currencySymbol }}
+      </el-tag>
     </template>
     <template #suffix>
-      <span v-if="showBalance && balanceText" class="balance-text">
+      <span
+        v-if="showBalance && balanceText"
+        class="balance-text"
+      >
         余额: {{ balanceText }}
       </span>
     </template>

@@ -115,10 +115,12 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 	}
 
 	// Generate voucher number
-	voucherResp, _ := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
 	voucherNo := ""
-	if voucherResp != nil {
-		voucherNo = voucherResp.VoucherNumber
+	if s.templateSvc != nil {
+		voucherResp, _ := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+		if voucherResp != nil {
+			voucherNo = voucherResp.VoucherNumber
+		}
 	}
 
 	// Build journal entry
@@ -176,10 +178,12 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 		return nil, err
 	}
 
-	voucherResp, _ := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
 	voucherNo := ""
-	if voucherResp != nil {
-		voucherNo = voucherResp.VoucherNumber
+	if s.templateSvc != nil {
+		voucherResp, _ := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+		if voucherResp != nil {
+			voucherNo = voucherResp.VoucherNumber
+		}
 	}
 
 	je := &model.JournalEntry{
@@ -321,10 +325,12 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 		return nil, fmt.Errorf("payment type %q cannot generate voucher directly", pe.PaymentType)
 	}
 
-	voucherResp, tmplErr := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
 	voucherNo := ""
-	if tmplErr == nil && voucherResp != nil {
-		voucherNo = voucherResp.VoucherNumber
+	if s.templateSvc != nil {
+		voucherResp, tmplErr := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+		if tmplErr == nil && voucherResp != nil {
+			voucherNo = voucherResp.VoucherNumber
+		}
 	}
 
 	je := &model.JournalEntry{

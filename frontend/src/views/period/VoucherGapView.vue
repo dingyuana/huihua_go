@@ -10,24 +10,42 @@
           placeholder="选择期间"
           style="width: 160px; margin-right: 8px"
         />
-        <el-button type="primary" :loading="loading" @click="runCheck">执行检测</el-button>
+        <el-button
+          type="primary"
+          :loading="loading"
+          @click="runCheck"
+        >
+          执行检测
+        </el-button>
       </div>
     </div>
 
     <!-- 整体状态 -->
-    <el-card :class="['status-card', overallStatus]" shadow="never">
+    <el-card
+      :class="['status-card', overallStatus]"
+      shadow="never"
+    >
       <div class="status-badge">
-        <el-tag :type="overallTagType" size="large">
+        <el-tag
+          :type="overallTagType"
+          size="large"
+        >
           {{ statusText }}
         </el-tag>
       </div>
     </el-card>
 
     <!-- 统计概览 -->
-    <CheckSummaryCard :summary="summary" :loading="loading" />
+    <CheckSummaryCard
+      :summary="summary"
+      :loading="loading"
+    />
 
     <!-- 断号列表 -->
-    <el-card shadow="never" class="gap-list-card">
+    <el-card
+      shadow="never"
+      class="gap-list-card"
+    >
       <CheckResultPanel
         :checks="gapChecks"
         :loading="loading"
@@ -37,7 +55,11 @@
     </el-card>
 
     <!-- 快速修复提示 -->
-    <el-card v-if="hasMissing && !loading" shadow="never" class="fix-card">
+    <el-card
+      v-if="hasMissing && !loading"
+      shadow="never"
+      class="fix-card"
+    >
       <el-alert
         title="存在缺失断号"
         type="error"

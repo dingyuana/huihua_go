@@ -1,11 +1,20 @@
 <template>
   <div :class="['sidebar', { collapsed: appStore.sidebarCollapsed }]">
     <div class="sidebar-logo">
-      <div v-if="!appStore.sidebarCollapsed" class="logo-content">
+      <div
+        v-if="!appStore.sidebarCollapsed"
+        class="logo-content"
+      >
         <span class="logo-brand">慧财财务</span>
-        <span v-if="companyName" class="logo-company">{{ companyName }}</span>
+        <span
+          v-if="companyName"
+          class="logo-company"
+        >{{ companyName }}</span>
       </div>
-      <span v-else class="logo-icon">慧</span>
+      <span
+        v-else
+        class="logo-icon"
+      >慧</span>
     </div>
     <el-menu
       :default-active="route.path"
@@ -13,17 +22,36 @@
       :router="true"
       class="sidebar-menu"
     >
-      <template v-for="item in menuItems" :key="item.path">
-        <el-menu-item v-if="!item.children" :index="item.path">
-          <el-icon v-if="item.icon"><component :is="item.icon" /></el-icon>
-          <template #title>{{ item.title }}</template>
-        </el-menu-item>
-        <el-sub-menu v-else :index="item.path">
+      <template
+        v-for="item in menuItems"
+        :key="item.path"
+      >
+        <el-menu-item
+          v-if="!item.children"
+          :index="item.path"
+        >
+          <el-icon v-if="item.icon">
+            <component :is="item.icon" />
+          </el-icon>
           <template #title>
-            <el-icon v-if="item.icon"><component :is="item.icon" /></el-icon>
+            {{ item.title }}
+          </template>
+        </el-menu-item>
+        <el-sub-menu
+          v-else
+          :index="item.path"
+        >
+          <template #title>
+            <el-icon v-if="item.icon">
+              <component :is="item.icon" />
+            </el-icon>
             <span>{{ item.title }}</span>
           </template>
-          <el-menu-item v-for="child in item.children" :key="child.path" :index="child.path">
+          <el-menu-item
+            v-for="child in item.children"
+            :key="child.path"
+            :index="child.path"
+          >
             {{ child.title }}
           </el-menu-item>
         </el-sub-menu>

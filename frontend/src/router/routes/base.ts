@@ -78,8 +78,8 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'bank/workbench',
         name: 'CashierWorkbench',
-        component: () => import('@/views/bank/CashierWorkbench.vue'),
-        meta: { title: '核对工作台', roles: ['cashier', 'admin', 'agent'] },
+        component: () => import('@/views/bank/BankTxnReviewView.vue'),
+        meta: { title: '银行流水审核工作台', roles: ['cashier', 'admin', 'agent'] },
       },
       {
         path: 'payments',

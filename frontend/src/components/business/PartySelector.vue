@@ -20,7 +20,10 @@
       <div class="party-option">
         <span class="party-name">{{ item.name }}</span>
         <span class="party-tax">{{ item.tax_id }}</span>
-        <span v-if="item.bank_name" class="party-bank">{{ item.bank_name }}</span>
+        <span
+          v-if="item.bank_name"
+          class="party-bank"
+        >{{ item.bank_name }}</span>
       </div>
     </el-option>
   </el-select>

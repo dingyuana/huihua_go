@@ -3,51 +3,142 @@
     <div class="page-header">
       <h3>财务报表</h3>
       <div>
-        <el-select v-model="period" style="width: 140px; margin-right: 8px">
-          <el-option label="2026-05" value="2026-05" />
-          <el-option label="2026-04" value="2026-04" />
+        <el-select
+          v-model="period"
+          style="width: 140px; margin-right: 8px"
+        >
+          <el-option
+            label="2026-05"
+            value="2026-05"
+          />
+          <el-option
+            label="2026-04"
+            value="2026-04"
+          />
         </el-select>
-        <el-button @click="exportReport">导出 Excel</el-button>
-        <el-button @click="printReport">打印</el-button>
+        <el-button @click="exportReport">
+          导出 Excel
+        </el-button>
+        <el-button @click="printReport">
+          打印
+        </el-button>
       </div>
     </div>
 
     <el-card>
       <el-tabs v-model="activeTab">
-        <el-tab-pane label="资产负债表" name="bs">
-          <el-table :data="balanceSheet" border stripe size="small">
-            <el-table-column prop="code" label="科目编码" width="120" />
-            <el-table-column prop="name" label="科目名称" min-width="200">
+        <el-tab-pane
+          label="资产负债表"
+          name="bs"
+        >
+          <el-table
+            :data="balanceSheet"
+            border
+            stripe
+            size="small"
+          >
+            <el-table-column
+              prop="code"
+              label="科目编码"
+              width="120"
+            />
+            <el-table-column
+              prop="name"
+              label="科目名称"
+              min-width="200"
+            >
               <template #default="{ row }">
                 <span :style="{ fontWeight: row.level === 0 ? 700 : 400, paddingLeft: row.level * 20 + 'px' }">{{ row.name }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="opening" label="期初余额" width="140" align="right" />
-            <el-table-column prop="closing" label="期末余额" width="140" align="right" />
+            <el-table-column
+              prop="opening"
+              label="期初余额"
+              width="140"
+              align="right"
+            />
+            <el-table-column
+              prop="closing"
+              label="期末余额"
+              width="140"
+              align="right"
+            />
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="利润表" name="pl">
-          <el-table :data="profitLoss" border stripe size="small">
-            <el-table-column prop="item" label="项目" min-width="200" />
-            <el-table-column prop="current" label="本期金额" width="140" align="right" />
-            <el-table-column prop="last" label="上期金额" width="140" align="right" />
+        <el-tab-pane
+          label="利润表"
+          name="pl"
+        >
+          <el-table
+            :data="profitLoss"
+            border
+            stripe
+            size="small"
+          >
+            <el-table-column
+              prop="item"
+              label="项目"
+              min-width="200"
+            />
+            <el-table-column
+              prop="current"
+              label="本期金额"
+              width="140"
+              align="right"
+            />
+            <el-table-column
+              prop="last"
+              label="上期金额"
+              width="140"
+              align="right"
+            />
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="现金流量表" name="cf">
-          <el-table :data="cashFlow" border stripe size="small">
-            <el-table-column prop="category" label="类别" width="160">
+        <el-tab-pane
+          label="现金流量表"
+          name="cf"
+        >
+          <el-table
+            :data="cashFlow"
+            border
+            stripe
+            size="small"
+          >
+            <el-table-column
+              prop="category"
+              label="类别"
+              width="160"
+            >
               <template #default="{ row }">
                 <span :style="{ fontWeight: row.level === 0 ? 700 : 400 }">{{ row.category }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="item" label="项目" min-width="200" />
-            <el-table-column prop="current" label="本期金额" width="140" align="right" />
-            <el-table-column prop="last" label="上期金额" width="140" align="right" />
+            <el-table-column
+              prop="item"
+              label="项目"
+              min-width="200"
+            />
+            <el-table-column
+              prop="current"
+              label="本期金额"
+              width="140"
+              align="right"
+            />
+            <el-table-column
+              prop="last"
+              label="上期金额"
+              width="140"
+              align="right"
+            />
           </el-table>
         </el-tab-pane>
       </el-tabs>
       <!-- 利润趋势图 -->
-      <div v-if="activeTab === 'pl'" ref="chartRef" style="height: 300px; margin-top: 16px"></div>
+      <div
+        v-if="activeTab === 'pl'"
+        ref="chartRef"
+        style="height: 300px; margin-top: 16px"
+      />
     </el-card>
   </div>
 </template>

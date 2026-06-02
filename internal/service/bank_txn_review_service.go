@@ -194,37 +194,12 @@ func (s *BankTxnReviewService) RejectManual(ctx context.Context, txnIDs []string
 	return nil
 }
 
-// PreviewDraft generates a draft voucher (docstatus=0) for a single classified
-// transaction without changing its status. Returns nil for C-class txns (AC3).
-// If the transaction has no AI analysis yet (ai_confidence=0), it calls the
-// BankTxnAIService to analyse it via DeepSeek before returning the preview.
+// PreviewDraft generates a draft voucher (docstatus=0) for a classified transaction.
+// Returns nil for C-class transactions (no preview available).
 func (s *BankTxnReviewService) PreviewDraft(ctx context.Context, tenantID, txnID uuid.UUID) (*model.JournalEntry, error) {
 	txn, err := s.repo.GetByID(ctx, tenantID, txnID)
 	if err != nil {
 		return nil, fmt.Errorf("get txn: %w", err)
-	}
-
-	// If status is still pending, the transaction has not been analysed yet.
-	// Trigger AI analysis before proceeding.
-	if txn.Status != nil && *txn.Status == string(model.BankTxnReviewStatusPending) {
-		if s.aiSvc != nil && (txn.AIConfidence == nil || *txn.AIConfidence == 0) {
-			aiResult, aiErr := s.aiSvc.AnalyzeBankTxn(ctx, *txn)
-			if aiErr != nil {
-				return nil, fmt.Errorf("ai analysis: %w", aiErr)
-			}
-			// Persist AI result into the transaction record.
-			txn.AIConfidence = &aiResult.Confidence
-			txn.AISuggestedAction = &aiResult.SuggestedAction
-			txn.AIBusinessScene = &aiResult.BusinessScene
-
-			newStatus := string(model.BankTxnReviewStatusClassified)
-			txn.Status = &newStatus
-			_ = s.repo.UpdateAIFields(ctx, txnID, aiResult.BusinessScene, aiResult.SuggestedAction, aiResult.Confidence)
-		}
-	}
-
-	if txn.Status != nil && *txn.Status != string(model.BankTxnReviewStatusClassified) {
-		return nil, fmt.Errorf("txn is not in classified status")
 	}
 
 	classification := ""
@@ -232,8 +207,12 @@ func (s *BankTxnReviewService) PreviewDraft(ctx context.Context, tenantID, txnID
 		classification = *txn.Classification
 	}
 	typ := classifyType(classification)
-	if typ != "A" && typ != "B" {
-		return nil, nil // C-class — no preview available
+	if typ == "C" {
+		return nil, nil
+	}
+
+	if s.voucherAutoSvc == nil {
+		return nil, fmt.Errorf("voucher auto-generate service not configured")
 	}
 
 	voucher, err := s.voucherAutoSvc.GenerateFromBankTxn(ctx, tenantID, txnID, uuid.Nil)

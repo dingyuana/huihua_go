@@ -46,7 +46,7 @@ func (h *BankTxnReviewHandler) ReviewList(c *fiber.Ctx) error {
 
 	txns, total, err := h.repo.ListByStatus(c.Context(), tenantID, status, page, pageSize)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list transactions"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "failed to list transactions: " + err.Error()})
 	}
 
 	return c.JSON(fiber.Map{

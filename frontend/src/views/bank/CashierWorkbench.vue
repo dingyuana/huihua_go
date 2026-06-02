@@ -3,58 +3,136 @@
     <div class="page-header">
       <h3>出纳核对工作台</h3>
       <div>
-        <el-radio-group v-model="viewMode" size="small">
-          <el-radio-button value="list">列表模式</el-radio-button>
-          <el-radio-button value="batch">批量模式</el-radio-button>
+        <el-radio-group
+          v-model="viewMode"
+          size="small"
+        >
+          <el-radio-button value="list">
+            列表模式
+          </el-radio-button>
+          <el-radio-button value="batch">
+            批量模式
+          </el-radio-button>
         </el-radio-group>
       </div>
     </div>
 
-    <el-row :gutter="16" class="stat-row">
+    <el-row
+      :gutter="16"
+      class="stat-row"
+    >
       <el-col :span="4">
-        <el-card shadow="hover" class="stat-card total">
-          <p class="stat-num">{{ stats.total }}</p>
-          <p class="stat-label">本月流水</p>
+        <el-card
+          shadow="hover"
+          class="stat-card total"
+        >
+          <p class="stat-num">
+            {{ stats.total }}
+          </p>
+          <p class="stat-label">
+            本月流水
+          </p>
         </el-card>
       </el-col>
       <el-col :span="5">
-        <el-card shadow="hover" class="stat-card confirmed">
-          <p class="stat-num">{{ stats.confirmed }}</p>
-          <p class="stat-label">已确认</p>
+        <el-card
+          shadow="hover"
+          class="stat-card confirmed"
+        >
+          <p class="stat-num">
+            {{ stats.confirmed }}
+          </p>
+          <p class="stat-label">
+            已确认
+          </p>
         </el-card>
       </el-col>
       <el-col :span="5">
-        <el-card shadow="hover" class="stat-card pending">
-          <p class="stat-num">{{ stats.pending }}</p>
-          <p class="stat-label">待确认</p>
+        <el-card
+          shadow="hover"
+          class="stat-card pending"
+        >
+          <p class="stat-num">
+            {{ stats.pending }}
+          </p>
+          <p class="stat-label">
+            待确认
+          </p>
         </el-card>
       </el-col>
       <el-col :span="5">
-        <el-card shadow="hover" class="stat-card unclassified">
-          <p class="stat-num danger">{{ stats.unclassified }}</p>
-          <p class="stat-label">未分类</p>
+        <el-card
+          shadow="hover"
+          class="stat-card unclassified"
+        >
+          <p class="stat-num danger">
+            {{ stats.unclassified }}
+          </p>
+          <p class="stat-label">
+            未分类
+          </p>
         </el-card>
       </el-col>
       <el-col :span="5">
-        <el-card shadow="hover" class="stat-card docs">
-          <p class="stat-num">{{ stats.generatedDocs }}</p>
-          <p class="stat-label">已生成单据</p>
+        <el-card
+          shadow="hover"
+          class="stat-card docs"
+        >
+          <p class="stat-num">
+            {{ stats.generatedDocs }}
+          </p>
+          <p class="stat-label">
+            已生成单据
+          </p>
         </el-card>
       </el-col>
     </el-row>
 
     <el-card>
-      <el-tabs v-model="activeTab" class="classification-tabs">
-        <el-tab-pane :label="`全部 (${stats.total})`" name="all" />
-        <el-tab-pane :label="`业务收款 (${stats.byCategory.business_receipt})`" name="business_receipt" />
-        <el-tab-pane :label="`业务付款 (${stats.byCategory.business_payment})`" name="business_payment" />
-        <el-tab-pane :label="`银行费用 (${stats.byCategory.bank_fee})`" name="bank_fee" />
-        <el-tab-pane :label="`利息收入 (${stats.byCategory.interest_income})`" name="interest_income" />
-        <el-tab-pane :label="`内部转账 (${stats.byCategory.internal_transfer})`" name="internal_transfer" />
-        <el-tab-pane :label="`税务缴费 (${stats.byCategory.tax_payment})`" name="tax_payment" />
-        <el-tab-pane :label="`社保缴费 (${stats.byCategory.social_security})`" name="social_security" />
-        <el-tab-pane :label="`保险费用 (${stats.byCategory.insurance_fee})`" name="insurance_fee" />
-        <el-tab-pane :label="`待处理 (${stats.byCategory.pending})${stats.byCategory.pending > 0 ? ' 🔴' : ''}`" name="pending" />
+      <el-tabs
+        v-model="activeTab"
+        class="classification-tabs"
+      >
+        <el-tab-pane
+          :label="`全部 (${stats.total})`"
+          name="all"
+        />
+        <el-tab-pane
+          :label="`业务收款 (${stats.byCategory.business_receipt})`"
+          name="business_receipt"
+        />
+        <el-tab-pane
+          :label="`业务付款 (${stats.byCategory.business_payment})`"
+          name="business_payment"
+        />
+        <el-tab-pane
+          :label="`银行费用 (${stats.byCategory.bank_fee})`"
+          name="bank_fee"
+        />
+        <el-tab-pane
+          :label="`利息收入 (${stats.byCategory.interest_income})`"
+          name="interest_income"
+        />
+        <el-tab-pane
+          :label="`内部转账 (${stats.byCategory.internal_transfer})`"
+          name="internal_transfer"
+        />
+        <el-tab-pane
+          :label="`税务缴费 (${stats.byCategory.tax_payment})`"
+          name="tax_payment"
+        />
+        <el-tab-pane
+          :label="`社保缴费 (${stats.byCategory.social_security})`"
+          name="social_security"
+        />
+        <el-tab-pane
+          :label="`保险费用 (${stats.byCategory.insurance_fee})`"
+          name="insurance_fee"
+        />
+        <el-tab-pane
+          :label="`待处理 (${stats.byCategory.pending})${stats.byCategory.pending > 0 ? ' 🔴' : ''}`"
+          name="pending"
+        />
       </el-tabs>
 
       <!-- Tab 汇总 -->
@@ -69,80 +147,225 @@
       </div>
 
       <div class="batch-bar">
-        <el-checkbox v-model="selectAll" @change="onSelectAll">全选</el-checkbox>
+        <el-checkbox
+          v-model="selectAll"
+          @change="onSelectAll"
+        >
+          全选
+        </el-checkbox>
         <span class="selected-count">已选 {{ selectedIds.length }} 条</span>
-        <el-button size="small" type="primary" :disabled="selectedIds.length === 0" @click="batchConfirm">确认选中</el-button>
-        <el-button size="small" :disabled="selectedIds.length === 0 || hasConfirmedSelected" @click="showClassifyDialog = true">修正分类</el-button>
+        <el-button
+          size="small"
+          type="primary"
+          :disabled="selectedIds.length === 0"
+          :loading="confirming"
+          @click="batchConfirm"
+        >
+          确认选中
+        </el-button>
+        <el-button
+          size="small"
+          :disabled="selectedIds.length === 0 || hasConfirmedSelected"
+          @click="showClassifyDialog = true"
+        >
+          修正分类
+        </el-button>
       </div>
 
       <!-- 批量模式下提示待生成单据 -->
-      <el-alert v-if="viewMode === 'batch' && selectedIds.length > 0" :title="batchPreview" type="info" :closable="false" show-icon class="batch-preview" />
+      <el-alert
+        v-if="viewMode === 'batch' && selectedIds.length > 0"
+        :title="batchPreview"
+        type="info"
+        :closable="false"
+        show-icon
+        class="batch-preview"
+      />
 
       <el-table
         ref="tableRef"
         :data="filteredTxns"
-        border stripe size="small"
+        border
+        stripe
+        size="small"
         @selection-change="onSelectionChange"
       >
-        <el-table-column type="selection" width="40" />
-        <el-table-column prop="date" label="日期" width="90" />
-        <el-table-column label="金额" width="120">
+        <el-table-column
+          type="selection"
+          width="40"
+        />
+        <el-table-column
+          prop="date"
+          label="日期"
+          width="90"
+          :formatter="(row: any) => row.date ? row.date.slice(0, 10) : ''"
+        />
+        <el-table-column
+          label="金额"
+          width="120"
+        >
           <template #default="{ row }">
             <span :class="amountClass(row)">{{ amountDisplay(row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="counterparty" label="对方" width="140" />
-        <el-table-column prop="description" label="摘要" min-width="180" show-overflow-tooltip />
-        <el-table-column label="分类" width="100">
+        <el-table-column
+          prop="counterparty"
+          label="对方"
+          width="140"
+        />
+        <el-table-column
+          prop="description"
+          label="摘要"
+          min-width="180"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          label="分类"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-tag :type="classificationTag(row.classification)" size="small">{{ classificationLabel(row.classification) }}</el-tag>
+            <el-tag
+              :type="classificationTag(row.classification)"
+              size="small"
+            >
+              {{ classificationLabel(row.classification) }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="将生成" width="150">
+        <el-table-column
+          label="将生成"
+          width="150"
+        >
           <template #default="{ row }">
-            <el-tag v-if="row.payment_no" size="small" type="primary">{{ row.payment_no }}</el-tag>
-            <span v-else-if="row.confirmed" class="doc-preview">{{ docTypeLabel(row.classification) }}</span>
-            <span v-else class="doc-preview">{{ docTypeLabel(row.classification) }}</span>
+            <el-tag
+              v-if="row.payment_no"
+              size="small"
+              type="primary"
+            >
+              {{ row.payment_no }}
+            </el-tag>
+            <span
+              v-else-if="row.confirmed"
+              class="doc-preview"
+            >{{ docTypeLabel(row.classification) }}</span>
+            <span
+              v-else
+              class="doc-preview"
+            >{{ docTypeLabel(row.classification) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="80">
+        <el-table-column
+          label="状态"
+          width="80"
+        >
           <template #default="{ row }">
-            <el-tag v-if="row.confirmed" type="success" size="small">已确认</el-tag>
-            <el-tag v-else type="warning" size="small">待确认</el-tag>
+            <el-tag
+              v-if="row.confirmed"
+              type="success"
+              size="small"
+            >
+              已确认
+            </el-tag>
+            <el-tag
+              v-else
+              type="warning"
+              size="small"
+            >
+              待确认
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column
+          label="操作"
+          width="120"
+          fixed="right"
+        >
           <template #default="{ row }">
-            <el-button v-if="!row.confirmed" link type="primary" size="small" @click="confirmOne(row)">确认</el-button>
-            <el-button v-if="!row.confirmed" link type="primary" size="small" @click="editOne(row)">修正</el-button>
+            <el-button
+              v-if="!row.confirmed"
+              link
+              type="primary"
+              size="small"
+              @click="confirmOne(row)"
+            >
+              确认
+            </el-button>
+            <el-button
+              v-if="!row.confirmed"
+              link
+              type="primary"
+              size="small"
+              @click="editOne(row)"
+            >
+              修正
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
-    <el-dialog v-model="showClassifyDialog" title="修正分类" width="420px">
+    <el-dialog
+      v-model="showClassifyDialog"
+      title="修正分类"
+      width="420px"
+    >
       <el-form label-width="80px">
         <el-form-item label="分类">
-          <el-select v-model="classifyForm.classification" style="width: 100%">
-            <el-option label="业务收款" value="business_receipt" />
-            <el-option label="业务付款" value="business_payment" />
-            <el-option label="银行费用" value="bank_fee" />
-            <el-option label="利息收入" value="interest_income" />
-            <el-option label="内部转账" value="internal_transfer" />
-            <el-option label="税务缴费" value="tax_payment" />
-            <el-option label="待处理" value="pending" />
+          <el-select
+            v-model="classifyForm.classification"
+            style="width: 100%"
+          >
+            <el-option
+              label="业务收款"
+              value="business_receipt"
+            />
+            <el-option
+              label="业务付款"
+              value="business_payment"
+            />
+            <el-option
+              label="银行费用"
+              value="bank_fee"
+            />
+            <el-option
+              label="利息收入"
+              value="interest_income"
+            />
+            <el-option
+              label="内部转账"
+              value="internal_transfer"
+            />
+            <el-option
+              label="税务缴费"
+              value="tax_payment"
+            />
+            <el-option
+              label="待处理"
+              value="pending"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="对方单位">
           <PartySelector v-model="classifyForm.party" />
         </el-form-item>
         <el-form-item label="备注">
-          <el-input v-model="classifyForm.remark" type="textarea" :rows="2" />
+          <el-input
+            v-model="classifyForm.remark"
+            type="textarea"
+            :rows="2"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showClassifyDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveClassification">确认修正</el-button>
+        <el-button @click="showClassifyDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          @click="saveClassification"
+        >
+          确认修正
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -236,6 +459,7 @@ const selectedIds = ref<string[]>([])
 const selectAll = ref(false)
 const showClassifyDialog = ref(false)
 const docCounter = ref(0) // 已生成单据数量统计
+const confirming = ref(false)
 
 const classifyForm = reactive({
   classification: 'business_receipt',
@@ -392,37 +616,43 @@ function onSelectAll() {
 }
 
 async function confirmOne(row: TxnItem) {
+  confirming.value = true
   try {
-    const res: any = await request.post('/bank-transactions/batch-confirm', { ids: [row.id] })
-    const data = res?.data
+    // data is already unwrapped by Axios interceptor (response => response.data)
+    const data: any = await request.post('/bank-transactions/batch-confirm', { ids: [row.id] })
+    if (!data) throw new Error('empty response')
 
     // Always mark as confirmed locally — backend set it
     row.confirmed = true
 
-    if (data?.vouchers_created > 0) {
+    if (data.vouchers_created > 0) {
       row.payment_no = data.voucher_nos?.[0] || ''
       docCounter.value++
       ElMessage.success(`流水 ${row.date} 已确认，已生成凭证：${row.payment_no}（${docTypeLabel(row.classification)}）`)
-    } else if (data?.documents_needed > 0) {
+    } else if (data.documents_needed > 0) {
       const { paymentType, partyType } = mapToPaymentEntry(row.classification)
-      const docRes: any = await request.post('/payment-entries', {
+      const docData: any = await request.post('/payment-entries', {
         bank_transaction_id: row.id,
         payment_type: paymentType,
         party_type: partyType,
         party_id: '00000000-0000-0000-0000-000000000000',
         posting_date: new Date().toISOString().slice(0, 10),
       })
-      row.payment_entry_id = docRes.data?.payment_entry?.id
-      row.payment_no = docRes.data?.payment_entry?.payment_no
+      row.payment_entry_id = docData?.payment_entry?.id
+      row.payment_no = docData?.payment_entry?.payment_no
       docCounter.value++
       ElMessage.success(`流水 ${row.date} 已确认，已生成${docTypeLabel(row.classification)}：${row.payment_no}（待会计处理）`)
-    } else if (data?.failed > 0) {
+    } else if (data.failed > 0) {
       // Already processed — still show as confirmed
       ElMessage.info(`流水 ${row.date} 已完成确认`)
+    } else {
+      ElMessage.success(`流水 ${row.date} 已确认`)
     }
   } catch (e: any) {
     const msg = e?.response?.data?.error || e?.message || '操作失败'
     ElMessage.error(`流水 ${row.date} 处理失败：${msg}`)
+  } finally {
+    confirming.value = false
   }
 }
 
@@ -430,13 +660,16 @@ async function batchConfirm() {
   const selected = allTxns.value.filter(t => selectedIds.value.includes(t.id))
   if (selected.length === 0) return
 
+  confirming.value = true
   const today = new Date().toISOString().slice(0, 10)
 
   try {
-    const res: any = await request.post('/bank-transactions/batch-confirm', { ids: selectedIds.value })
-    const data = res?.data
-    const voucherOk = data?.vouchers_created || 0
-    const docIds: string[] = data?.document_ids || []
+    // res is already unwrapped by Axios interceptor (response => response.data)
+    const data: any = await request.post('/bank-transactions/batch-confirm', { ids: selectedIds.value })
+    if (!data) throw new Error('empty response')
+    const voucherOk = data.vouchers_created || 0
+    const docIds: string[] = data.document_ids || []
+    const failCount = data.failed || 0
 
     // Mark all selected as confirmed in local state for immediate UI feedback
     selected.forEach(t => { t.confirmed = true })
@@ -444,7 +677,7 @@ async function batchConfirm() {
     // Match voucher nos to auto-voucher items in classification order
     let vIdx = 0
     for (const t of selected) {
-      if (isAutoVoucherClassification(t.classification) && vIdx < (data?.voucher_nos?.length || 0)) {
+      if (isAutoVoucherClassification(t.classification) && vIdx < (data.voucher_nos?.length || 0)) {
         t.payment_no = data.voucher_nos[vIdx++]
       }
     }
@@ -457,15 +690,15 @@ async function batchConfirm() {
       if (!t) continue
       const { paymentType, partyType } = mapToPaymentEntry(t.classification)
       try {
-        const docRes: any = await request.post('/payment-entries', {
+        const docData: any = await request.post('/payment-entries', {
           bank_transaction_id: id,
           payment_type: paymentType,
           party_type: partyType,
           party_id: '00000000-0000-0000-0000-000000000000',
           posting_date: today,
         })
-        t.payment_entry_id = docRes.data?.payment_entry?.id
-        t.payment_no = docRes.data?.payment_entry?.payment_no
+        t.payment_entry_id = docData?.payment_entry?.id
+        t.payment_no = docData?.payment_entry?.payment_no
         orderOk++
       } catch {
         console.error(`Failed to create payment entry for txn ${id}`)
@@ -476,19 +709,21 @@ async function batchConfirm() {
     const parts: string[] = []
     if (voucherOk > 0) parts.push(`自动凭证 ${voucherOk} 张`)
     if (orderOk > 0) parts.push(`草稿单据 ${orderOk} 张`)
-    const failCount = (data?.failed || 0)
     if (failCount > 0) parts.push(`失败 ${failCount} 条`)
 
     if (parts.length > 0) {
       ElMessage.success(`批量完成：${parts.join('，')}`)
+    } else {
+      ElMessage.success(`已确认 ${selected.length} 笔流水`)
     }
   } catch (e: any) {
     const msg = e?.response?.data?.error || e?.message || '批量确认失败'
     ElMessage.error(`批量确认失败：${msg}`)
+  } finally {
+    confirming.value = false
+    selectedIds.value = []
+    selectAll.value = false
   }
-
-  selectedIds.value = []
-  selectAll.value = false
 }
 
 function editOne(row: TxnItem) {

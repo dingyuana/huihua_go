@@ -1,27 +1,65 @@
 <template>
   <div class="account-chart">
-    <PageLayout title="科目表管理" icon="📋" subtitle="查看和管理会计科目，支持树形结构和导入标准科目表">
+    <PageLayout
+      title="科目表管理"
+      icon="📋"
+      subtitle="查看和管理会计科目，支持树形结构和导入标准科目表"
+    >
       <template #actions>
         <el-button @click="importStandardChart">
           <el-icon><Download /></el-icon>
           导入标准科目表
         </el-button>
-        <el-button type="primary" @click="openCreateDialog()">
+        <el-button
+          type="primary"
+          @click="openCreateDialog()"
+        >
           <el-icon><Plus /></el-icon>
           新增科目
         </el-button>
       </template>
 
       <div class="toolbar">
-        <el-input v-model="searchKeyword" placeholder="搜索科目名称或编码" clearable style="width: 260px" @input="onSearch" />
-        <el-select v-model="filterType" placeholder="科目类型" clearable style="width: 140px">
-          <el-option label="资产" value="asset" />
-          <el-option label="负债" value="liability" />
-          <el-option label="权益" value="equity" />
-          <el-option label="成本" value="cost" />
-          <el-option label="损益" value="income" />
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索科目名称或编码"
+          clearable
+          style="width: 260px"
+          @input="onSearch"
+        />
+        <el-select
+          v-model="filterType"
+          placeholder="科目类型"
+          clearable
+          style="width: 140px"
+        >
+          <el-option
+            label="资产"
+            value="asset"
+          />
+          <el-option
+            label="负债"
+            value="liability"
+          />
+          <el-option
+            label="权益"
+            value="equity"
+          />
+          <el-option
+            label="成本"
+            value="cost"
+          />
+          <el-option
+            label="损益"
+            value="income"
+          />
         </el-select>
-        <el-checkbox v-model="showLedgerOnly" style="margin-left: 12px">仅可记账科目</el-checkbox>
+        <el-checkbox
+          v-model="showLedgerOnly"
+          style="margin-left: 12px"
+        >
+          仅可记账科目
+        </el-checkbox>
       </div>
 
       <el-table
@@ -34,55 +72,156 @@
         size="small"
         class="account-tree"
       >
-        <el-table-column prop="code" label="科目编码" width="150" />
-        <el-table-column prop="name" label="科目名称" min-width="220">
+        <el-table-column
+          prop="code"
+          label="科目编码"
+          width="150"
+        />
+        <el-table-column
+          prop="name"
+          label="科目名称"
+          min-width="220"
+        >
           <template #default="{ row }">
             <span :class="{ 'group-name': row.is_group, 'ledger-name': !row.is_group }">
               {{ row.name }}
-              <el-tag v-if="row.is_group" size="small" type="info" effect="plain" style="margin-left: 6px">汇总</el-tag>
+              <el-tag
+                v-if="row.is_group"
+                size="small"
+                type="info"
+                effect="plain"
+                style="margin-left: 6px"
+              >汇总</el-tag>
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="类型" width="80">
-          <template #default="{ row }">{{ typeLabel(row.account_type) }}</template>
-        </el-table-column>
-        <el-table-column label="余额方向" width="80">
-          <template #default="{ row }">{{ rootTypeByAccountType(row.account_type) }}</template>
-        </el-table-column>
-        <el-table-column prop="currency" label="币种" width="60" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column
+          label="类型"
+          width="80"
+        >
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openCreateDialog(row)">新增下级</el-button>
-            <el-button link type="primary" size="small" @click="openEditDialog(row)">编辑</el-button>
-            <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+            {{ typeLabel(row.account_type) }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="余额方向"
+          width="80"
+        >
+          <template #default="{ row }">
+            {{ rootTypeByAccountType(row.account_type) }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          prop="currency"
+          label="币种"
+          width="60"
+        />
+        <el-table-column
+          label="操作"
+          width="180"
+          fixed="right"
+        >
+          <template #default="{ row }">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="openCreateDialog(row)"
+            >
+              新增下级
+            </el-button>
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="openEditDialog(row)"
+            >
+              编辑
+            </el-button>
+            <el-button
+              link
+              type="danger"
+              size="small"
+              @click="handleDelete(row)"
+            >
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
     </PageLayout>
 
-    <el-dialog v-model="dialogVisible" :title="isEditing ? '编辑科目' : '新增科目'" width="520px" :close-on-click-modal="false">
-      <el-form ref="formRef" :model="dialogForm" :rules="dialogRules" label-width="100px">
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEditing ? '编辑科目' : '新增科目'"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="formRef"
+        :model="dialogForm"
+        :rules="dialogRules"
+        label-width="100px"
+      >
         <el-form-item label="父科目">
-          <AccountSelector v-model="dialogForm.parent" :ledger-only="false" placeholder="根科目（不选）" />
+          <AccountSelector
+            v-model="dialogForm.parent"
+            :ledger-only="false"
+            placeholder="根科目（不选）"
+          />
         </el-form-item>
         <el-form-item label="科目编码">
-          <el-input v-model="dialogForm.code" :disabled="isEditing" style="width: 200px">
+          <el-input
+            v-model="dialogForm.code"
+            :disabled="isEditing"
+            style="width: 200px"
+          >
             <template #append>
-              <el-button @click="previewAutoCode">自动生成</el-button>
+              <el-button @click="previewAutoCode">
+                自动生成
+              </el-button>
             </template>
           </el-input>
-          <span v-if="previewCode" class="code-hint">建议: {{ previewCode }}</span>
+          <span
+            v-if="previewCode"
+            class="code-hint"
+          >建议: {{ previewCode }}</span>
         </el-form-item>
-        <el-form-item label="科目名称" prop="name">
-          <el-input v-model="dialogForm.name" maxlength="100" />
+        <el-form-item
+          label="科目名称"
+          prop="name"
+        >
+          <el-input
+            v-model="dialogForm.name"
+            maxlength="100"
+          />
         </el-form-item>
         <el-form-item label="科目类型">
-          <el-select v-model="dialogForm.accountType" style="width: 100%" @change="onTypeChange">
-            <el-option label="资产" value="asset" />
-            <el-option label="负债" value="liability" />
-            <el-option label="共同" value="equity" />
-            <el-option label="成本" value="cost" />
-            <el-option label="损益" value="income" />
+          <el-select
+            v-model="dialogForm.accountType"
+            style="width: 100%"
+            @change="onTypeChange"
+          >
+            <el-option
+              label="资产"
+              value="asset"
+            />
+            <el-option
+              label="负债"
+              value="liability"
+            />
+            <el-option
+              label="共同"
+              value="equity"
+            />
+            <el-option
+              label="成本"
+              value="cost"
+            />
+            <el-option
+              label="损益"
+              value="income"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="余额方向">
@@ -96,16 +235,36 @@
           <span class="form-hint">汇总科目不可用于记账，仅用于组织科目层级</span>
         </el-form-item>
         <el-form-item label="币种">
-          <el-select v-model="dialogForm.currency" style="width: 120px">
-            <el-option label="CNY" value="CNY" />
-            <el-option label="USD" value="USD" />
-            <el-option label="HKD" value="HKD" />
+          <el-select
+            v-model="dialogForm.currency"
+            style="width: 120px"
+          >
+            <el-option
+              label="CNY"
+              value="CNY"
+            />
+            <el-option
+              label="USD"
+              value="USD"
+            />
+            <el-option
+              label="HKD"
+              value="HKD"
+            />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+        <el-button @click="dialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="handleSave"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </div>
