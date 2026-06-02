@@ -71,7 +71,7 @@
       <div class="batch-bar">
         <el-checkbox v-model="selectAll" @change="onSelectAll">全选</el-checkbox>
         <span class="selected-count">已选 {{ selectedIds.length }} 条</span>
-        <el-button size="small" type="primary" :disabled="selectedIds.length === 0" @click="batchConfirm">确认选中</el-button>
+        <el-button size="small" type="primary" :disabled="selectedIds.length === 0" :loading="confirming" @click="batchConfirm">确认选中</el-button>
         <el-button size="small" :disabled="selectedIds.length === 0 || hasConfirmedSelected" @click="showClassifyDialog = true">修正分类</el-button>
       </div>
 
@@ -236,6 +236,7 @@ const selectedIds = ref<string[]>([])
 const selectAll = ref(false)
 const showClassifyDialog = ref(false)
 const docCounter = ref(0) // 已生成单据数量统计
+const confirming = ref(false)
 
 const classifyForm = reactive({
   classification: 'business_receipt',
@@ -392,37 +393,43 @@ function onSelectAll() {
 }
 
 async function confirmOne(row: TxnItem) {
+  confirming.value = true
   try {
-    const res: any = await request.post('/bank-transactions/batch-confirm', { ids: [row.id] })
-    const data = res?.data
+    // res is already unwrapped by Axios interceptor (response => response.data)
+    const data: any = await request.post('/bank-transactions/batch-confirm', { ids: [row.id] })
+    if (!data) throw new Error('empty response')
 
     // Always mark as confirmed locally — backend set it
     row.confirmed = true
 
-    if (data?.vouchers_created > 0) {
+    if (data.vouchers_created > 0) {
       row.payment_no = data.voucher_nos?.[0] || ''
       docCounter.value++
       ElMessage.success(`流水 ${row.date} 已确认，已生成凭证：${row.payment_no}（${docTypeLabel(row.classification)}）`)
-    } else if (data?.documents_needed > 0) {
+    } else if (data.documents_needed > 0) {
       const { paymentType, partyType } = mapToPaymentEntry(row.classification)
-      const docRes: any = await request.post('/payment-entries', {
+      const docData: any = await request.post('/payment-entries', {
         bank_transaction_id: row.id,
         payment_type: paymentType,
         party_type: partyType,
         party_id: '00000000-0000-0000-0000-000000000000',
         posting_date: new Date().toISOString().slice(0, 10),
       })
-      row.payment_entry_id = docRes.data?.payment_entry?.id
-      row.payment_no = docRes.data?.payment_entry?.payment_no
+      row.payment_entry_id = docData?.payment_entry?.id
+      row.payment_no = docData?.payment_entry?.payment_no
       docCounter.value++
       ElMessage.success(`流水 ${row.date} 已确认，已生成${docTypeLabel(row.classification)}：${row.payment_no}（待会计处理）`)
-    } else if (data?.failed > 0) {
+    } else if (data.failed > 0) {
       // Already processed — still show as confirmed
       ElMessage.info(`流水 ${row.date} 已完成确认`)
+    } else {
+      ElMessage.success(`流水 ${row.date} 已确认`)
     }
   } catch (e: any) {
     const msg = e?.response?.data?.error || e?.message || '操作失败'
     ElMessage.error(`流水 ${row.date} 处理失败：${msg}`)
+  } finally {
+    confirming.value = false
   }
 }
 
@@ -430,13 +437,16 @@ async function batchConfirm() {
   const selected = allTxns.value.filter(t => selectedIds.value.includes(t.id))
   if (selected.length === 0) return
 
+  confirming.value = true
   const today = new Date().toISOString().slice(0, 10)
 
   try {
-    const res: any = await request.post('/bank-transactions/batch-confirm', { ids: selectedIds.value })
-    const data = res?.data
-    const voucherOk = data?.vouchers_created || 0
-    const docIds: string[] = data?.document_ids || []
+    // res is already unwrapped by Axios interceptor (response => response.data)
+    const data: any = await request.post('/bank-transactions/batch-confirm', { ids: selectedIds.value })
+    if (!data) throw new Error('empty response')
+    const voucherOk = data.vouchers_created || 0
+    const docIds: string[] = data.document_ids || []
+    const failCount = data.failed || 0
 
     // Mark all selected as confirmed in local state for immediate UI feedback
     selected.forEach(t => { t.confirmed = true })
@@ -444,7 +454,7 @@ async function batchConfirm() {
     // Match voucher nos to auto-voucher items in classification order
     let vIdx = 0
     for (const t of selected) {
-      if (isAutoVoucherClassification(t.classification) && vIdx < (data?.voucher_nos?.length || 0)) {
+      if (isAutoVoucherClassification(t.classification) && vIdx < (data.voucher_nos?.length || 0)) {
         t.payment_no = data.voucher_nos[vIdx++]
       }
     }
@@ -457,15 +467,15 @@ async function batchConfirm() {
       if (!t) continue
       const { paymentType, partyType } = mapToPaymentEntry(t.classification)
       try {
-        const docRes: any = await request.post('/payment-entries', {
+        const docData: any = await request.post('/payment-entries', {
           bank_transaction_id: id,
           payment_type: paymentType,
           party_type: partyType,
           party_id: '00000000-0000-0000-0000-000000000000',
           posting_date: today,
         })
-        t.payment_entry_id = docRes.data?.payment_entry?.id
-        t.payment_no = docRes.data?.payment_entry?.payment_no
+        t.payment_entry_id = docData?.payment_entry?.id
+        t.payment_no = docData?.payment_entry?.payment_no
         orderOk++
       } catch {
         console.error(`Failed to create payment entry for txn ${id}`)
@@ -476,19 +486,21 @@ async function batchConfirm() {
     const parts: string[] = []
     if (voucherOk > 0) parts.push(`自动凭证 ${voucherOk} 张`)
     if (orderOk > 0) parts.push(`草稿单据 ${orderOk} 张`)
-    const failCount = (data?.failed || 0)
     if (failCount > 0) parts.push(`失败 ${failCount} 条`)
 
     if (parts.length > 0) {
       ElMessage.success(`批量完成：${parts.join('，')}`)
+    } else {
+      ElMessage.success(`已确认 ${selected.length} 笔流水`)
     }
   } catch (e: any) {
     const msg = e?.response?.data?.error || e?.message || '批量确认失败'
     ElMessage.error(`批量确认失败：${msg}`)
+  } finally {
+    confirming.value = false
+    selectedIds.value = []
+    selectAll.value = false
   }
-
-  selectedIds.value = []
-  selectAll.value = false
 }
 
 function editOne(row: TxnItem) {
