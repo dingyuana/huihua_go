@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,19 +22,24 @@ type BankTransactionService struct {
 	repo              *repository.BankTransactionRepository
 	classificationSvc *ClassificationRuleService
 	bankRepo          *repository.BankRepository
+	partySvc          *PartyService
 }
 
 // NewBankTransactionService creates a new BankTransactionService.
-func NewBankTransactionService(repo *repository.BankTransactionRepository, classificationSvc *ClassificationRuleService, bankRepo *repository.BankRepository) *BankTransactionService {
+func NewBankTransactionService(repo *repository.BankTransactionRepository, classificationSvc *ClassificationRuleService, bankRepo *repository.BankRepository, partySvc *PartyService) *BankTransactionService {
 	return &BankTransactionService{
 		repo:              repo,
 		classificationSvc: classificationSvc,
 		bankRepo:          bankRepo,
+		partySvc:          partySvc,
 	}
 }
 
 // ImportFromExcel parses Excel data and imports bank transactions with auto-classification.
-func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, bankAccountID uuid.UUID, data []byte) (*model.ImportResult, error) {
+// When autoCreateParty is true and a row's counterparty is missing, the system extracts a
+// candidate name from the description, creates (or reuses) a parties record, and uses the
+// resulting name as the bank transaction's counterparty_name.
+func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, bankAccountID uuid.UUID, data []byte, autoCreateParty bool) (*model.ImportResult, error) {
 	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("open excel: %w", err)
@@ -271,6 +277,30 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 			cp := strings.TrimSpace(row[cpIdx])
 			if cp != "" {
 				counterparty = &cp
+			}
+		}
+
+		if counterparty == nil && autoCreateParty && s.partySvc != nil && description != nil {
+			if candidate := extractCounterpartyName(*description); candidate != "" {
+				partyType := "both"
+				if direction != nil {
+					if *direction == "in" {
+						partyType = "customer"
+					} else if *direction == "out" {
+						partyType = "supplier"
+					}
+				}
+				name, created, err := s.partySvc.EnsureParty(ctx, tenantID, &model.Party{
+					PartyType: partyType,
+					Name:      candidate,
+					IsActive:  true,
+				})
+				if err == nil {
+					counterparty = &name
+					if created {
+						result.AutoCreatedParties++
+					}
+				}
 			}
 		}
 
@@ -569,4 +599,31 @@ func fallbackClassify(description, counterparty, direction string, debit, credit
 		return "business_receipt"
 	}
 	return "business_payment"
+}
+
+var (
+	counterpartyTaxBureauRe = regexp.MustCompile(`(?:国家税务总局\p{Han}{0,15}税务局|\p{Han}{2,20}税务局)`)
+	counterpartyGovRe       = regexp.MustCompile(`\p{Han}{2,20}(?:社保局|公积金中心|社保中心|海关)`)
+	counterpartyCompanyRe   = regexp.MustCompile(`\p{Han}{2,30}(?:有限公司|股份有限公司|集团|有限责任公司|股份公司|总公司|分公司|子公司|集团公司)`)
+	counterpartyShortOrgRe  = regexp.MustCompile(`\p{Han}{4,20}(?:公司|厂|店|商行|银行|事务所|医院|学校|中心)`)
+)
+
+func extractCounterpartyName(description string) string {
+	desc := strings.TrimSpace(description)
+	if desc == "" {
+		return ""
+	}
+	if m := counterpartyTaxBureauRe.FindString(desc); m != "" {
+		return strings.TrimSpace(m)
+	}
+	if m := counterpartyGovRe.FindString(desc); m != "" {
+		return strings.TrimSpace(m)
+	}
+	if m := counterpartyCompanyRe.FindString(desc); m != "" {
+		return strings.TrimSpace(m)
+	}
+	if m := counterpartyShortOrgRe.FindString(desc); m != "" {
+		return strings.TrimSpace(m)
+	}
+	return ""
 }

@@ -160,7 +160,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Bank transaction routes
 	bankTransactionRepo := repository.NewBankTransactionRepository(db.GetPool())
-	bankTxnSvc := service.NewBankTransactionService(bankTransactionRepo, classificationRuleSvc, bankRepo)
+	bankTxnSvc := service.NewBankTransactionService(bankTransactionRepo, classificationRuleSvc, bankRepo, partySvc)
 	bankTxnHandler := handler.NewBankTransactionHandler(bankTxnSvc)
 	api.Get("/bank-transactions", bankTxnHandler.List)
 	api.Post("/bank-transactions/preview", bankTxnHandler.PreviewExcel)

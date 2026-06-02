@@ -37,6 +37,25 @@ func (s *PartyService) CreateParty(ctx context.Context, tenantID uuid.UUID, p *m
 	return s.repo.Create(ctx, tenantID, p)
 }
 
+// EnsureParty returns the existing party (by name+type) or creates a new one.
+// Returns (name, created, err). `created` is true only when a new record was inserted.
+func (s *PartyService) EnsureParty(ctx context.Context, tenantID uuid.UUID, p *model.Party) (string, bool, error) {
+	if p == nil || p.Name == "" {
+		return "", false, errors.New("party name is required")
+	}
+	exists, err := s.repo.ExistsByNameAndType(ctx, tenantID, p.Name, p.PartyType)
+	if err != nil {
+		return "", false, err
+	}
+	if exists {
+		return p.Name, false, nil
+	}
+	if _, err := s.repo.Create(ctx, tenantID, p); err != nil {
+		return "", false, err
+	}
+	return p.Name, true, nil
+}
+
 // List returns all active parties for a tenant.
 func (s *PartyService) List(ctx context.Context, tenantID uuid.UUID, partyType string) ([]model.Party, error) {
 	if partyType != "" {
@@ -162,4 +181,3 @@ func (s *PartyService) ImportFromExcel(ctx context.Context, tenantID uuid.UUID, 
 		Errors:       errors,
 	}, nil
 }
-
