@@ -18,6 +18,7 @@ type BankTxnReviewService struct {
 	repo           *repository.BankTransactionRepository
 	voucherAutoSvc *VoucherAutoGenerateService
 	paymentSvc     *PaymentEntryService
+	aiSvc          *BankTxnAIService
 	pool           *pgxpool.Pool
 }
 
@@ -47,12 +48,14 @@ func NewBankTxnReviewService(
 	repo *repository.BankTransactionRepository,
 	voucherAutoSvc *VoucherAutoGenerateService,
 	paymentSvc *PaymentEntryService,
+	aiSvc *BankTxnAIService,
 ) *BankTxnReviewService {
 	return &BankTxnReviewService{
 		pool:           pool,
 		repo:           repo,
 		voucherAutoSvc: voucherAutoSvc,
 		paymentSvc:     paymentSvc,
+		aiSvc:          aiSvc,
 	}
 }
 
@@ -193,11 +196,33 @@ func (s *BankTxnReviewService) RejectManual(ctx context.Context, txnIDs []string
 
 // PreviewDraft generates a draft voucher (docstatus=0) for a single classified
 // transaction without changing its status. Returns nil for C-class txns (AC3).
+// If the transaction has no AI analysis yet (ai_confidence=0), it calls the
+// BankTxnAIService to analyse it via DeepSeek before returning the preview.
 func (s *BankTxnReviewService) PreviewDraft(ctx context.Context, tenantID, txnID uuid.UUID) (*model.JournalEntry, error) {
 	txn, err := s.repo.GetByID(ctx, tenantID, txnID)
 	if err != nil {
 		return nil, fmt.Errorf("get txn: %w", err)
 	}
+
+	// If status is still pending, the transaction has not been analysed yet.
+	// Trigger AI analysis before proceeding.
+	if txn.Status != nil && *txn.Status == string(model.BankTxnReviewStatusPending) {
+		if s.aiSvc != nil && (txn.AIConfidence == nil || *txn.AIConfidence == 0) {
+			aiResult, aiErr := s.aiSvc.AnalyzeBankTxn(ctx, *txn)
+			if aiErr != nil {
+				return nil, fmt.Errorf("ai analysis: %w", aiErr)
+			}
+			// Persist AI result into the transaction record.
+			txn.AIConfidence = &aiResult.Confidence
+			txn.AISuggestedAction = &aiResult.SuggestedAction
+			txn.AIBusinessScene = &aiResult.BusinessScene
+
+			newStatus := string(model.BankTxnReviewStatusClassified)
+			txn.Status = &newStatus
+			_ = s.repo.UpdateAIFields(ctx, txnID, aiResult.BusinessScene, aiResult.SuggestedAction, aiResult.Confidence)
+		}
+	}
+
 	if txn.Status != nil && *txn.Status != string(model.BankTxnReviewStatusClassified) {
 		return nil, fmt.Errorf("txn is not in classified status")
 	}

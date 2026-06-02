@@ -172,8 +172,9 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/bank-transactions/:id", bankTxnHandler.GetByID)
 	api.Delete("/bank-transactions/:id", bankTxnHandler.Delete)
 
-	// Bank transaction review workflow routes (TASK-BANK-01.4)
-	bankTxnReviewSvc := service.NewBankTxnReviewService(db.GetPool(), bankTransactionRepo, nil, nil)
+	// Bank transaction review workflow routes (TASK-BANK-01.4 + TASK-BANK-01.AI)
+	bankTxnAISvc := service.NewBankTxnAIService(service.NewDeepSeekClient(), bankTransactionRepo)
+	bankTxnReviewSvc := service.NewBankTxnReviewService(db.GetPool(), bankTransactionRepo, nil, nil, bankTxnAISvc)
 	bankTxnReviewHandler := handler.NewBankTxnReviewHandler(bankTxnReviewSvc, bankTransactionRepo)
 	api.Get("/bank-transactions/review-list", bankTxnReviewHandler.ReviewList)
 	api.Get("/bank-transactions/review-stats", bankTxnReviewHandler.ReviewStats)
