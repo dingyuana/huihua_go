@@ -138,7 +138,7 @@
     </el-dialog>
 
     <!-- 导入结果弹窗 -->
-    <el-dialog v-model="showResultDialog" title="导入完成" width="480px">
+    <el-dialog v-model="showResultDialog" title="导入完成" width="640px">
       <el-result icon="success" title="导入完成">
         <template #extra>
           <el-descriptions :column="3" size="small" border>
@@ -147,9 +147,47 @@
             <el-descriptions-item label="成功">{{ importResult.success_count }}</el-descriptions-item>
             <el-descriptions-item label="失败">{{ importResult.failed_count }}</el-descriptions-item>
           </el-descriptions>
-          <el-alert v-if="importResult.failed_rows?.length" title="以下行号导入失败" type="warning" :description="importResult.failed_rows.join(', ')" show-icon style="margin-top:12px" />
+
+          <el-divider style="margin: 12px 0">自动化处理</el-divider>
+          <el-descriptions :column="3" size="small" border>
+            <el-descriptions-item label="自动生成草稿凭证">
+              <el-tag :type="importResult.auto_generated > 0 ? 'success' : 'info'" size="small">
+                {{ importResult.auto_generated }} 张
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="新建对方档案">
+              <el-tag :type="importResult.auto_created_parties > 0 ? 'success' : 'info'" size="small">
+                {{ importResult.auto_created_parties }} 家
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="跳过（待人工）">
+              <el-tag :type="importResult.auto_skipped > 0 ? 'warning' : 'info'" size="small">
+                {{ importResult.auto_skipped }} 条
+              </el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+
+          <el-collapse v-if="importResult.auto_skipped_items?.length" v-model="skippedExpanded" style="margin-top: 12px">
+            <el-collapse-item :title="`查看 ${importResult.auto_skipped_items.length} 条跳过明细`" name="skipped">
+              <el-table :data="importResult.auto_skipped_items" size="small" border stripe max-height="240">
+                <el-table-column prop="txn_date" label="日期" width="100" />
+                <el-table-column prop="classification" label="分类" width="100" />
+                <el-table-column prop="direction" label="方向" width="60" />
+                <el-table-column label="金额" width="100">
+                  <template #default="{ row }">
+                    <span v-if="parseFloat(row.credit) > 0" class="amount-negative">-{{ row.credit }}</span>
+                    <span v-else class="amount-positive">+{{ row.debit }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="description" label="摘要" min-width="180" show-overflow-tooltip />
+                <el-table-column prop="skip_reason" label="跳过原因" min-width="220" />
+              </el-table>
+            </el-collapse-item>
+          </el-collapse>
+
           <div style="margin-top:16px">
-            <el-button type="primary" @click="$router.push('/bank/workbench')">前往核对工作台</el-button>
+            <el-button type="primary" @click="$router.push('/vouchers')">查看凭证列表 ({{ importResult.auto_generated }})</el-button>
+            <el-button @click="$router.push('/bank/workbench')">前往核对工作台</el-button>
             <el-button @click="closeResultDialog">继续导入</el-button>
           </div>
         </template>
@@ -182,7 +220,27 @@ const loading = ref(false)
 const importing = ref(false)
 const importDone = ref(false)
 
-const importResult = ref({ total_rows: 0, success_count: 0, failed_count: 0, failed_rows: [] as number[] })
+const importResult = ref({
+  total_rows: 0,
+  success_count: 0,
+  failed_count: 0,
+  failed_rows: [] as number[],
+  auto_generated: 0,
+  auto_created_parties: 0,
+  auto_skipped: 0,
+  auto_skipped_items: [] as Array<{
+    bank_txn_id: string
+    txn_date: string
+    classification: string
+    direction: string
+    debit: string
+    credit: string
+    description: string
+    skip_reason: string
+  }>,
+})
+
+const skippedExpanded = ref<string[]>([])
 
 async function loadBankAccounts() {
   try {
@@ -492,10 +550,17 @@ async function handleImport() {
       success_count: res?.success_count ?? 0,
       failed_count: res?.failed_count ?? 0,
       failed_rows: res?.failed_rows ?? [],
+      auto_generated: res?.auto_generated ?? 0,
+      auto_created_parties: res?.auto_created_parties ?? 0,
+      auto_skipped: res?.auto_skipped ?? 0,
+      auto_skipped_items: res?.auto_skipped_items ?? [],
     }
     importDone.value = true
     showResultDialog.value = true
-    ElMessage.success(`导入完成，成功 ${importResult.value.success_count} 条`)
+    const hints: string[] = [`成功 ${importResult.value.success_count} 条`]
+    if (importResult.value.auto_generated > 0) hints.push(`自动生成 ${importResult.value.auto_generated} 张草稿凭证`)
+    if (importResult.value.auto_skipped > 0) hints.push(`${importResult.value.auto_skipped} 条跳过待人工处理`)
+    ElMessage.success(`导入完成：${hints.join('，')}`)
   } catch (e: any) {
     const msg = e?.response?.data?.error || '导入失败'
     ElMessage.error(msg)
