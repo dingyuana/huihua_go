@@ -129,8 +129,37 @@ func (s *AccountService) InitFromSeedWithTx(ctx context.Context, tx pgx.Tx, tena
 	return nil
 }
 
-// GetTree returns all accounts for a tenant.
+// GetTree returns accounts as a nested tree wrapped in a single synthetic root
+// so the frontend can treat the root's children as level-1 options.
 func (s *AccountService) GetTree(ctx context.Context, tenantID uuid.UUID) ([]model.Account, error) {
-	return s.repo.GetTree(ctx, tenantID)
+	flat, err := s.repo.GetTree(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[uuid.UUID]*model.Account, len(flat))
+	for i := range flat {
+		byID[flat[i].ID] = &flat[i]
+	}
+	var roots []model.Account
+	for i := range flat {
+		a := &flat[i]
+		if a.ParentID == nil {
+			roots = append(roots, *a)
+			continue
+		}
+		parent, ok := byID[*a.ParentID]
+		if !ok {
+			continue
+		}
+		parent.Children = append(parent.Children, a)
+	}
+	synthetic := model.Account{
+		Name:     "全部科目",
+		IsGroup:  true,
+		Children: make([]*model.Account, 0, len(roots)),
+	}
+	for i := range roots {
+		synthetic.Children = append(synthetic.Children, &roots[i])
+	}
+	return []model.Account{synthetic}, nil
 }
-

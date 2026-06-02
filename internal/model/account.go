@@ -25,4 +25,5 @@ type Account struct {
 	OpeningBalance decimal.Decimal `json:"opening_balance" db:"opening_balance"`
 	CreatedAt      time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at" db:"updated_at"`
+	Children       []*Account      `json:"children,omitempty"`
 }
