@@ -398,10 +398,10 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 	_ = importedResult // batch slice returned
 
 	return &model.InvoiceFileImportResult{
-		TotalRows:   len(rows) - headerIdx - 1,
-		Imported:    len(imported),
-		Failed:      len(failedRows),
-		FailedRows:  failedRows,
+		TotalRows:  len(rows) - headerIdx - 1,
+		Imported:   len(imported),
+		Failed:     len(failedRows),
+		FailedRows: failedRows,
 	}, nil
 }
 

@@ -20,10 +20,10 @@ func NewPeriodHandler(svc *service.PeriodService) *PeriodHandler {
 
 // ClosePeriodRequest is the request body for closing a period.
 type ClosePeriodRequest struct {
-	PeriodNo   int  `json:"period_no"`
-	UserID     string `json:"user_id"`
-	UserName   string `json:"user_name"`
-	GenerateClosingEntries bool `json:"generate_closing_entries"`
+	PeriodNo               int    `json:"period_no"`
+	UserID                 string `json:"user_id"`
+	UserName               string `json:"user_name"`
+	GenerateClosingEntries bool   `json:"generate_closing_entries"`
 }
 
 // Close handles POST /api/v1/periods/:period_no/close
@@ -44,9 +44,9 @@ func (h *PeriodHandler) Close(c *fiber.Ctx) error {
 	}
 
 	if err := h.svc.ClosePeriod(c.Context(), tenantID, &service.ClosePeriodRequest{
-		PeriodNo:   req.PeriodNo,
-		UserID:     req.UserID,
-		UserName:   req.UserName,
+		PeriodNo:               req.PeriodNo,
+		UserID:                 req.UserID,
+		UserName:               req.UserName,
 		GenerateClosingEntries: req.GenerateClosingEntries,
 	}); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})

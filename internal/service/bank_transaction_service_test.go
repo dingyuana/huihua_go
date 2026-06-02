@@ -53,13 +53,13 @@ func TestFallbackClassify(t *testing.T) {
 	big := decimal.NewFromFloat(1000)
 
 	cases := []struct {
-		name        string
-		desc        string
+		name         string
+		desc         string
 		counterparty string
-		direction   string
-		debit       decimal.Decimal
-		credit      decimal.Decimal
-		want        string
+		direction    string
+		debit        decimal.Decimal
+		credit       decimal.Decimal
+		want         string
 	}{
 		{"fee_in_desc_outgoing", "对公跨行转账汇款手续费", "银行", "out", zero, small, "bank_fee"},
 		{"fee_in_desc_small_amount", "工本费", "银行", "out", zero, small, "bank_fee"},

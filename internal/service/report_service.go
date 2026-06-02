@@ -26,10 +26,10 @@ func NewReportService(
 	periodRepo *repository.PeriodRepository,
 ) *ReportService {
 	return &ReportService{
-		glEntryRepo:  glEntryRepo,
-		obRepo:       obRepo,
-		accountRepo:  accountRepo,
-		periodRepo:   periodRepo,
+		glEntryRepo: glEntryRepo,
+		obRepo:      obRepo,
+		accountRepo: accountRepo,
+		periodRepo:  periodRepo,
 	}
 }
 
@@ -207,8 +207,8 @@ func (s *ReportService) GetIncomeStatement(ctx context.Context, tenantID uuid.UU
 				credit: rootAgg[rootType].credit.Add(periodCredit),
 			}
 			acctDetails[rootType] = append(acctDetails[rootType], model.IncomeStatementAccountEntry{
-				AccountCode:   acct.Code,
-				AccountName:   acct.Name,
+				AccountCode:  acct.Code,
+				AccountName:  acct.Name,
 				PeriodDebit:  periodDebit,
 				PeriodCredit: periodCredit,
 				NetAmount:    net,
@@ -227,14 +227,14 @@ func (s *ReportService) GetIncomeStatement(ctx context.Context, tenantID uuid.UU
 	netProfit := totalIncome.Sub(totalExpense)
 
 	return &model.IncomeStatement{
-		PeriodNo:      periodNo,
-		PeriodName:    period.PeriodName,
-		StartDate:     period.StartDate,
-		EndDate:       period.EndDate,
-		TotalIncome:   totalIncome,
-		TotalExpense:  totalExpense,
-		NetProfit:     netProfit,
-		IncomeDetails: acctDetails["income"],
+		PeriodNo:       periodNo,
+		PeriodName:     period.PeriodName,
+		StartDate:      period.StartDate,
+		EndDate:        period.EndDate,
+		TotalIncome:    totalIncome,
+		TotalExpense:   totalExpense,
+		NetProfit:      netProfit,
+		IncomeDetails:  acctDetails["income"],
 		ExpenseDetails: acctDetails["expense"],
 	}, nil
 }

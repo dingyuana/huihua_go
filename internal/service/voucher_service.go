@@ -14,32 +14,32 @@ import (
 
 // VoucherService handles manual voucher CRUD operations.
 type VoucherService struct {
-	journalRepo   *repository.JournalRepository
-	templateSvc    *VoucherTemplateService
+	journalRepo *repository.JournalRepository
+	templateSvc *VoucherTemplateService
 }
 
 // NewVoucherService creates a new VoucherService.
 func NewVoucherService(journalRepo *repository.JournalRepository, templateSvc *VoucherTemplateService) *VoucherService {
 	return &VoucherService{
-		journalRepo:   journalRepo,
-		templateSvc:    templateSvc,
+		journalRepo: journalRepo,
+		templateSvc: templateSvc,
 	}
 }
 
 // CreateVoucherRequest is the request body for creating a voucher.
 type CreateVoucherRequest struct {
-	VoucherType  *string                   `json:"voucher_type"`
-	PostingDate  time.Time                  `json:"posting_date"`
-	CompanyID    uuid.UUID                  `json:"company_id"`
-	Remark       *string                    `json:"remark,omitempty"`
-	Lines        []VoucherLineRequest       `json:"lines"`
+	VoucherType *string              `json:"voucher_type"`
+	PostingDate time.Time            `json:"posting_date"`
+	CompanyID   uuid.UUID            `json:"company_id"`
+	Remark      *string              `json:"remark,omitempty"`
+	Lines       []VoucherLineRequest `json:"lines"`
 }
 
 // VoucherLineRequest represents a single line in a voucher creation request.
 type VoucherLineRequest struct {
 	AccountID    uuid.UUID  `json:"account_id"`
-	Debit        string     `json:"debit"`        // decimal as string
-	Credit       string     `json:"credit"`       // decimal as string
+	Debit        string     `json:"debit"`  // decimal as string
+	Credit       string     `json:"credit"` // decimal as string
 	PartyType    *string    `json:"party_type,omitempty"`
 	PartyID      *uuid.UUID `json:"party_id,omitempty"`
 	CostCenterID *uuid.UUID `json:"cost_center_id,omitempty"`
@@ -144,8 +144,8 @@ type ListVouchersRequest struct {
 
 // VoucherDetail is a journal entry with its lines.
 type VoucherDetail struct {
-	JournalEntry          model.JournalEntry       `json:"journal_entry"`
-	JournalEntryLines     []model.JournalEntryLine `json:"journal_entry_lines"`
+	JournalEntry            model.JournalEntry             `json:"journal_entry"`
+	JournalEntryLines       []model.JournalEntryLine       `json:"journal_entry_lines"`
 	VoucherStateTransitions []model.VoucherStateTransition `json:"voucher_state_transitions,omitempty"`
 }
 
@@ -176,17 +176,17 @@ func (s *VoucherService) GetVoucher(ctx context.Context, tenantID, voucherID uui
 	}
 
 	return &VoucherDetail{
-		JournalEntry:             *je,
+		JournalEntry:            *je,
 		JournalEntryLines:       lines,
-		VoucherStateTransitions:  transitions,
+		VoucherStateTransitions: transitions,
 	}, nil
 }
 
 // UpdateVoucherRequest is the request body for updating a voucher.
 type UpdateVoucherRequest struct {
-	VoucherType *string               `json:"voucher_type,omitempty"`
-	PostingDate *time.Time            `json:"posting_date,omitempty"`
-	Remark      *string               `json:"remark,omitempty"`
+	VoucherType *string              `json:"voucher_type,omitempty"`
+	PostingDate *time.Time           `json:"posting_date,omitempty"`
+	Remark      *string              `json:"remark,omitempty"`
 	Lines       []VoucherLineRequest `json:"lines"`
 }
 

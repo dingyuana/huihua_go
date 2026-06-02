@@ -14,7 +14,7 @@ type AccountingPeriod struct {
 	PeriodName string     `json:"period_name" db:"period_name"`
 	StartDate  time.Time  `json:"start_date" db:"start_date"`
 	EndDate    time.Time  `json:"end_date" db:"end_date"`
-	Status    string     `json:"status" db:"status"`
+	Status     string     `json:"status" db:"status"`
 	ClosedBy   *uuid.UUID `json:"closed_by,omitempty" db:"closed_by"`
 	ClosedAt   *time.Time `json:"closed_at,omitempty" db:"closed_at"`
 	CreatedAt  time.Time  `json:"created_at" db:"created_at"`

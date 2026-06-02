@@ -38,8 +38,8 @@ func NewVoucherAutoGenerateService(
 	return &VoucherAutoGenerateService{
 		journalRepo: journalRepo, glRepo: glRepo,
 		bankTxnRepo: bankTxnRepo, bankRepo: bankRepo,
-		invoiceRepo: invoiceRepo,
-		accountRepo: accountRepo,
+		invoiceRepo:       invoiceRepo,
+		accountRepo:       accountRepo,
 		classificationSvc: classificationSvc, templateSvc: templateSvc,
 		approvalSvc: approvalSvc,
 	}

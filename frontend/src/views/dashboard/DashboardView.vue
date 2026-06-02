@@ -44,6 +44,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import request from '@/api/request'
+import { fetchDashboardStats } from '@/api/modules/dashboard'
 
 const companyName = ref('加载中...')
 
@@ -68,20 +69,20 @@ onMounted(async () => {
     companyName.value = ''
   }
 
-  // Try loading real stats from bank accounts
+  // Try loading real dashboard stats (falls back to 0 on error)
   try {
-    const bankRes: any = await request.get('/bank-accounts')
-    const accounts = bankRes?.data?.list || bankRes?.data || bankRes
-    if (Array.isArray(accounts) && accounts.length > 0) {
-      const acctId = accounts[0].id
-      const txnRes: any = await request.get('/bank-transactions', {
-        params: { bank_account_id: acctId, page: 1, pageSize: 1 },
-      })
-      const total = txnRes?.total ?? 0
-      stats.monthlyTxns = total
+    const res: any = await fetchDashboardStats()
+    const data = res?.data || res
+    if (data) {
+      stats.monthlyTxns = data.monthly_txns ?? 0
+      stats.pendingVouchers = data.pending_vouchers ?? 0
+      stats.pendingTxns = data.pending_txns ?? 0
+      if (data.monthly_profit != null) {
+        stats.monthlyProfit = (Number(data.monthly_profit) / 100).toLocaleString()
+      }
     }
   } catch {
-    // Keep defaults
+    // Keep defaults (all zeros)
   }
 })
 </script>

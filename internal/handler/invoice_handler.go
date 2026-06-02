@@ -90,17 +90,17 @@ func (h *InvoiceHandler) Create(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)
 
 	var req struct {
-		InvoiceNo         string          `json:"invoice_no"`
-		InvoiceType       string          `json:"invoice_type"`
-		CustomerID        string          `json:"customer_id"`
-		TaxID             string          `json:"tax_id,omitempty"`
-		PostingDate       string          `json:"posting_date"`
-		DueDate           string          `json:"due_date,omitempty"`
-		TotalAmount       float64         `json:"total_amount"`
-		TaxAmount         float64         `json:"tax_amount"`
-		NetAmount         float64         `json:"net_amount"`
-		OutstandingAmount float64         `json:"outstanding_amount"`
-		CompanyID         string          `json:"company_id"`
+		InvoiceNo         string  `json:"invoice_no"`
+		InvoiceType       string  `json:"invoice_type"`
+		CustomerID        string  `json:"customer_id"`
+		TaxID             string  `json:"tax_id,omitempty"`
+		PostingDate       string  `json:"posting_date"`
+		DueDate           string  `json:"due_date,omitempty"`
+		TotalAmount       float64 `json:"total_amount"`
+		TaxAmount         float64 `json:"tax_amount"`
+		NetAmount         float64 `json:"net_amount"`
+		OutstandingAmount float64 `json:"outstanding_amount"`
+		CompanyID         string  `json:"company_id"`
 	}
 
 	if err := c.BodyParser(&req); err != nil {

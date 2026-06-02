@@ -224,15 +224,15 @@ func (s *BankReconciliationService) GetReconciliationReport(ctx context.Context,
 	}
 
 	report := &model.ReconciliationReport{
-		ID:               record.ID,
-		BankAccountID:    bankAccountID,
-		PeriodNo:         periodNo,
-		BankBalance:      record.BankBalance,
-		BookBalance:      record.BookBalance,
-		AdjustedBalance:  record.AdjustedBalance,
-		Status:           record.Status,
-		ReconciledBy:     record.ReconciledBy,
-		ReconciledAt:     record.ReconciledAt,
+		ID:              record.ID,
+		BankAccountID:   bankAccountID,
+		PeriodNo:        periodNo,
+		BankBalance:     record.BankBalance,
+		BookBalance:     record.BookBalance,
+		AdjustedBalance: record.AdjustedBalance,
+		Status:          record.Status,
+		ReconciledBy:    record.ReconciledBy,
+		ReconciledAt:    record.ReconciledAt,
 	}
 
 	// Get unreconciled items
@@ -411,16 +411,16 @@ func (s *BankReconciliationService) SaveReconciliationResult(ctx context.Context
 }
 
 type BalanceCheckItem struct {
-	BankAccountID   uuid.UUID       `json:"bank_account_id"`
-	BankName        string          `json:"bank_name"`
-	OpeningBalance  decimal.Decimal `json:"opening_balance"`
-	TxnInflowTotal  decimal.Decimal `json:"txn_inflow_total"`
-	TxnOutflowTotal decimal.Decimal `json:"txn_outflow_total"`
-	ExpectedBalance decimal.Decimal `json:"expected_balance"`
-	StoredBalance   decimal.Decimal `json:"stored_balance"`
-	Difference      decimal.Decimal `json:"difference"`
-	TxnCount        int             `json:"txn_count"`
-	HasInconsistency bool           `json:"has_inconsistency"`
+	BankAccountID    uuid.UUID       `json:"bank_account_id"`
+	BankName         string          `json:"bank_name"`
+	OpeningBalance   decimal.Decimal `json:"opening_balance"`
+	TxnInflowTotal   decimal.Decimal `json:"txn_inflow_total"`
+	TxnOutflowTotal  decimal.Decimal `json:"txn_outflow_total"`
+	ExpectedBalance  decimal.Decimal `json:"expected_balance"`
+	StoredBalance    decimal.Decimal `json:"stored_balance"`
+	Difference       decimal.Decimal `json:"difference"`
+	TxnCount         int             `json:"txn_count"`
+	HasInconsistency bool            `json:"has_inconsistency"`
 }
 
 type BalanceCheckResult struct {

@@ -16,13 +16,13 @@ import (
 
 // PeriodService handles accounting period operations including closing.
 type PeriodService struct {
-	periodRepo       *repository.PeriodRepository
-	journalRepo      *repository.JournalRepository
-	glEntryRepo      *repository.GLEntryRepository
-	accountRepo      *repository.AccountRepository
-	depreciationRepo *repository.AssetDepreciationRepository
+	periodRepo          *repository.PeriodRepository
+	journalRepo         *repository.JournalRepository
+	glEntryRepo         *repository.GLEntryRepository
+	accountRepo         *repository.AccountRepository
+	depreciationRepo    *repository.AssetDepreciationRepository
 	bankTransactionRepo *repository.BankTransactionRepository
-	invoiceRepo      *repository.InvoiceRepository
+	invoiceRepo         *repository.InvoiceRepository
 }
 
 // NewPeriodService creates a new PeriodService.
@@ -40,10 +40,10 @@ func NewPeriodService(periodRepo *repository.PeriodRepository, journalRepo *repo
 
 // ClosePeriodRequest is the request to close an accounting period.
 type ClosePeriodRequest struct {
-	PeriodNo   int    `json:"period_no"`
-	UserID     string `json:"user_id"`
-	UserName   string `json:"user_name"`
-	GenerateClosingEntries bool `json:"generate_closing_entries"`
+	PeriodNo               int    `json:"period_no"`
+	UserID                 string `json:"user_id"`
+	UserName               string `json:"user_name"`
+	GenerateClosingEntries bool   `json:"generate_closing_entries"`
 }
 
 // ClosePeriod closes an accounting period and optionally generates closing entries.
@@ -156,7 +156,7 @@ func (s *PeriodService) generateClosingEntries(ctx context.Context, tenantID uui
 				incomeLines = append(incomeLines, model.JournalEntryLine{
 					AccountID: acct.ID,
 					Credit:    e.Credit.Sub(e.Debit),
-					Debit:    decimal.Zero,
+					Debit:     decimal.Zero,
 				})
 			}
 		}
@@ -199,7 +199,7 @@ func (s *PeriodService) generateClosingEntries(ctx context.Context, tenantID uui
 		VoucherType: stringPtr("closing"),
 		PostingDate: period.EndDate,
 		CompanyID:   uuid.Nil, // will be set from context or left nil
-		DocStatus:   1, // posted immediately
+		DocStatus:   1,        // posted immediately
 		CreatedBy:   uuid.MustParse(userID),
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -330,8 +330,8 @@ func (s *PeriodService) ScanVoucherGaps(ctx context.Context, tenantID uuid.UUID,
 
 	// Group vouchers by prefix (字头), e.g. "记-35" -> prefix="记", num=35
 	type voucherNum struct {
-		no    int
-		id    string
+		no     int
+		id     string
 		isVoid bool
 	}
 	groups := make(map[string][]voucherNum)
@@ -434,10 +434,10 @@ func parseVoucherNo(voucherNo string) (string, int) {
 
 // BaseCheckItem represents a single basic check item.
 type BaseCheckItem struct {
-	ID      string     `json:"id"`
-	Name    string     `json:"name"`
-	Status  string     `json:"status"` // passed/blocked/warning/pending
-	Message string     `json:"message"`
+	ID      string      `json:"id"`
+	Name    string      `json:"name"`
+	Status  string      `json:"status"` // passed/blocked/warning/pending
+	Message string      `json:"message"`
 	Action  *ActionInfo `json:"action,omitempty"`
 }
 
@@ -452,7 +452,7 @@ type CloseCheckSummary struct {
 	BaseChecks      []BaseCheckItem  `json:"base_checks"`
 	RiskWarnings    []RiskWarning    `json:"risk_warnings"`
 	KeyIndicators   []KeyIndicator   `json:"key_indicators"`
-	PendingAccruals  []PendingAccrual `json:"pending_accruals"`
+	PendingAccruals []PendingAccrual `json:"pending_accruals"`
 	ProfitLossDone  bool             `json:"profit_loss_done"`
 	PeriodStatus    string           `json:"period_status"`
 }
@@ -465,9 +465,9 @@ func (s *PeriodService) GetCloseCheckSummary(ctx context.Context, tenantID uuid.
 	endDate := startDate.AddDate(0, 1, -1)
 
 	result := &CloseCheckSummary{
-		BaseChecks:     make([]BaseCheckItem, 0, 7),
-		RiskWarnings:   make([]RiskWarning, 0),
-		KeyIndicators:  make([]KeyIndicator, 0),
+		BaseChecks:      make([]BaseCheckItem, 0, 7),
+		RiskWarnings:    make([]RiskWarning, 0),
+		KeyIndicators:   make([]KeyIndicator, 0),
 		PendingAccruals: make([]PendingAccrual, 0),
 	}
 
@@ -725,12 +725,12 @@ func (s *PeriodService) GetCloseCheckSummary(ctx context.Context, tenantID uuid.
 // ─── PreCloseCheck types ───
 
 type RiskWarning struct {
-	Type        string `json:"type"`
-	Severity    string `json:"severity"`
-	SubjectCode string `json:"subject_code"`
-	SubjectName string `json:"subject_name"`
+	Type        string  `json:"type"`
+	Severity    string  `json:"severity"`
+	SubjectCode string  `json:"subject_code"`
+	SubjectName string  `json:"subject_name"`
 	Balance     float64 `json:"balance"`
-	Message     string `json:"message"`
+	Message     string  `json:"message"`
 }
 
 type KeyIndicator struct {
@@ -750,13 +750,13 @@ type PendingAccrual struct {
 }
 
 type PreCloseCheckResult struct {
-	PeriodStatus    string          `json:"period_status"`
-	UnpostedVouchers int           `json:"unposted_vouchers"`
-	ReportBalanceOK bool           `json:"report_balance_ok"`
-	ProfitLossDone  bool           `json:"profit_loss_done"`
-	RiskWarnings    []RiskWarning  `json:"risk_warnings"`
-	KeyIndicators   []KeyIndicator `json:"key_indicators"`
-	PendingAccruals []PendingAccrual `json:"pending_accruals"`
+	PeriodStatus     string           `json:"period_status"`
+	UnpostedVouchers int              `json:"unposted_vouchers"`
+	ReportBalanceOK  bool             `json:"report_balance_ok"`
+	ProfitLossDone   bool             `json:"profit_loss_done"`
+	RiskWarnings     []RiskWarning    `json:"risk_warnings"`
+	KeyIndicators    []KeyIndicator   `json:"key_indicators"`
+	PendingAccruals  []PendingAccrual `json:"pending_accruals"`
 }
 
 // PreCloseCheck runs all pre-close checks for a given period.

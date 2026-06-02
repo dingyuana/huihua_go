@@ -35,10 +35,10 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"token":       result.Token,
-		"user_id":     result.UserID,
-		"tenant_id":   result.TenantID,
-		"role":        result.Role,
-		"expires_at":  result.ExpiresAt,
+		"token":      result.Token,
+		"user_id":    result.UserID,
+		"tenant_id":  result.TenantID,
+		"role":       result.Role,
+		"expires_at": result.ExpiresAt,
 	})
 }

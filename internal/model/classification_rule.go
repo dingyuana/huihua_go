@@ -13,8 +13,8 @@ type ClassificationRule struct {
 	Name            string     `json:"name" db:"name"`
 	RuleType        string     `json:"rule_type" db:"rule_type"` // keyword, keyword_regex, counterparty_match
 	Pattern         string     `json:"pattern" db:"pattern"`
-	MatchField      string     `json:"match_field" db:"match_field"` // description, counterparty
-	Direction       string     `json:"direction" db:"direction"` // in, out, '' (both)
+	MatchField      string     `json:"match_field" db:"match_field"`       // description, counterparty
+	Direction       string     `json:"direction" db:"direction"`           // in, out, '' (both)
 	Classification  string     `json:"classification" db:"classification"` // business_receipt, business_payment, bank_fee, interest_income, internal_transfer, tax_payment
 	Priority        int        `json:"priority" db:"priority"`
 	IsActive        bool       `json:"is_active" db:"is_active"`
@@ -59,16 +59,16 @@ type ReorderPriorityRequest struct {
 
 // RuleMatchRequest is the request payload for testing rule matching.
 type RuleMatchRequest struct {
-	Description    string `json:"description"`
-	Counterparty   string `json:"counterparty"`
-	Amount         string `json:"amount"`
-	Direction      string `json:"direction"` // in, out
+	Description  string `json:"description"`
+	Counterparty string `json:"counterparty"`
+	Amount       string `json:"amount"`
+	Direction    string `json:"direction"` // in, out
 }
 
 // RuleMatchResult is the result of a rule match operation.
 type RuleMatchResult struct {
-	Matched        bool   `json:"matched"`
+	Matched        bool       `json:"matched"`
 	RuleID         *uuid.UUID `json:"rule_id,omitempty"`
-	RuleName       *string `json:"rule_name,omitempty"`
-	Classification *string `json:"classification,omitempty"`
+	RuleName       *string    `json:"rule_name,omitempty"`
+	Classification *string    `json:"classification,omitempty"`
 }

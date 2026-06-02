@@ -63,7 +63,7 @@ func (h *AssetDepreciationHandler) CreateSchedule(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"message":  "depreciation schedule created",
+		"message":   "depreciation schedule created",
 		"schedules": schedules,
 	})
 }

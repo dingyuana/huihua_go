@@ -7,8 +7,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"huihua/finance/internal/service"
 	"huihua/finance/internal/repository"
+	"huihua/finance/internal/service"
 )
 
 // VoucherHandler handles voucher state machine operations and manual CRUD.
@@ -225,14 +225,15 @@ func (h *VoucherHandler) GetTransitions(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"transitions": transitions})
 }
+
 // ---- Manual Voucher CRUD methods ----
 
 // CreateRequest is the request body for creating a voucher.
 type CreateRequest struct {
-	VoucherType *string      `json:"voucher_type"`
-	PostingDate string       `json:"posting_date"`
-	CompanyID   string       `json:"company_id"`
-	Remark      *string      `json:"remark,omitempty"`
+	VoucherType *string       `json:"voucher_type"`
+	PostingDate string        `json:"posting_date"`
+	CompanyID   string        `json:"company_id"`
+	Remark      *string       `json:"remark,omitempty"`
 	Lines       []LineRequest `json:"lines"`
 }
 
@@ -262,8 +263,8 @@ func (h *VoucherHandler) List(c *fiber.Ctx) error {
 	vouchers, err := h.voucherSvc.ListVouchers(c.Context(), tenantID, &service.ListVouchersRequest{
 		StartDate: startDate,
 		EndDate:   endDate,
-		Limit:    limit,
-		Offset:   offset,
+		Limit:     limit,
+		Offset:    offset,
 	})
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -364,9 +365,9 @@ func (h *VoucherHandler) Create(c *fiber.Ctx) error {
 
 // UpdateRequest is the request body for updating a voucher.
 type UpdateRequest struct {
-	VoucherType *string      `json:"voucher_type,omitempty"`
-	PostingDate *string      `json:"posting_date,omitempty"`
-	Remark      *string      `json:"remark,omitempty"`
+	VoucherType *string       `json:"voucher_type,omitempty"`
+	PostingDate *string       `json:"posting_date,omitempty"`
+	Remark      *string       `json:"remark,omitempty"`
 	Lines       []LineRequest `json:"lines"`
 }
 

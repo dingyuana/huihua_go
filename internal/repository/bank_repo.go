@@ -37,9 +37,9 @@ func (r *BankRepository) Create(ctx context.Context, tenantID uuid.UUID, ba *mod
 			opening_balance, opening_date, current_balance, balance_updated_at, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
 		ba.ID, ba.BankName, ba.AccountNumber, ba.ClearingAccountID, ba.CompanyID,
-			ba.TenantID, ba.Currency, ba.IBAN, ba.SwiftCode, ba.BankAccountType, ba.IsActive,
-			ba.IsCash, ba.Custodian, ba.Location,
-			ba.OpeningBalance, ba.OpeningDate, ba.CurrentBalance, ba.BalanceUpdatedAt, ba.CreatedAt)
+		ba.TenantID, ba.Currency, ba.IBAN, ba.SwiftCode, ba.BankAccountType, ba.IsActive,
+		ba.IsCash, ba.Custodian, ba.Location,
+		ba.OpeningBalance, ba.OpeningDate, ba.CurrentBalance, ba.BalanceUpdatedAt, ba.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

@@ -120,3 +120,20 @@ func (r *PeriodRepository) UpdateStatus(ctx context.Context, tenantID uuid.UUID,
 		tenantID, periodNo, status, cb, closedAt)
 	return err
 }
+
+// GetCurrentOpen returns the currently open period for a tenant.
+func (r *PeriodRepository) GetCurrentOpen(ctx context.Context, tenantID uuid.UUID) (*model.AccountingPeriod, error) {
+	query := `
+		SELECT id, tenant_id, period_no, period_name, start_date, end_date, status, closed_by, closed_at, created_at
+		FROM accounting_periods
+		WHERE tenant_id = $1 AND status = 'open'
+		ORDER BY start_date DESC LIMIT 1`
+	p := &model.AccountingPeriod{}
+	err := r.pool.QueryRow(ctx, query, tenantID).Scan(
+		&p.ID, &p.TenantID, &p.PeriodNo, &p.PeriodName, &p.StartDate, &p.EndDate,
+		&p.Status, &p.ClosedBy, &p.ClosedAt, &p.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}

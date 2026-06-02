@@ -106,12 +106,12 @@ func (s *SetupService) CreateCompany(ctx context.Context, tenantID uuid.UUID, re
 
 	// Create company settings
 	cs := &model.CompanySettings{
-		CompanyName:           req.CompanyName,
-		FiscalYearStartMonth:  req.FiscalYearStartMonth,
-		EnableDate:            enableDate,
-		DefaultCurrency:       req.DefaultCurrency,
+		CompanyName:             req.CompanyName,
+		FiscalYearStartMonth:    req.FiscalYearStartMonth,
+		EnableDate:              enableDate,
+		DefaultCurrency:         req.DefaultCurrency,
 		ChartOfAccountsTemplate: req.ChartTemplate,
-		IsInitialized:         false,
+		IsInitialized:           false,
 	}
 	created, err := s.companyRepo.CreateWithTx(ctx, tx, tenantID, cs)
 	if err != nil {

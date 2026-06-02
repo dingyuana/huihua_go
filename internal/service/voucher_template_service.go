@@ -57,7 +57,7 @@ func (s *VoucherTemplateService) CreateTemplate(ctx context.Context, tenantID uu
 			CrAmountTemplate: lineReq.CrAmountTemplate,
 			SummaryTemplate:  lineReq.SummaryTemplate,
 			DimensionType:    lineReq.DimensionType,
-			DimensionValue:    lineReq.DimensionValue,
+			DimensionValue:   lineReq.DimensionValue,
 			LineOrder:        lineReq.LineOrder,
 		}
 		if line.LineOrder == 0 {

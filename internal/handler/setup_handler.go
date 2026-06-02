@@ -31,20 +31,20 @@ func (h *SetupHandler) CreateCompany(c *fiber.Ctx) error {
 	var req struct {
 		CompanyName          string `json:"company_name"`
 		FiscalYearStartMonth int    `json:"fiscal_year_start_month"`
-		EnableDate          string `json:"enable_date"`
-		DefaultCurrency     string `json:"default_currency"`
-		ChartTemplate       string `json:"chart_template"`
+		EnableDate           string `json:"enable_date"`
+		DefaultCurrency      string `json:"default_currency"`
+		ChartTemplate        string `json:"chart_template"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 	tenantID := c.Locals("tenant_id").(uuid.UUID)
 	settings, err := h.svc.CreateCompany(c.Context(), tenantID, service.CreateCompanyRequest{
-		CompanyName:         req.CompanyName,
+		CompanyName:          req.CompanyName,
 		FiscalYearStartMonth: req.FiscalYearStartMonth,
-		EnableDate:          req.EnableDate,
-		DefaultCurrency:     req.DefaultCurrency,
-		ChartTemplate:       req.ChartTemplate,
+		EnableDate:           req.EnableDate,
+		DefaultCurrency:      req.DefaultCurrency,
+		ChartTemplate:        req.ChartTemplate,
 	})
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})

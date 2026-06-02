@@ -480,3 +480,17 @@ func (r *BankTransactionRepository) GetAllBankAccountIDs(ctx context.Context, te
 	}
 	return ids, rows.Err()
 }
+
+// CountByPeriod counts all bank transactions for a tenant within a date range (across all accounts).
+func (r *BankTransactionRepository) CountByPeriod(ctx context.Context, tenantID uuid.UUID, startDate, endDate time.Time) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM bank_transactions
+		WHERE tenant_id = $1 AND txn_date >= $2 AND txn_date <= $3
+	`, tenantID, startDate, endDate).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}

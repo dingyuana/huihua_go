@@ -195,19 +195,19 @@ func (s *VoucherStateMachine) ReverseVoucher(ctx context.Context, tenantID uuid.
 
 	now := time.Now()
 	reversal := &model.JournalEntry{
-		ID:            uuid.New(),
-		VoucherNo:     original.VoucherNo + "-R",
-		VoucherType:   original.VoucherType,
-		PostingDate:   now,
-		CompanyID:     original.CompanyID,
-		TenantID:      tenantID,
-		DocStatus:     1, // posted by default for reversal
-		ReversalID:    &journalID,
-		SubmittedBy:   &userID,
-		SubmittedAt:   &now,
-		CreatedBy:     userID,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:          uuid.New(),
+		VoucherNo:   original.VoucherNo + "-R",
+		VoucherType: original.VoucherType,
+		PostingDate: now,
+		CompanyID:   original.CompanyID,
+		TenantID:    tenantID,
+		DocStatus:   1, // posted by default for reversal
+		ReversalID:  &journalID,
+		SubmittedBy: &userID,
+		SubmittedAt: &now,
+		CreatedBy:   userID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	// Insert reversal voucher within transaction
@@ -264,14 +264,14 @@ func (s *VoucherStateMachine) ReverseVoucher(ctx context.Context, tenantID uuid.
 		"reversal_voucher_id": reversal.ID.String(),
 	})
 	auditLog := &model.AuditLog{
-		ID:            uuid.New(),
-		Action:        "voucher_status_change",
-		ObjectType:    "journal_entry",
-		ObjectID:      journalID,
-		TenantID:      tenantID,
-		ActorID:       userID,
-		ActorName:     userNamePtr,
-		Metadata:      metadata,
+		ID:         uuid.New(),
+		Action:     "voucher_status_change",
+		ObjectType: "journal_entry",
+		ObjectID:   journalID,
+		TenantID:   tenantID,
+		ActorID:    userID,
+		ActorName:  userNamePtr,
+		Metadata:   metadata,
 	}
 	if err := s.auditRepo.CreateTx(ctx, tx, tenantID, auditLog); err != nil {
 		return nil, fmt.Errorf("record audit log: %w", err)

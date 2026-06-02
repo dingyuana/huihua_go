@@ -12,10 +12,10 @@ import (
 )
 
 type PaymentEntryService struct {
-	repo         *repository.PaymentEntryRepository
-	partyRepo    *repository.PartyRepository
-	bankRepo     *repository.BankRepository
-	accountRepo  *repository.AccountRepository
+	repo        *repository.PaymentEntryRepository
+	partyRepo   *repository.PartyRepository
+	bankRepo    *repository.BankRepository
+	accountRepo *repository.AccountRepository
 }
 
 func NewPaymentEntryService(

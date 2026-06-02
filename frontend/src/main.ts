@@ -10,29 +10,18 @@ import { tenantResetPlugin } from './stores/plugins/tenant-reset'
 import { permissionDirective } from './directives/permission'
 import './styles/index.scss'
 
-// 条件启动 Mock Service Worker
-async function bootstrap() {
-  if (import.meta.env.VITE_ENABLE_MOCK === 'true') {
-    const { worker } = await import('./api/mock/browser')
-    await worker.start({ onUnhandledRequest: 'bypass' })
-    console.log('[MSW] Mock Service Worker started')
-  }
+const app = createApp(App)
+const pinia = createPinia()
 
-  const app = createApp(App)
-  const pinia = createPinia()
+pinia.use(tenantResetPlugin)
 
-  pinia.use(tenantResetPlugin)
+app.directive('permission', permissionDirective)
 
-  app.directive('permission', permissionDirective)
-
-  for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-    app.component(key, component)
-  }
-
-  app.use(pinia)
-  app.use(router)
-  app.use(ElementPlus, { locale: zhCn })
-  app.mount('#app')
+for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, component)
 }
 
-bootstrap()
+app.use(pinia)
+app.use(router)
+app.use(ElementPlus, { locale: zhCn })
+app.mount('#app')

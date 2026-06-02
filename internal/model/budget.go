@@ -22,22 +22,22 @@ type Budget struct {
 
 // BudgetAccount represents the budget_accounts table (budget line items per account).
 type BudgetAccount struct {
-	ID            uuid.UUID       `json:"id" db:"id"`
-	BudgetID      uuid.UUID       `json:"budget_id" db:"budget_id"`
-	AccountID     uuid.UUID       `json:"account_id" db:"account_id"`
-	AnnualBudget  decimal.Decimal `json:"annual_budget" db:"annual_budget"`
-	TenantID      uuid.UUID       `json:"tenant_id" db:"tenant_id"`
+	ID           uuid.UUID       `json:"id" db:"id"`
+	BudgetID     uuid.UUID       `json:"budget_id" db:"budget_id"`
+	AccountID    uuid.UUID       `json:"account_id" db:"account_id"`
+	AnnualBudget decimal.Decimal `json:"annual_budget" db:"annual_budget"`
+	TenantID     uuid.UUID       `json:"tenant_id" db:"tenant_id"`
 }
 
 // BudgetDistribution represents the budget_distributions table (period-based budget allocation).
 type BudgetDistribution struct {
-	ID              uuid.UUID       `json:"id" db:"id"`
-	BudgetAccountID uuid.UUID       `json:"budget_account_id" db:"budget_account_id"`
-	StartDate       time.Time       `json:"start_date" db:"start_date"`
-	EndDate         time.Time       `json:"end_date" db:"end_date"`
-	Amount          decimal.Decimal `json:"amount" db:"amount"`
+	ID              uuid.UUID        `json:"id" db:"id"`
+	BudgetAccountID uuid.UUID        `json:"budget_account_id" db:"budget_account_id"`
+	StartDate       time.Time        `json:"start_date" db:"start_date"`
+	EndDate         time.Time        `json:"end_date" db:"end_date"`
+	Amount          decimal.Decimal  `json:"amount" db:"amount"`
 	Percent         *decimal.Decimal `json:"percent,omitempty" db:"percent"`
-	TenantID        uuid.UUID       `json:"tenant_id" db:"tenant_id"`
+	TenantID        uuid.UUID        `json:"tenant_id" db:"tenant_id"`
 }
 
 // BudgetControlConfig represents the budget_control_configs table (rules for budget enforcement).

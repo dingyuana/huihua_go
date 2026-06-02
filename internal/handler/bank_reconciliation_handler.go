@@ -221,20 +221,20 @@ type DiffReportItem struct {
 }
 
 type DiffReport struct {
-	BankAccountID    uuid.UUID        `json:"bank_account_id"`
-	BankName         string           `json:"bank_name"`
-	PeriodNo         int              `json:"period_no"`
-	BankBalance      string           `json:"bank_balance"`
-	BookBalance      string           `json:"book_balance"`
-	Difference       string           `json:"difference"`
-	BankOnlyItems    []DiffReportItem `json:"bank_only_items"`
-	BookOnlyItems    []DiffReportItem `json:"book_only_items"`
-	BankOnlyTotal    string           `json:"bank_only_total"`
-	BookOnlyTotal    string           `json:"book_only_total"`
-	BankOnlyCount    int              `json:"bank_only_count"`
-	BookOnlyCount    int              `json:"book_only_count"`
-	AdjustedReconciled bool           `json:"adjusted_reconciled"`
-	GeneratedAt      string           `json:"generated_at"`
+	BankAccountID      uuid.UUID        `json:"bank_account_id"`
+	BankName           string           `json:"bank_name"`
+	PeriodNo           int              `json:"period_no"`
+	BankBalance        string           `json:"bank_balance"`
+	BookBalance        string           `json:"book_balance"`
+	Difference         string           `json:"difference"`
+	BankOnlyItems      []DiffReportItem `json:"bank_only_items"`
+	BookOnlyItems      []DiffReportItem `json:"book_only_items"`
+	BankOnlyTotal      string           `json:"bank_only_total"`
+	BookOnlyTotal      string           `json:"book_only_total"`
+	BankOnlyCount      int              `json:"bank_only_count"`
+	BookOnlyCount      int              `json:"book_only_count"`
+	AdjustedReconciled bool             `json:"adjusted_reconciled"`
+	GeneratedAt        string           `json:"generated_at"`
 }
 
 func (h *BankReconciliationHandler) GetDiffReport(c *fiber.Ctx) error {

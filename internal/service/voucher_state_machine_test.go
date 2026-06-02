@@ -132,8 +132,8 @@ func TestValidateTransition_UnknownStatus(t *testing.T) {
 func TestValidateTransition_AllDraftActions(t *testing.T) {
 	sm := NewVoucherStateMachine(nil, nil, nil)
 	tests := []struct {
-		action  model.VoucherAction
-		valid   bool
+		action model.VoucherAction
+		valid  bool
 	}{
 		{model.VoucherActionSubmit, true},
 		{model.VoucherActionCancel, true},
@@ -155,8 +155,8 @@ func TestValidateTransition_AllDraftActions(t *testing.T) {
 func TestValidateTransition_AllPostedActions(t *testing.T) {
 	sm := NewVoucherStateMachine(nil, nil, nil)
 	tests := []struct {
-		action  model.VoucherAction
-		valid   bool
+		action model.VoucherAction
+		valid  bool
 	}{
 		{model.VoucherActionSubmit, false},
 		{model.VoucherActionCancel, false},
@@ -178,8 +178,8 @@ func TestValidateTransition_AllPostedActions(t *testing.T) {
 func TestValidateTransition_AllVerifiedActions(t *testing.T) {
 	sm := NewVoucherStateMachine(nil, nil, nil)
 	tests := []struct {
-		action  model.VoucherAction
-		valid   bool
+		action model.VoucherAction
+		valid  bool
 	}{
 		{model.VoucherActionSubmit, false},
 		{model.VoucherActionCancel, false},

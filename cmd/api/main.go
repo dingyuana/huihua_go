@@ -293,4 +293,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/payment-entries/:id", paymentHandler.GetByID)
 	api.Put("/payment-entries/:id", paymentHandler.Update)
 	api.Delete("/payment-entries/:id", paymentHandler.Delete)
+
+	// Dashboard stats aggregation
+	dashboardHandler := handler.NewDashboardHandler(journalRepo, glEntryRepo, bankTransactionRepo, periodRepo)
+	api.Get("/dashboard/stats", dashboardHandler.GetStats)
 }
