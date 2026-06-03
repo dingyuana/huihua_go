@@ -9,6 +9,9 @@ import (
 	"huihua/finance/internal/model"
 )
 
+// SystemTenantID is the default system tenant used for seed/shared mapping data.
+var SystemTenantID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+
 type BusDocMappingRepository struct {
 	pool *pgxpool.Pool
 }
@@ -18,11 +21,30 @@ func NewBusDocMappingRepository(pool *pgxpool.Pool) *BusDocMappingRepository {
 }
 
 // FindMapping looks up an active mapping by (doc_type, condition_key).
+// First tries the specific tenant, then falls back to the system tenant.
 // Returns nil if not found.
 func (r *BusDocMappingRepository) FindMapping(ctx context.Context, tenantID uuid.UUID, docType, conditionKey string) (*model.BusDocMapping, error) {
 	if conditionKey == "" {
 		conditionKey = "default"
 	}
+
+	// Try the specific tenant first
+	m, err := r.findMappingForTenant(ctx, tenantID, docType, conditionKey)
+	if err != nil {
+		return nil, err
+	}
+	if m != nil {
+		return m, nil
+	}
+
+	// Fallback to system tenant if different from the requested tenant
+	if tenantID != SystemTenantID {
+		return r.findMappingForTenant(ctx, SystemTenantID, docType, conditionKey)
+	}
+	return nil, nil
+}
+
+func (r *BusDocMappingRepository) findMappingForTenant(ctx context.Context, tenantID uuid.UUID, docType, conditionKey string) (*model.BusDocMapping, error) {
 	query := `
 		SELECT id, tenant_id, doc_type, condition_key, condition_label,
 		       debit_account_id, debit_subject_code, debit_subject_name,

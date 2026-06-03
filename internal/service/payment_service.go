@@ -80,6 +80,7 @@ func (s *PaymentEntryService) CreateFromBankTransaction(
 		paidFromID = s.getClearingAccount(ctx, tenantID, bankTxn.BankAccountID)
 	}
 
+	paymentMethod := "bank"
 	pe := &model.PaymentEntry{
 		PaymentNo:        paymentNo,
 		PaymentType:      req.PaymentType,
@@ -97,6 +98,7 @@ func (s *PaymentEntryService) CreateFromBankTransaction(
 		BankAccountID:    &bankTxn.BankAccountID,
 		DocStatus:        0,
 		Description:      bankTxn.Description,
+		PaymentMethod:    &paymentMethod,
 		CreatedBy:        &userID,
 	}
 

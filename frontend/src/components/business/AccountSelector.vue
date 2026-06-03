@@ -219,7 +219,7 @@ function checkSelection() {
   emit('update:modelValue', deepestNode)
 }
 
-watch(() => props.modelValue, (newVal) => {
+function applyModelValue(newVal: AccountNode | string | null) {
   if (!newVal) {
     level1Id.value = null
     level2Id.value = null
@@ -241,7 +241,19 @@ watch(() => props.modelValue, (newVal) => {
     level2Id.value = path[2]?.id || null
     level3Id.value = path[3]?.id || null
   }
+}
+
+watch(() => props.modelValue, (newVal) => {
+  applyModelValue(newVal ?? null)
 }, { immediate: true })
+
+// When tree data loads asynchronously after modelValue is already set,
+// re-apply the modelValue so the selects can resolve the account id.
+watch(treeData, () => {
+  if (props.modelValue != null) {
+    applyModelValue(props.modelValue ?? null)
+  }
+})
 
 onMounted(() => {
   loadTree()

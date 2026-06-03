@@ -142,6 +142,25 @@ func (r *PartyRepository) ExistsByNameAndType(ctx context.Context, tenantID uuid
 	return exists, err
 }
 
+// GetByName looks up a party by name within a tenant. Returns nil if not found.
+func (r *PartyRepository) GetByName(ctx context.Context, tenantID uuid.UUID, name string) (*model.Party, error) {
+	row := r.pool.QueryRow(ctx, `
+		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
+		       contact_name, contact_phone, credit_limit, payment_days, is_active,
+		       ar_account_id, ap_account_id, created_at, updated_at
+		FROM parties WHERE tenant_id = $1 AND name = $2 AND is_active = TRUE
+		LIMIT 1`,
+		tenantID, name)
+	var p model.Party
+	err := row.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.BankName, &p.BankAccount,
+		&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive,
+		&p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return nil, nil // not found
+	}
+	return &p, nil
+}
+
 // CheckTaxNumberDuplicate checks for duplicate tax numbers within a tenant.
 func (r *PartyRepository) CheckTaxNumberDuplicate(ctx context.Context, tenantID uuid.UUID, taxNumbers []string) (map[string]bool, error) {
 	result := make(map[string]bool)

@@ -1,6 +1,22 @@
 ---
 ## 📌 Changelog
 
+### 🔴 Major Change — 2026-06-03
+- **Change type**: scope expansion / business flow change
+- **Summary**: 业务单据凭证智能生成模块上线，完成从收付款单→凭证的全自动链路，支持科目映射配置、双向关联、税务场景自动检测
+- **Trigger**: commit `a545f8eb` — 业务单据凭证智能生成 + 科目映射配置 + 凭证关联显示
+- **Impact**: F5凭证自动生成模块增强（F5完成度100%），前端发票列表+凭证编辑完整闭环
+- **Details**:
+  - 新增 `bus_doc_mapping` 科目映射配置表（收款/付款/转账/费用/利息预置数据）
+  - 收付款单生成凭证时通过映射表自动确定借贷科目
+  - 凭证与单据双向关联（`source_doc_type/id/no` + `voucher_id/no`）
+  - 凭证分录行自动填写 `user_remark`（收款/付款/应收/应付 + 对方名称）
+  - 发票核销附加分录支持（按 `payment_allocations` 拆分多行）
+  - 税务场景自动检测（对方/描述含税务关键词时切换到应交税费科目）
+  - 前端凭证列表显示对方名称、来源单据、科目标签
+  - 新增迁移 036-038（counterparty_name, voucher_source_doc_link, bus_doc_mapping）
+- **Corresponding commit**: `a545f8eb feat: 业务单据凭证智能生成 + 科目映射配置 + 凭证关联显示`
+
 ### 🔴 Major Change — 2026-05-30
 - **Change type**: documentation update / build fix / testing + assessment
 - **Summary**: 

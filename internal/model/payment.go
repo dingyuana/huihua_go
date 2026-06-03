@@ -29,6 +29,7 @@ type PaymentEntry struct {
 	VoucherID        *uuid.UUID       `json:"voucher_id,omitempty" db:"voucher_id"`
 	VoucherNo        *string          `json:"voucher_no,omitempty" db:"voucher_no"`
 	Description      *string          `json:"description,omitempty" db:"description"`
+	PaymentMethod    *string          `json:"payment_method,omitempty" db:"payment_method"`
 	CreatedBy        *uuid.UUID       `json:"created_by,omitempty" db:"created_by"`
 	CreatedAt        time.Time        `json:"created_at" db:"created_at"`
 }

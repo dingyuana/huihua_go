@@ -72,11 +72,10 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 	}
 	bankClearingAcctID := bankAcct.ClearingAccountID
 	if bankClearingAcctID == nil {
-		acct, lookupErr := s.accountRepo.GetByCode(ctx, tenantID, "1002")
-		if lookupErr != nil || acct == nil {
-			return nil, fmt.Errorf("bank account %s has no clearing_account_id and fallback account 1002 not found", txn.BankAccountID)
-		}
-		bankClearingAcctID = &acct.ID
+		bankClearingAcctID = s.findAccountByCode(ctx, tenantID, "1002")
+	}
+	if bankClearingAcctID == nil {
+		return nil, fmt.Errorf("bank account %s has no clearing_account_id and fallback account 1002 not found", txn.BankAccountID)
 	}
 
 	var debitAccountID, creditAccountID uuid.UUID
@@ -88,36 +87,60 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 	// Determine accounts based on classification
 	switch classification {
 	case "bank_fee":
-		// 银行手续费 → 财务费用 (5602)
-		debitAccountID = *s.findAccountByCode(ctx, tenantID, "5602")
+		acct := s.findAccountByCode(ctx, tenantID, "5602")
+		if acct == nil {
+			return nil, fmt.Errorf("account 5602 (财务费用) not found")
+		}
+		debitAccountID = *acct
 		creditAccountID = *bankClearingAcctID
 	case "interest_income":
-		// 利息收入 → 财务费用 (5602) 贷方，或者投资收益
-		creditAccountID = *s.findAccountByCode(ctx, tenantID, "5602")
+		acct := s.findAccountByCode(ctx, tenantID, "5602")
+		if acct == nil {
+			return nil, fmt.Errorf("account 5602 (财务费用) not found")
+		}
+		creditAccountID = *acct
 		debitAccountID = *bankClearingAcctID
 	case "tax_payment":
-		// 税务缴费 → 应交税费 (2221)
-		debitAccountID = *s.findAccountByCode(ctx, tenantID, "2221")
+		acct := s.findAccountByCode(ctx, tenantID, "2221")
+		if acct == nil {
+			return nil, fmt.Errorf("account 2221 (应交税费) not found")
+		}
+		debitAccountID = *acct
 		creditAccountID = *bankClearingAcctID
 	case "social_security":
-		// 社保缴费 → 应付职工薪酬 (2211)
-		debitAccountID = *s.findAccountByCode(ctx, tenantID, "2211")
+		acct := s.findAccountByCode(ctx, tenantID, "2211")
+		if acct == nil {
+			return nil, fmt.Errorf("account 2211 (应付职工薪酬) not found")
+		}
+		debitAccountID = *acct
 		creditAccountID = *bankClearingAcctID
 	case "insurance_fee":
-		// 保险费用 → 管理费用 (5601)
-		debitAccountID = *s.findAccountByCode(ctx, tenantID, "5601")
+		acct := s.findAccountByCode(ctx, tenantID, "5601")
+		if acct == nil {
+			return nil, fmt.Errorf("account 5601 (管理费用) not found")
+		}
+		debitAccountID = *acct
 		creditAccountID = *bankClearingAcctID
 	case "business_receipt":
-		// 业务收款 → 应收账款 (1122) 贷方，或者主营业务收入
-		creditAccountID = *s.findAccountByCode(ctx, tenantID, "1122")
+		acct := s.findAccountByCode(ctx, tenantID, "1122")
+		if acct == nil {
+			return nil, fmt.Errorf("account 1122 (应收账款) not found")
+		}
+		creditAccountID = *acct
 		debitAccountID = *bankClearingAcctID
 	case "business_payment":
-		// 业务付款 → 应付账款 (2202)
-		debitAccountID = *s.findAccountByCode(ctx, tenantID, "2202")
+		acct := s.findAccountByCode(ctx, tenantID, "2202")
+		if acct == nil {
+			return nil, fmt.Errorf("account 2202 (应付账款) not found")
+		}
+		debitAccountID = *acct
 		creditAccountID = *bankClearingAcctID
 	default:
-		// 默认用管理费用
-		debitAccountID = *s.findAccountByCode(ctx, tenantID, "5601")
+		acct := s.findAccountByCode(ctx, tenantID, "5601")
+		if acct == nil {
+			return nil, fmt.Errorf("account 5601 (管理费用) not found")
+		}
+		debitAccountID = *acct
 		creditAccountID = *bankClearingAcctID
 	}
 
@@ -140,7 +163,7 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 		CreatedBy:        createdBy,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
-		DocStatus:        0, // 始终为草稿状态，需要人工审核
+		DocStatus:        0,
 		CounterpartyName: txn.CounterpartyName,
 		Remark:           txn.Description,
 	}
@@ -153,13 +176,11 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 	amount := txnAmt
 	var lines []model.JournalEntryLine
 	if txn.Debit.GreaterThan(decimal.Zero) {
-		// 收入：借银行，贷对方科目
 		lines = []model.JournalEntryLine{
 			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: *bankClearingAcctID, Debit: amount, Credit: decimal.Zero},
 			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: creditAccountID, Debit: decimal.Zero, Credit: amount},
 		}
 	} else {
-		// 支出：借对方科目，贷银行
 		lines = []model.JournalEntryLine{
 			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: debitAccountID, Debit: amount, Credit: decimal.Zero},
 			{ID: uuid.New(), JournalEntryID: je.ID, AccountID: *bankClearingAcctID, Debit: decimal.Zero, Credit: amount},
@@ -277,14 +298,11 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 	return je, nil
 }
 
-// GenerateFromPaymentEntry generates a voucher from a payment entry (收款单/付款单).
-// Account determination priority:
-//  1. Party's configured default account (ar_account_id / ap_account_id)
-//  2. Classification rule matching (matched on payment counterparty / description)
-//  3. Hardcoded fallback: 应收账款(1122) for receive, 应付账款(2202) for pay
-//
-// When payment is allocated to invoices, additional detail lines are added
-// using classification rule matching on each invoice.
+// GenerateFromPaymentEntry generates a voucher from a payment entry (收款单/付款单/费用/利息/转账).
+// Account determination:
+//  1. bus_doc_mapping by (doc_type, condition_key) — supports receipt/payment/expense/interest/transfer
+//  2. Bank side overridden by actual bank clearing account or payment_method (cash→1001, bank→1002)
+//  3. Fallback to hardcoded account codes if mapping not found
 func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Context, tenantID, paymentID, userID uuid.UUID) (*model.JournalEntry, error) {
 	pe, err := s.paymentRepo.GetByID(ctx, tenantID, paymentID)
 	if err != nil {
@@ -296,18 +314,38 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 		return nil, fmt.Errorf("payment entry %s already has a voucher (docstatus=%d), regenerate rejected", paymentID, pe.DocStatus)
 	}
 
-	var bankClearingAcctID *uuid.UUID
-	if pe.BankAccountID != nil {
-		bankAcct, repoErr := s.bankRepo.GetByID(ctx, tenantID, *pe.BankAccountID)
-		if repoErr == nil && bankAcct != nil {
-			bankClearingAcctID = bankAcct.ClearingAccountID
+	// Resolve the bank/cash side account based on payment_method.
+	// payment_method: "bank"→1002, "cash"→1001, "wechat"/"alipay"→1002, default→1002
+	paymentMethod := "bank"
+	if pe.PaymentMethod != nil && *pe.PaymentMethod != "" {
+		paymentMethod = *pe.PaymentMethod
+	}
+
+	var bankSideAcctID *uuid.UUID
+	switch paymentMethod {
+	case "cash":
+		bankSideAcctID = s.findAccountByCode(ctx, tenantID, "1001")
+		if bankSideAcctID == nil {
+			bankSideAcctID = s.findAccountByCode(ctx, tenantID, "1002")
+		}
+	default:
+		// bank, wechat, alipay, other — use bank clearing account
+		if pe.BankAccountID != nil {
+			bankAcct, repoErr := s.bankRepo.GetByID(ctx, tenantID, *pe.BankAccountID)
+			if repoErr == nil && bankAcct != nil && bankAcct.ClearingAccountID != nil {
+				bankSideAcctID = bankAcct.ClearingAccountID
+			}
+		}
+		if bankSideAcctID == nil {
+			bankSideAcctID = s.findAccountByCode(ctx, tenantID, "1002")
+		}
+		if bankSideAcctID == nil {
+			// Final fallback: try 1001 (库存现金)
+			bankSideAcctID = s.findAccountByCode(ctx, tenantID, "1001")
 		}
 	}
-	if bankClearingAcctID == nil {
-		bankClearingAcctID = s.findAccountByCode(ctx, tenantID, "1002")
-	}
-	if bankClearingAcctID == nil {
-		return nil, fmt.Errorf("cannot determine bank clearing account for payment entry %s", paymentID)
+	if bankSideAcctID == nil {
+		return nil, fmt.Errorf("cannot determine bank/cash account for payment entry %s (method=%s)", paymentID, paymentMethod)
 	}
 
 	amount := pe.PaidAmount
@@ -315,7 +353,12 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 		amount = *pe.ReceivedAmount
 	}
 
+	// Try to resolve party from counterparty_name if PartyID is zero
 	party, _ := s.partyRepo.GetByID(ctx, tenantID, pe.PartyID)
+	if party == nil && pe.CounterpartyName != nil && *pe.CounterpartyName != "" {
+		party, _ = s.partyRepo.GetByName(ctx, tenantID, *pe.CounterpartyName)
+	}
+
 	var partyName string
 	if party != nil && party.Name != "" {
 		partyName = party.Name
@@ -330,26 +373,33 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 		direction = "in"
 	}
 
-	// Primary path: look up bus_doc_mapping by (doc_type, condition_key).
-	// doc_type maps from pe.PaymentType (receive/pay/expense/interest/transfer).
-	// condition_key is detected from description/counterparty (e.g. "tax" if
-	// counterparty or description contains 国库/税务/税款 keywords).
+	// Resolve debit/credit accounts from bus_doc_mapping
 	docType, conditionKey := s.detectDocTypeAndCondition(pe, partyName)
-	debitAccountID, creditAccountID, err := s.resolveAccountsFromMapping(ctx, tenantID, docType, conditionKey, *bankClearingAcctID)
+	debitAccountID, creditAccountID, err := s.resolveAccountsFromMapping(ctx, tenantID, docType, conditionKey, *bankSideAcctID)
 	if err != nil {
-		return nil, err
+		// Mapping lookup failed — use hardcoded fallback
+		debitAccountID, creditAccountID, err = s.hardcodedFallback(ctx, tenantID, pe.PaymentType, pe.PartyType, *bankSideAcctID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	// Override the bank-clearing side with the actual bank account's
-	// clearing account ID, so the voucher correctly points to the specific
-	// bank account instead of the generic 1002.
+	// Override the bank/cash side with the resolved account
 	switch pe.PaymentType {
 	case "receive":
-		debitAccountID = *bankClearingAcctID
+		debitAccountID = *bankSideAcctID
 	case "pay":
-		creditAccountID = *bankClearingAcctID
-	default:
-		return nil, fmt.Errorf("payment type %q cannot generate voucher directly", pe.PaymentType)
+		creditAccountID = *bankSideAcctID
+	case "expense":
+		// expense: debit from mapping (费用科目), credit = bank/cash
+		creditAccountID = *bankSideAcctID
+	case "interest":
+		// interest: debit = bank/cash, credit from mapping (财务费用)
+		debitAccountID = *bankSideAcctID
+	case "transfer":
+		// transfer: both sides are bank accounts
+		debitAccountID = *bankSideAcctID
+		// credit stays from mapping (also 1002)
 	}
 
 	voucherResp, tmplErr := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
@@ -380,14 +430,31 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 		Remark:           &remark,
 	}
 
+	// Use resolved party if available, otherwise keep original
 	partyTypeStr := pe.PartyType
 	partyIDCopy := pe.PartyID
+	if party != nil && partyIDCopy == uuid.Nil {
+		partyIDCopy = party.ID
+		if party.PartyType != "" {
+			partyTypeStr = party.PartyType
+		}
+	}
 
 	verbZH := "收款"
 	creditNounZH := "应收"
-	if pe.PaymentType == "pay" {
+	switch pe.PaymentType {
+	case "pay":
 		verbZH = "付款"
 		creditNounZH = "应付"
+	case "expense":
+		verbZH = "费用"
+		creditNounZH = "支付"
+	case "interest":
+		verbZH = "利息"
+		creditNounZH = "收入"
+	case "transfer":
+		verbZH = "转账"
+		creditNounZH = "转出"
 	}
 	debitUserRemark := fmt.Sprintf("%s %s %s", verbZH, partyName, amount.String())
 	creditUserRemark := fmt.Sprintf("%s%s", creditNounZH, partyName)
@@ -475,6 +542,63 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 	return je, nil
 }
 
+// hardcodedFallback provides hardcoded account resolution when bus_doc_mapping
+// lookup fails. Uses payment_type + party_type to determine the correct accounts.
+func (s *VoucherAutoGenerateService) hardcodedFallback(ctx context.Context, tenantID uuid.UUID, paymentType, partyType string, bankSideAcctID uuid.UUID) (debitAccountID, creditAccountID uuid.UUID, err error) {
+	switch paymentType {
+	case "receive":
+		code := "1122" // 应收账款
+		if partyType == "employee" {
+			code = "1221" // 其他应收款
+		}
+		acct := s.findAccountByCode(ctx, tenantID, code)
+		if acct == nil {
+			acct = s.findAccountByCode(ctx, tenantID, "1122")
+		}
+		if acct == nil {
+			return uuid.Nil, uuid.Nil, fmt.Errorf("hardcoded fallback: account %s not found", code)
+		}
+		return bankSideAcctID, *acct, nil
+
+	case "pay":
+		code := "2202" // 应付账款
+		if partyType == "employee" {
+			code = "2211" // 应付职工薪酬
+		}
+		acct := s.findAccountByCode(ctx, tenantID, code)
+		if acct == nil {
+			acct = s.findAccountByCode(ctx, tenantID, "2202")
+		}
+		if acct == nil {
+			return uuid.Nil, uuid.Nil, fmt.Errorf("hardcoded fallback: account %s not found", code)
+		}
+		return *acct, bankSideAcctID, nil
+
+	case "expense":
+		acct := s.findAccountByCode(ctx, tenantID, "5601") // 管理费用
+		if acct == nil {
+			return uuid.Nil, uuid.Nil, fmt.Errorf("hardcoded fallback: expense account 5601 not found")
+		}
+		return *acct, bankSideAcctID, nil
+
+	case "interest":
+		acct := s.findAccountByCode(ctx, tenantID, "5602") // 财务费用
+		if acct == nil {
+			acct = s.findAccountByCode(ctx, tenantID, "5601")
+		}
+		if acct == nil {
+			return uuid.Nil, uuid.Nil, fmt.Errorf("hardcoded fallback: interest account not found")
+		}
+		return bankSideAcctID, *acct, nil
+
+	case "transfer":
+		return bankSideAcctID, bankSideAcctID, nil
+
+	default:
+		return uuid.Nil, uuid.Nil, fmt.Errorf("unsupported payment_type %q for voucher generation", paymentType)
+	}
+}
+
 // resolveCounterAccount determines the non-bank account for a payment voucher.
 // Priority: 1) Party default AR/AP account  2) Classification rule match  3) party type + payment type mapping  4) Hardcoded 1122/2202.
 func (s *VoucherAutoGenerateService) resolveCounterAccount(ctx context.Context, tenantID uuid.UUID, paymentType, partyType string, party *model.Party, refNo *string, partyName string, direction string) (uuid.UUID, error) {
@@ -511,7 +635,7 @@ func (s *VoucherAutoGenerateService) resolveCounterAccount(ctx context.Context, 
 		return *acct, nil
 	}
 
-	// Final hardcoded fallback if the party-type specific code wasn't found
+	// Final hardcoded fallback
 	if paymentType == "receive" {
 		code = "1122"
 	} else {
@@ -525,7 +649,6 @@ func (s *VoucherAutoGenerateService) resolveCounterAccount(ctx context.Context, 
 }
 
 // accountCodeByPartyType returns the account code based on payment type and party type.
-// This provides smart defaults without relying on party-configured accounts.
 func (s *VoucherAutoGenerateService) accountCodeByPartyType(paymentType, partyType string) string {
 	if paymentType == "receive" {
 		switch partyType {
@@ -548,6 +671,7 @@ func (s *VoucherAutoGenerateService) accountCodeByPartyType(paymentType, partyTy
 	}
 }
 
+// findAccountByCode safely looks up an account UUID by code. Returns nil if not found.
 func (s *VoucherAutoGenerateService) findAccountByCode(ctx context.Context, tenantID uuid.UUID, code string) *uuid.UUID {
 	acct, err := s.accountRepo.GetByCode(ctx, tenantID, code)
 	if err != nil || acct == nil {
@@ -563,7 +687,7 @@ func (s *VoucherAutoGenerateService) PreviewVoucher(ctx context.Context, tenantI
 
 // detectDocTypeAndCondition returns (doc_type, condition_key) for looking up
 // bus_doc_mapping. It maps pe.PaymentType to doc_type, and inspects the
-// document description and counterparty for sub-scenarios like "tax".
+// document description and counterparty for sub-scenarios like "tax" or "cash".
 func (s *VoucherAutoGenerateService) detectDocTypeAndCondition(pe *model.PaymentEntry, partyName string) (string, string) {
 	docType := normalizePaymentType(pe.PaymentType)
 
@@ -573,17 +697,24 @@ func (s *VoucherAutoGenerateService) detectDocTypeAndCondition(pe *model.Payment
 	}
 	combined := strings.ToLower(desc + " " + partyName)
 
+	// Detect tax scenario
 	taxKeywords := []string{"国库", "金库", "财政", "税务局", "税款", "税务", "缴税", "增值税", "所得税", "附加税"}
 	for _, kw := range taxKeywords {
 		if strings.Contains(combined, strings.ToLower(kw)) {
 			return docType, "tax"
 		}
 	}
+
+	// Detect cash scenario
+	if pe.PaymentMethod != nil && *pe.PaymentMethod == "cash" {
+		return docType, "cash"
+	}
+
 	return docType, "default"
 }
 
-// normalizePaymentType maps internal payment_type values (receive/pay) to
-// bus_doc_mapping doc_type values (receipt/payment).
+// normalizePaymentType maps internal payment_type values (receive/pay/expense/interest/transfer)
+// to bus_doc_mapping doc_type values (receipt/payment/expense/interest/transfer).
 func normalizePaymentType(pt string) string {
 	switch pt {
 	case "receive":
@@ -591,7 +722,7 @@ func normalizePaymentType(pt string) string {
 	case "pay":
 		return "payment"
 	default:
-		return pt
+		return pt // expense, interest, transfer already match
 	}
 }
 

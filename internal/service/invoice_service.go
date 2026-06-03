@@ -484,7 +484,7 @@ func (s *InvoiceService) BatchImportPreview(ctx context.Context, tenantID uuid.U
 	netIdx, _ := findCol("不含税金额", "金额", "net_amount", "net")
 	taxIdx, _ := findCol("税额", "tax_amount", "tax")
 	totalIdx, _ := findCol("价税合计", "合计", "total_amount", "total")
-	taxIDIdx, _ := findCol("购方识别号", "税号", "tax_id", "taxid")
+	_, _ = findCol("购方识别号", "税号", "tax_id", "taxid")
 
 	if !dateFound {
 		return nil, errors.New("未找到日期列，请确保Excel包含'开票日期'或'日期'列")

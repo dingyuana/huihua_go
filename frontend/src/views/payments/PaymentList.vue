@@ -112,6 +112,12 @@
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="对方单位">{{ currentPayment.counterparty_name }}</el-descriptions-item>
+          <el-descriptions-item label="收款方式">
+            <el-tag size="small" v-if="currentPayment.payment_method">
+              {{ { bank: '银行转账', cash: '现金', wechat: '微信', alipay: '支付宝', other: '其他' }[currentPayment.payment_method] || currentPayment.payment_method }}
+            </el-tag>
+            <span v-else>银行转账</span>
+          </el-descriptions-item>
           <el-descriptions-item label="金额">
             <b :class="currentPayment.payment_type === 'receive' ? 'amount-income' : 'amount-expense'">
               {{ currentPayment.payment_type === 'receive' ? '+' : '-' }}{{ formatAmount(currentPayment.paid_amount) }}

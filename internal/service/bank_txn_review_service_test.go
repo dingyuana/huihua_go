@@ -218,5 +218,28 @@ func ptrString(s string) *string { return &s }
 
 func newBankTxnReviewService(pool *pgxpool.Pool) *BankTxnReviewService {
 	repo := repository.NewBankTransactionRepository(pool)
-	return NewBankTxnReviewService(pool, repo, nil, nil)
+	bankRepo := repository.NewBankRepository(pool)
+	journalRepo := repository.NewJournalRepository(pool)
+	glRepo := repository.NewGLEntryRepository(pool)
+	invoiceRepo := repository.NewInvoiceRepository(pool)
+	paymentRepo := repository.NewPaymentEntryRepository(pool)
+	partyRepo := repository.NewPartyRepository(pool)
+	accountRepo := repository.NewAccountRepository(pool)
+	busDocMappingRepo := repository.NewBusDocMappingRepository(pool)
+	voucherTemplateRepo := repository.NewVoucherTemplateRepository(pool)
+	approvalRepo := repository.NewApprovalRepository(pool)
+
+	classificationSvc := NewClassificationRuleService(repository.NewClassificationRuleRepository(pool))
+	templateSvc := NewVoucherTemplateService(voucherTemplateRepo, accountRepo)
+	approvalSvc := NewApprovalService(approvalRepo, journalRepo)
+
+	voucherSvc := NewVoucherAutoGenerateService(
+		journalRepo, glRepo, repo, bankRepo,
+		invoiceRepo, paymentRepo, partyRepo, accountRepo,
+		busDocMappingRepo, classificationSvc, templateSvc, approvalSvc,
+	)
+
+	paymentSvc := NewPaymentEntryService(paymentRepo, partyRepo, bankRepo, accountRepo, repo)
+
+	return NewBankTxnReviewService(pool, repo, voucherSvc, paymentSvc)
 }

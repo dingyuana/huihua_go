@@ -32,15 +32,15 @@ func (r *PaymentEntryRepository) Create(ctx context.Context, tenantID uuid.UUID,
 			id, payment_no, payment_type, party_type, party_id, counterparty_name,
 			paid_from_id, paid_to_id, paid_amount, received_amount,
 			reference_no, reference_date, posting_date,
-			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, created_by, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, payment_method, created_by, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 		RETURNING created_at`
 
 	err := r.pool.QueryRow(ctx, query,
 		pe.ID, pe.PaymentNo, pe.PaymentType, pe.PartyType, pe.PartyID, pe.CounterpartyName,
 		pe.PaidFromID, pe.PaidToID, pe.PaidAmount, pe.ReceivedAmount,
 		pe.ReferenceNo, pe.ReferenceDate, pe.PostingDate,
-		pe.CompanyID, pe.TenantID, pe.BankAccountID, pe.DocStatus, pe.VoucherID, pe.VoucherNo, pe.Description, pe.CreatedBy, time.Now(),
+		pe.CompanyID, pe.TenantID, pe.BankAccountID, pe.DocStatus, pe.VoucherID, pe.VoucherNo, pe.Description, pe.PaymentMethod, pe.CreatedBy, time.Now(),
 	).Scan(&pe.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create payment entry: %w", err)
@@ -53,7 +53,7 @@ func (r *PaymentEntryRepository) GetByID(ctx context.Context, tenantID, id uuid.
 		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
 			paid_from_id, paid_to_id, paid_amount, received_amount,
 			reference_no, reference_date, posting_date,
-			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, created_by, created_at
+			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, payment_method, created_by, created_at
 		FROM payment_entries
 		WHERE id = $1 AND tenant_id = $2`
 
@@ -62,7 +62,7 @@ func (r *PaymentEntryRepository) GetByID(ctx context.Context, tenantID, id uuid.
 		&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID, &pe.CounterpartyName,
 		&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount,
 		&pe.ReferenceNo, &pe.ReferenceDate, &pe.PostingDate,
-		&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.VoucherID, &pe.VoucherNo, &pe.Description, &pe.CreatedBy, &pe.CreatedAt,
+		&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.VoucherID, &pe.VoucherNo, &pe.Description, &pe.PaymentMethod, &pe.CreatedBy, &pe.CreatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get payment entry: %w", err)
@@ -75,7 +75,7 @@ func (r *PaymentEntryRepository) ListByTenant(ctx context.Context, tenantID uuid
 		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
 			paid_from_id, paid_to_id, paid_amount, received_amount,
 			reference_no, reference_date, posting_date,
-			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, created_by, created_at
+			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, payment_method, created_by, created_at
 		FROM payment_entries
 		WHERE tenant_id = $1
 		ORDER BY posting_date DESC, payment_no DESC`
@@ -93,7 +93,7 @@ func (r *PaymentEntryRepository) ListByTenant(ctx context.Context, tenantID uuid
 			&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID, &pe.CounterpartyName,
 			&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount,
 			&pe.ReferenceNo, &pe.ReferenceDate, &pe.PostingDate,
-			&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.VoucherID, &pe.VoucherNo, &pe.Description, &pe.CreatedBy, &pe.CreatedAt,
+			&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.VoucherID, &pe.VoucherNo, &pe.Description, &pe.PaymentMethod, &pe.CreatedBy, &pe.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan payment entry: %w", err)
 		}
@@ -107,7 +107,7 @@ func (r *PaymentEntryRepository) ListByBankAccount(ctx context.Context, tenantID
 		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
 			paid_from_id, paid_to_id, paid_amount, received_amount,
 			reference_no, reference_date, posting_date,
-			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, created_by, created_at
+			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, payment_method, created_by, created_at
 		FROM payment_entries
 		WHERE tenant_id = $1 AND bank_account_id = $2
 		ORDER BY posting_date DESC, payment_no DESC`
@@ -125,7 +125,7 @@ func (r *PaymentEntryRepository) ListByBankAccount(ctx context.Context, tenantID
 			&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID, &pe.CounterpartyName,
 			&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount,
 			&pe.ReferenceNo, &pe.ReferenceDate, &pe.PostingDate,
-			&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.VoucherID, &pe.VoucherNo, &pe.Description, &pe.CreatedBy, &pe.CreatedAt,
+			&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.VoucherID, &pe.VoucherNo, &pe.Description, &pe.PaymentMethod, &pe.CreatedBy, &pe.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan payment entry: %w", err)
 		}
@@ -140,7 +140,7 @@ func (r *PaymentEntryRepository) Update(ctx context.Context, tenantID uuid.UUID,
 		SET payment_type = $3, party_type = $4, party_id = $5,
 			paid_from_id = $6, paid_to_id = $7, paid_amount = $8, received_amount = $9,
 			reference_no = $10, reference_date = $11, posting_date = $12,
-			docstatus = $13, voucher_id = $14, voucher_no = $15, description = $16
+			docstatus = $13, voucher_id = $14, voucher_no = $15, description = $16, payment_method = $17
 		WHERE id = $1 AND tenant_id = $2`
 
 	_, err := r.pool.Exec(ctx, query,
@@ -148,7 +148,7 @@ func (r *PaymentEntryRepository) Update(ctx context.Context, tenantID uuid.UUID,
 		pe.PaymentType, pe.PartyType, pe.PartyID,
 		pe.PaidFromID, pe.PaidToID, pe.PaidAmount, pe.ReceivedAmount,
 		pe.ReferenceNo, pe.ReferenceDate, pe.PostingDate,
-		pe.DocStatus, pe.VoucherID, pe.VoucherNo, pe.Description,
+		pe.DocStatus, pe.VoucherID, pe.VoucherNo, pe.Description, pe.PaymentMethod,
 	)
 	return err
 }

@@ -14,6 +14,7 @@ export interface PaymentEntry {
   reference_no: string
   posting_date: string
   bank_account_id: string | null
+  payment_method?: string
   docstatus: number
   voucher_id?: string
   created_at?: string
