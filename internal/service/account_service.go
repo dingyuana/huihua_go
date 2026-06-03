@@ -25,6 +25,7 @@ func NewAccountService(repo *repository.AccountRepository, seedPool *pgxpool.Poo
 
 // InitFromSeed initializes accounts from the standard_accounts_seed table.
 // Creates a copy of all seed accounts for the given tenant/company.
+// Skips accounts that already exist (same tenant_id + code).
 func (s *AccountService) InitFromSeed(ctx context.Context, tenantID, companyID uuid.UUID) error {
 	rows, err := s.seedPool.Query(ctx, `
 		SELECT code, name, account_type, root_type, parent_code, is_group, lft, rgt
@@ -34,7 +35,6 @@ func (s *AccountService) InitFromSeed(ctx context.Context, tenantID, companyID u
 	}
 	defer rows.Close()
 
-	// Build parent_code -> new_id mapping
 	parentCodeMap := make(map[string]uuid.UUID)
 
 	for rows.Next() {
@@ -70,8 +70,14 @@ func (s *AccountService) InitFromSeed(ctx context.Context, tenantID, companyID u
 		}
 		parentCodeMap[code] = acc.ID
 
-		if _, err := s.repo.Create(ctx, tenantID, acc); err != nil {
-			return fmt.Errorf("create account %s: %w", code, err)
+		_, insertErr := s.seedPool.Exec(ctx, `
+			INSERT INTO accounts (id, code, name, account_type, root_type, parent_id, is_group, company_id, tenant_id, currency, is_active, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())
+			ON CONFLICT (tenant_id, code) DO NOTHING`,
+			acc.ID, acc.Code, acc.Name, acc.AccountType, acc.RootType, acc.ParentID,
+			acc.IsGroup, acc.CompanyID, acc.TenantID, acc.Currency, acc.IsActive)
+		if insertErr != nil {
+			return fmt.Errorf("insert account %s: %w", code, insertErr)
 		}
 	}
 	return nil
@@ -140,11 +146,11 @@ func (s *AccountService) GetTree(ctx context.Context, tenantID uuid.UUID) ([]mod
 	for i := range flat {
 		byID[flat[i].ID] = &flat[i]
 	}
-	var roots []model.Account
+	var roots []*model.Account
 	for i := range flat {
 		a := &flat[i]
 		if a.ParentID == nil {
-			roots = append(roots, *a)
+			roots = append(roots, a)
 			continue
 		}
 		parent, ok := byID[*a.ParentID]
@@ -156,10 +162,7 @@ func (s *AccountService) GetTree(ctx context.Context, tenantID uuid.UUID) ([]mod
 	synthetic := model.Account{
 		Name:     "全部科目",
 		IsGroup:  true,
-		Children: make([]*model.Account, 0, len(roots)),
-	}
-	for i := range roots {
-		synthetic.Children = append(synthetic.Children, &roots[i])
+		Children: roots,
 	}
 	return []model.Account{synthetic}, nil
 }

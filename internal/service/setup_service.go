@@ -142,10 +142,8 @@ func (s *SetupService) CreateCompany(ctx context.Context, tenantID uuid.UUID, re
 	}
 
 	// Initialize chart of accounts from seed
-	if req.ChartTemplate == "small_enterprise" {
-		if err := s.accountSvc.InitFromSeedWithTx(ctx, tx, tenantID, created.ID); err != nil {
-			return nil, fmt.Errorf("init chart of accounts: %w", err)
-		}
+	if err := s.accountSvc.InitFromSeedWithTx(ctx, tx, tenantID, created.ID); err != nil {
+		return nil, fmt.Errorf("init chart of accounts: %w", err)
 	}
 
 	// Mark as initialized

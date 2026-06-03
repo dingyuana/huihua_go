@@ -51,6 +51,10 @@
             <el-icon><Upload /></el-icon>
             导入银行流水
           </el-button>
+          <el-button :loading="seeding" @click="handleSeedAccounts">
+            <el-icon><Refresh /></el-icon>
+            {{ seeding ? '初始化中...' : '初始化科目表' }}
+          </el-button>
         </div>
       </div>
     </div>
@@ -176,15 +180,17 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Setting, Upload, ArrowRight } from '@element-plus/icons-vue'
+import { Setting, Upload, ArrowRight, Refresh } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import request from '@/api/request'
 
 const formRef1 = ref<FormInstance>()
 const activeStep = ref(0)
 const submitting = ref(false)
+const seeding = ref(false)
 const alreadyInitialized = ref(false)
 const savedCompany = reactive({
+  id: '',
   company_name: '',
   enable_date: '',
   default_currency: '',
@@ -214,6 +220,7 @@ async function loadStatus() {
     const data = res.data || res
     if (data.initialized && data.company) {
       alreadyInitialized.value = true
+      savedCompany.id = data.company.id || ''
       savedCompany.company_name = data.company.company_name
       savedCompany.enable_date = data.company.enable_date
       savedCompany.default_currency = data.company.default_currency
@@ -221,6 +228,23 @@ async function loadStatus() {
     }
   } catch {
     // Not initialized or error, continue with empty form
+  }
+}
+
+async function handleSeedAccounts() {
+  if (!savedCompany.id) {
+    ElMessage.warning('未找到公司信息，请刷新后重试')
+    return
+  }
+  seeding.value = true
+  try {
+    await request.post('/accounts/init-seed', { company_id: savedCompany.id })
+    ElMessage.success('科目表初始化完成！')
+  } catch (err: any) {
+    const msg = err?.response?.data?.error || err?.message || '初始化失败'
+    ElMessage.error(msg)
+  } finally {
+    seeding.value = false
   }
 }
 

@@ -195,25 +195,28 @@ function handleLevel3Change() {
 }
 
 function checkSelection() {
-  let selectedNode: AccountNode | null = null
-  if (level3Id.value) {
-    selectedNode = findNodeById(treeData.value, level3Id.value)
-  } else if (level2Id.value) {
-    selectedNode = findNodeById(treeData.value, level2Id.value)
-  } else if (level1Id.value) {
-    selectedNode = findNodeById(treeData.value, level1Id.value)
+  // Determine the deepest selected level
+  const deepestId = level3Id.value || level2Id.value || level1Id.value
+
+  if (!deepestId) {
+    emit('update:modelValue', null)
+    return
   }
 
-  if (selectedNode) {
-    if (selectedNode.is_group) {
-      ElMessage.warning('汇总科目不可直接入账，请选择明细科目')
-      emit('update:modelValue', null)
-      return
-    }
-    emit('update:modelValue', selectedNode)
-  } else {
+  const deepestNode = findNodeById(treeData.value, deepestId)
+  if (!deepestNode) {
     emit('update:modelValue', null)
+    return
   }
+
+  // If the deepest selected node is a group, user hasn't finished picking yet
+  // → don't emit, let them continue drilling down
+  if (deepestNode.is_group) {
+    return
+  }
+
+  // Leaf account selected → emit it
+  emit('update:modelValue', deepestNode)
 }
 
 watch(() => props.modelValue, (newVal) => {

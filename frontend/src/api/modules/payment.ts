@@ -1,6 +1,8 @@
 import request from '@/api/request'
 import type { ApiResponse } from '@/types/api'
 import type { PaymentEntry } from '@/types/models/payment'
+import type { PaymentAllocation } from '@/types/models/payment'
+import type { SalesInvoice } from '@/types/models/invoice'
 
 /** 查询收付款单列表 */
 export function fetchPayments(params?: {
@@ -45,4 +47,17 @@ export function deletePayment(id: string): Promise<ApiResponse<void>> {
 /** 从收付款单生成凭证 */
 export function generateVoucherFromPayment(id: string): Promise<ApiResponse<any>> {
   return request.post(`/payment-entries/${id}/generate-voucher`)
+}
+
+/** 查询未核销发票（按往来单位） */
+export function fetchUnmatchedInvoices(partyId: string): Promise<ApiResponse<SalesInvoice[]>> {
+  return request.get('/invoices/unmatched', { params: { party_id: partyId } })
+}
+
+/** 收付款单核销发票 */
+export function allocateInvoices(
+  paymentEntryId: string,
+  allocations: { invoice_id: string; allocated_amount: number }[]
+): Promise<ApiResponse<PaymentAllocation[]>> {
+  return request.post(`/payment-entries/${paymentEntryId}/allocate`, { allocations })
 }

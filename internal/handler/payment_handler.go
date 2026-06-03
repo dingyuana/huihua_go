@@ -5,6 +5,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
 	"huihua/finance/internal/service"
@@ -13,15 +14,18 @@ import (
 type PaymentEntryHandler struct {
 	svc         *service.PaymentEntryService
 	bankTxnRepo *repository.BankTransactionRepository
+	invoiceSvc  *service.InvoiceService
 }
 
 func NewPaymentEntryHandler(
 	svc *service.PaymentEntryService,
 	bankTxnRepo *repository.BankTransactionRepository,
+	invoiceSvc *service.InvoiceService,
 ) *PaymentEntryHandler {
 	return &PaymentEntryHandler{
 		svc:         svc,
 		bankTxnRepo: bankTxnRepo,
+		invoiceSvc:  invoiceSvc,
 	}
 }
 
@@ -94,6 +98,47 @@ func (h *PaymentEntryHandler) CreateFromBankTransaction(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"payment_entry": entry,
 	})
+}
+
+// Allocate handles POST /api/v1/payment-entries/:id/allocate
+func (h *PaymentEntryHandler) Allocate(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	paymentEntryID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payment entry id"})
+	}
+
+	var req struct {
+		Allocations []struct {
+			InvoiceID       string  `json:"invoice_id"`
+			AllocatedAmount float64 `json:"allocated_amount"`
+		} `json:"allocations"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	var allocs []service.AllocationRequest
+	for _, a := range req.Allocations {
+		invoiceID, err := uuid.Parse(a.InvoiceID)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "invalid invoice_id: " + a.InvoiceID,
+			})
+		}
+		allocs = append(allocs, service.AllocationRequest{
+			InvoiceID:       invoiceID,
+			AllocatedAmount: decimal.NewFromFloat(a.AllocatedAmount),
+		})
+	}
+
+	result, err := h.invoiceSvc.AllocateToPaymentEntry(c.Context(), tenantID, paymentEntryID, allocs)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": result})
 }
 
 func (h *PaymentEntryHandler) List(c *fiber.Ctx) error {

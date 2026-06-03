@@ -125,6 +125,55 @@
           <el-descriptions-item label="创建时间">{{ currentPayment.created_at }}</el-descriptions-item>
         </el-descriptions>
 
+        <!-- 发票核销 -->
+        <template v-if="currentPayment.party_id">
+          <el-divider />
+          <div class="allocation-section">
+            <div class="section-header">
+              <h4>发票核销</h4>
+              <el-button size="small" :loading="invoiceLoading" @click="loadUnmatchedInvoices">
+                {{ invoiceLoaded ? '刷新未核销发票' : '加载未核销发票' }}
+              </el-button>
+            </div>
+            <el-table
+              v-if="unmatchedInvoices.length > 0"
+              :data="unmatchedInvoices"
+              border size="small" max-height="300"
+              @selection-change="(rows: any[]) => { selectedInvoices = rows }"
+            >
+              <el-table-column type="selection" width="40" />
+              <el-table-column prop="invoice_no" label="发票号" width="140" />
+              <el-table-column label="原金额" width="100" align="right">
+                <template #default="{ row }">{{ formatInvoiceAmount(row.total_amount) }}</template>
+              </el-table-column>
+              <el-table-column label="未核销" width="110" align="right">
+                <template #default="{ row }">{{ formatInvoiceAmount(row.outstanding_amount) }}</template>
+              </el-table-column>
+              <el-table-column label="本次核销" width="140" align="right">
+                <template #default="{ row }">
+                  <el-input-number
+                    v-model="allocationMap[row.id]"
+                    :min="0"
+                    :max="Number(row.outstanding_amount)"
+                    :precision="2"
+                    :step="100"
+                    size="small"
+                    controls-position="right"
+                    style="width: 130px"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column prop="posting_date" label="日期" width="90" />
+            </el-table>
+            <el-empty v-else-if="invoiceLoaded" :description="'暂无未核销发票'" />
+            <div v-if="unmatchedInvoices.length > 0" style="margin-top: 12px; text-align: right">
+              <el-button type="primary" :loading="allocating" @click="handleAllocate">
+                确认核销
+              </el-button>
+            </div>
+          </div>
+        </template>
+
         <div style="margin-top: 20px; text-align: center">
           <el-button v-if="currentPayment.docstatus === 0" type="primary" :loading="voucherLoading" @click="handleGenerateVoucher">生成凭证</el-button>
           <el-button v-if="currentPayment.docstatus === 0" type="primary" plain>提交审核</el-button>
@@ -139,7 +188,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { fetchPayments, fetchPaymentDetail, generateVoucherFromPayment } from '@/api/modules/payment'
+import { fetchPayments, fetchPaymentDetail, generateVoucherFromPayment, fetchUnmatchedInvoices, allocateInvoices } from '@/api/modules/payment'
 import DocStatusTag from '@/components/business/DocStatusTag.vue'
 import type { PaymentEntry } from '@/types/models/payment'
 
@@ -173,6 +222,14 @@ const showDrawer = ref(false)
 const currentPayment = ref<PaymentEntry | null>(null)
 const voucherLoading = ref(false)
 
+// Invoice matching
+const unmatchedInvoices = ref<any[]>([])
+const selectedInvoices = ref<any[]>([])
+const invoiceLoading = ref(false)
+const invoiceLoaded = ref(false)
+const allocating = ref(false)
+const allocationMap = reactive<Record<string, number>>({})
+
 async function handleGenerateVoucher() {
   if (!currentPayment.value) return
   voucherLoading.value = true
@@ -186,6 +243,55 @@ async function handleGenerateVoucher() {
   } finally {
     voucherLoading.value = false
   }
+}
+
+async function loadUnmatchedInvoices() {
+  if (!currentPayment.value?.party_id) return
+  invoiceLoading.value = true
+  try {
+    const res: any = await fetchUnmatchedInvoices(currentPayment.value.party_id)
+    const list = res?.data || []
+    unmatchedInvoices.value = Array.isArray(list) ? list : []
+    invoiceLoaded.value = true
+    for (const key of Object.keys(allocationMap)) {
+      delete allocationMap[key]
+    }
+    unmatchedInvoices.value.forEach((inv: any) => {
+      allocationMap[inv.id] = Number(inv.outstanding_amount) || 0
+    })
+  } catch (e: any) {
+    const errMsg = e?.response?.data?.error || e?.response?.data?.message || e?.message || ''
+    ElMessage.error('加载未核销发票失败: ' + errMsg)
+  } finally {
+    invoiceLoading.value = false
+  }
+}
+
+async function handleAllocate() {
+  if (!currentPayment.value?.id || selectedInvoices.value.length === 0) {
+    ElMessage.warning('请选择要核销的发票')
+    return
+  }
+  allocating.value = true
+  try {
+    const allocations = selectedInvoices.value.map((inv: any) => ({
+      invoice_id: inv.id,
+      allocated_amount: allocationMap[inv.id] || Number(inv.outstanding_amount) || 0,
+    }))
+    await allocateInvoices(currentPayment.value.id, allocations)
+    ElMessage.success('核销成功')
+    selectedInvoices.value = []
+    loadUnmatchedInvoices()
+  } catch (e: any) {
+    ElMessage.error('核销失败: ' + (e?.response?.data?.error || e?.message || ''))
+  } finally {
+    allocating.value = false
+  }
+}
+
+function formatInvoiceAmount(val: any): string {
+  const n = Number(val) || 0
+  return '¥' + n.toLocaleString('en', { minimumFractionDigits: 2 })
 }
 
 async function loadData() {
@@ -260,4 +366,14 @@ onMounted(loadData)
 }
 .amount-income { color: #389e0d; font-weight: 600; }
 .amount-expense { color: #cf1322; font-weight: 600; }
+.allocation-section {
+  margin-top: 4px;
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    h4 { margin: 0; font-size: 14px; }
+  }
+}
 </style>

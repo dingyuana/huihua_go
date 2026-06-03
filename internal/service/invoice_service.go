@@ -461,3 +461,51 @@ func (s *InvoiceService) GetLineItems(ctx context.Context, tenantID, invoiceID u
 func (s *InvoiceService) ListInvoicesForMatching(ctx context.Context, tenantID uuid.UUID, customerID *uuid.UUID) ([]model.SalesInvoice, error) {
 	return s.repo.ListInvoicesForMatching(ctx, tenantID, customerID)
 }
+
+// ListUnmatchedInvoices returns invoices with outstanding balance for a given party.
+func (s *InvoiceService) ListUnmatchedInvoices(ctx context.Context, tenantID uuid.UUID, partyID *uuid.UUID) ([]model.SalesInvoice, error) {
+	return s.repo.ListInvoicesForMatching(ctx, tenantID, partyID)
+}
+
+// AllocationRequest represents a single invoice allocation within a payment entry.
+type AllocationRequest struct {
+	InvoiceID       uuid.UUID
+	AllocatedAmount decimal.Decimal
+}
+
+// AllocateToPaymentEntry creates payment allocations and updates invoice outstanding amounts.
+func (s *InvoiceService) AllocateToPaymentEntry(ctx context.Context, tenantID uuid.UUID, paymentEntryID uuid.UUID, allocations []AllocationRequest) ([]model.PaymentAllocation, error) {
+	var result []model.PaymentAllocation
+	for _, a := range allocations {
+		inv, err := s.repo.GetByID(ctx, tenantID, a.InvoiceID)
+		if err != nil {
+			return nil, err
+		}
+		if inv == nil {
+			return nil, fmt.Errorf("invoice %s not found", a.InvoiceID)
+		}
+		if a.AllocatedAmount.GreaterThan(inv.OutstandingAmount) {
+			return nil, fmt.Errorf("allocation amount %s exceeds outstanding %s for invoice %s",
+				a.AllocatedAmount.String(), inv.OutstandingAmount.String(), a.InvoiceID)
+		}
+
+		invoiceType := "sale"
+		alloc := &model.PaymentAllocation{
+			PaymentEntryID:  paymentEntryID,
+			InvoiceID:       a.InvoiceID,
+			InvoiceType:     &invoiceType,
+			AllocatedAmount: a.AllocatedAmount,
+			TenantID:        tenantID,
+		}
+
+		if err := s.repo.CreateAllocation(ctx, alloc); err != nil {
+			return nil, err
+		}
+		newOutstanding := inv.OutstandingAmount.Sub(a.AllocatedAmount)
+		if err := s.repo.UpdateOutstandingAmount(ctx, tenantID, a.InvoiceID, newOutstanding.String()); err != nil {
+			return nil, err
+		}
+		result = append(result, *alloc)
+	}
+	return result, nil
+}

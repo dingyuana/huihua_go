@@ -323,6 +323,28 @@ func (h *InvoiceHandler) UpdateStatus(c *fiber.Ctx) error {
 	})
 }
 
+// ListUnmatched returns invoices eligible for matching (outstanding_amount > 0).
+// GET /api/v1/invoices/unmatched?party_id=xxx
+func (h *InvoiceHandler) ListUnmatched(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var partyID *uuid.UUID
+	if pid := c.Query("party_id"); pid != "" {
+		parsed, err := uuid.Parse(pid)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid party_id"})
+		}
+		partyID = &parsed
+	}
+
+	invoices, err := h.svc.ListUnmatchedInvoices(c.Context(), tenantID, partyID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": invoices})
+}
+
 // MatchToBank matches an invoice to a bank transaction.
 // POST /api/v1/invoices/:id/match
 func (h *InvoiceHandler) MatchToBank(c *fiber.Ctx) error {

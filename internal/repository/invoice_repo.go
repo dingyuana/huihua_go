@@ -331,3 +331,38 @@ func (r *InvoiceRepository) ListInvoicesForMatching(ctx context.Context, tenantI
 	}
 	return invoices, rows.Err()
 }
+
+// CreateAllocation creates a payment allocation record linking a payment entry to an invoice.
+func (r *InvoiceRepository) CreateAllocation(ctx context.Context, alloc *model.PaymentAllocation) error {
+	alloc.ID = uuid.New()
+	alloc.CreatedAt = time.Now()
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO payment_allocations (id, payment_entry_id, invoice_id, invoice_type, allocated_amount, tenant_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		alloc.ID, alloc.PaymentEntryID, alloc.InvoiceID, alloc.InvoiceType,
+		alloc.AllocatedAmount.String(), alloc.TenantID, alloc.CreatedAt)
+	return err
+}
+
+// GetAllocationsByPaymentEntry retrieves all allocations for a given payment entry.
+func (r *InvoiceRepository) GetAllocationsByPaymentEntry(ctx context.Context, tenantID, paymentEntryID uuid.UUID) ([]model.PaymentAllocation, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, payment_entry_id, invoice_id, invoice_type, allocated_amount, tenant_id, created_at
+		FROM payment_allocations WHERE tenant_id = $1 AND payment_entry_id = $2`,
+		tenantID, paymentEntryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var allocs []model.PaymentAllocation
+	for rows.Next() {
+		var a model.PaymentAllocation
+		if err := rows.Scan(&a.ID, &a.PaymentEntryID, &a.InvoiceID, &a.InvoiceType,
+			&a.AllocatedAmount, &a.TenantID, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		allocs = append(allocs, a)
+	}
+	return allocs, rows.Err()
+}

@@ -141,6 +141,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/invoices/import", invoiceHandler.ImportFromExcel)
 	api.Post("/invoices/import-excel", invoiceHandler.ImportExcelFile)
 	api.Post("/invoices/parse", invoiceHandler.Parse)
+	api.Get("/invoices/unmatched", invoiceHandler.ListUnmatched)
 	api.Get("/invoices/:id", invoiceHandler.GetByID)
 	api.Put("/invoices/:id", invoiceHandler.Update)
 	api.Delete("/invoices/:id", invoiceHandler.Delete)
@@ -289,7 +290,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Placed after approvalSvc is initialized so it can be injected
 	autoGenSvc := service.NewVoucherAutoGenerateService(
 		journalRepo, glEntryRepo, bankTransactionRepo,
-		bankRepo, invoiceRepo, paymentRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
+		bankRepo, invoiceRepo, paymentRepo, partyRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
 	)
 	// Wire auto-gen service into bank transaction handler for post-import voucher auto-generation
 	bankTxnHandler.InjectAutoGenSvc(autoGenSvc)
@@ -303,12 +304,13 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Payment entry routes (收款/付款单)
 	paymentSvc := service.NewPaymentEntryService(paymentRepo, partyRepo, bankRepo, accountRepo, bankTransactionRepo)
-	paymentHandler := handler.NewPaymentEntryHandler(paymentSvc, bankTransactionRepo)
+	paymentHandler := handler.NewPaymentEntryHandler(paymentSvc, bankTransactionRepo, invoiceSvc)
 	api.Get("/payment-entries", paymentHandler.List)
 	api.Post("/payment-entries", paymentHandler.CreateFromBankTransaction)
 	api.Get("/payment-entries/:id", paymentHandler.GetByID)
 	api.Put("/payment-entries/:id", paymentHandler.Update)
 	api.Delete("/payment-entries/:id", paymentHandler.Delete)
+	api.Post("/payment-entries/:id/allocate", paymentHandler.Allocate)
 
 	// Dashboard stats aggregation
 	dashboardHandler := handler.NewDashboardHandler(journalRepo, glEntryRepo, bankTransactionRepo, periodRepo)

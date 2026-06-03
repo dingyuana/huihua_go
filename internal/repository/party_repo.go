@@ -32,10 +32,11 @@ func (r *PartyRepository) Create(ctx context.Context, tenantID uuid.UUID, p *mod
 
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO parties (id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
-			contact_name, contact_phone, credit_limit, payment_days, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+			contact_name, contact_phone, credit_limit, payment_days, is_active, ar_account_id, ap_account_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		p.ID, p.TenantID, p.PartyType, p.Name, p.TaxNumber, p.BankName, p.BankAccount,
-		p.ContactName, p.ContactPhone, p.CreditLimit, p.PaymentDays, p.IsActive, p.CreatedAt, p.UpdatedAt)
+		p.ContactName, p.ContactPhone, p.CreditLimit, p.PaymentDays, p.IsActive,
+		p.ArAccountID, p.ApAccountID, p.CreatedAt, p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +59,8 @@ func (r *PartyRepository) List(ctx context.Context, tenantID uuid.UUID) ([]model
 	for rows.Next() {
 		var p model.Party
 		if err := rows.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.BankName, &p.BankAccount,
-			&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive,
+			&p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		parties = append(parties, p)
@@ -71,12 +73,14 @@ func (r *PartyRepository) List(ctx context.Context, tenantID uuid.UUID) ([]model
 func (r *PartyRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.Party, error) {
 	row := r.pool.QueryRow(ctx, `
 		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
-		       contact_name, contact_phone, credit_limit, payment_days, is_active, created_at, updated_at
+		       contact_name, contact_phone, credit_limit, payment_days, is_active,
+		       ar_account_id, ap_account_id, created_at, updated_at
 		FROM parties WHERE id = $1 AND tenant_id = $2`,
 		id, tenantID)
 	var p model.Party
 	err := row.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.BankName, &p.BankAccount,
-		&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
+		&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive,
+		&p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +102,8 @@ func (r *PartyRepository) ListByType(ctx context.Context, tenantID uuid.UUID, pa
 	for rows.Next() {
 		var p model.Party
 		if err := rows.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.BankName, &p.BankAccount,
-			&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive,
+			&p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		parties = append(parties, p)
@@ -111,10 +116,12 @@ func (r *PartyRepository) Update(ctx context.Context, tenantID, id uuid.UUID, p 
 	p.UpdatedAt = time.Now()
 	_, err := r.pool.Exec(ctx, `
 		UPDATE parties SET party_type = $3, name = $4, tax_number = $5, bank_name = $6, bank_account = $7,
-			contact_name = $8, contact_phone = $9, credit_limit = $10, payment_days = $11, is_active = $12, updated_at = $13
+			contact_name = $8, contact_phone = $9, credit_limit = $10, payment_days = $11, is_active = $12,
+			ar_account_id = $13, ap_account_id = $14, updated_at = $15
 		WHERE tenant_id = $1 AND id = $2`,
 		tenantID, id, p.PartyType, p.Name, p.TaxNumber, p.BankName, p.BankAccount,
-		p.ContactName, p.ContactPhone, p.CreditLimit, p.PaymentDays, p.IsActive, p.UpdatedAt)
+		p.ContactName, p.ContactPhone, p.CreditLimit, p.PaymentDays, p.IsActive,
+		p.ArAccountID, p.ApAccountID, p.UpdatedAt)
 	return err
 }
 
@@ -163,10 +170,11 @@ func (r *PartyRepository) CreateBatch(ctx context.Context, tenantID uuid.UUID, p
 			p.IsActive = true
 		}
 		batch.Queue(`INSERT INTO parties (id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
-			contact_name, contact_phone, credit_limit, payment_days, is_active, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) ON CONFLICT DO NOTHING`,
+			contact_name, contact_phone, credit_limit, payment_days, is_active, ar_account_id, ap_account_id, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) ON CONFLICT DO NOTHING`,
 			p.ID, p.TenantID, p.PartyType, p.Name, p.TaxNumber, p.BankName, p.BankAccount,
-			p.ContactName, p.ContactPhone, p.CreditLimit, p.PaymentDays, p.IsActive, p.CreatedAt, p.UpdatedAt)
+			p.ContactName, p.ContactPhone, p.CreditLimit, p.PaymentDays, p.IsActive,
+			p.ArAccountID, p.ApAccountID, p.CreatedAt, p.UpdatedAt)
 	}
 	br := r.pool.SendBatch(ctx, batch)
 	defer br.Close()

@@ -20,6 +20,8 @@ type Party struct {
 	ContactPhone *string         `json:"contact_phone,omitempty" db:"contact_phone"`
 	CreditLimit  decimal.Decimal `json:"credit_limit" db:"credit_limit"`
 	PaymentDays  int             `json:"payment_days" db:"payment_days"`
+	ArAccountID  *uuid.UUID      `json:"ar_account_id,omitempty" db:"ar_account_id"`
+	ApAccountID  *uuid.UUID      `json:"ap_account_id,omitempty" db:"ap_account_id"`
 	IsActive     bool            `json:"is_active" db:"is_active"`
 	CreatedAt    time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at" db:"updated_at"`

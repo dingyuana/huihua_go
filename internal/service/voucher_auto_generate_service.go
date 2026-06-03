@@ -19,6 +19,7 @@ type VoucherAutoGenerateService struct {
 	bankRepo          *repository.BankRepository
 	invoiceRepo       *repository.InvoiceRepository
 	paymentRepo       *repository.PaymentEntryRepository
+	partyRepo         *repository.PartyRepository
 	accountRepo       *repository.AccountRepository
 	classificationSvc *ClassificationRuleService
 	templateSvc       *VoucherTemplateService
@@ -32,6 +33,7 @@ func NewVoucherAutoGenerateService(
 	bankRepo *repository.BankRepository,
 	invoiceRepo *repository.InvoiceRepository,
 	paymentRepo *repository.PaymentEntryRepository,
+	partyRepo *repository.PartyRepository,
 	accountRepo *repository.AccountRepository,
 	classificationSvc *ClassificationRuleService,
 	templateSvc *VoucherTemplateService,
@@ -42,6 +44,7 @@ func NewVoucherAutoGenerateService(
 		bankTxnRepo: bankTxnRepo, bankRepo: bankRepo,
 		invoiceRepo:       invoiceRepo,
 		paymentRepo:       paymentRepo,
+		partyRepo:         partyRepo,
 		accountRepo:       accountRepo,
 		classificationSvc: classificationSvc, templateSvc: templateSvc,
 		approvalSvc: approvalSvc,
@@ -269,6 +272,13 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 }
 
 // GenerateFromPaymentEntry generates a voucher from a payment entry (收款单/付款单).
+// Account determination priority:
+//  1. Party's configured default account (ar_account_id / ap_account_id)
+//  2. Classification rule matching (matched on payment counterparty / description)
+//  3. Hardcoded fallback: 应收账款(1122) for receive, 应付账款(2202) for pay
+//
+// When payment is allocated to invoices, additional detail lines are added
+// using classification rule matching on each invoice.
 func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Context, tenantID, paymentID, userID uuid.UUID) (*model.JournalEntry, error) {
 	pe, err := s.paymentRepo.GetByID(ctx, tenantID, paymentID)
 	if err != nil {
@@ -289,34 +299,37 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 		return nil, fmt.Errorf("cannot determine bank clearing account for payment entry %s", paymentID)
 	}
 
-	var debitAccountID, creditAccountID uuid.UUID
-	var amount decimal.Decimal
-	partyType := pe.PartyType
-	partyID := pe.PartyID
+	amount := pe.PaidAmount
+	if pe.PaymentType == "receive" && pe.ReceivedAmount != nil {
+		amount = *pe.ReceivedAmount
+	}
 
+	party, _ := s.partyRepo.GetByID(ctx, tenantID, pe.PartyID)
+	partyName := ""
+	if party != nil {
+		partyName = party.Name
+	} else if pe.CounterpartyName != nil {
+		partyName = *pe.CounterpartyName
+	}
+
+	direction := "out"
+	if pe.PaymentType == "receive" {
+		direction = "in"
+	}
+
+	counterAcctID, err := s.resolveCounterAccount(ctx, tenantID, pe.PaymentType, party, pe.ReferenceNo, partyName, direction)
+	if err != nil {
+		return nil, err
+	}
+
+	var debitAccountID, creditAccountID uuid.UUID
 	switch pe.PaymentType {
 	case "receive":
-		// 收款单: 借 银行存款 / 贷 应收账款(1122)
 		debitAccountID = *bankClearingAcctID
-		arAcct := s.findAccountByCode(ctx, tenantID, "1122")
-		if arAcct == nil {
-			return nil, fmt.Errorf("accounts receivable account (1122) not found")
-		}
-		creditAccountID = *arAcct
-		if pe.ReceivedAmount != nil {
-			amount = *pe.ReceivedAmount
-		} else {
-			amount = pe.PaidAmount
-		}
+		creditAccountID = counterAcctID
 	case "pay":
-		// 付款单: 借 应付账款(2202) / 贷 银行存款
-		apAcct := s.findAccountByCode(ctx, tenantID, "2202")
-		if apAcct == nil {
-			return nil, fmt.Errorf("accounts payable account (2202) not found")
-		}
-		debitAccountID = *apAcct
+		debitAccountID = counterAcctID
 		creditAccountID = *bankClearingAcctID
-		amount = pe.PaidAmount
 	default:
 		return nil, fmt.Errorf("payment type %q cannot generate voucher directly", pe.PaymentType)
 	}
@@ -339,8 +352,9 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 		DocStatus:   0,
 	}
 
-	partyTypeStr := partyType
-	partyIDCopy := partyID
+	partyTypeStr := pe.PartyType
+	partyIDCopy := pe.PartyID
+
 	lines := []model.JournalEntryLine{
 		{
 			ID:             uuid.New(),
@@ -362,6 +376,44 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 		},
 	}
 
+	allocs, allocErr := s.invoiceRepo.GetAllocationsByPaymentEntry(ctx, tenantID, paymentID)
+	if allocErr == nil && len(allocs) > 0 {
+		for _, alloc := range allocs {
+			invoice, invErr := s.invoiceRepo.GetByID(ctx, tenantID, alloc.InvoiceID)
+			if invErr != nil || invoice == nil {
+				continue
+			}
+			invResult, matchErr := s.classificationSvc.MatchTransaction(ctx, tenantID,
+				invoice.InvoiceNo+" "+invoice.InvoiceType, partyName, direction)
+			if matchErr != nil || !invResult.Matched || invResult.RuleID == nil {
+				continue
+			}
+			invRule, ruleErr := s.classificationSvc.GetRuleByID(ctx, tenantID, *invResult.RuleID)
+			if ruleErr != nil || invRule == nil {
+				continue
+			}
+			if invRule.DebitAccountID != nil && invRule.CreditAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID:             uuid.New(),
+					JournalEntryID: je.ID,
+					AccountID:      *invRule.DebitAccountID,
+					Debit:          alloc.AllocatedAmount,
+					Credit:         decimal.Zero,
+					PartyType:      &partyTypeStr,
+					PartyID:        &partyIDCopy,
+				}, model.JournalEntryLine{
+					ID:             uuid.New(),
+					JournalEntryID: je.ID,
+					AccountID:      *invRule.CreditAccountID,
+					Debit:          decimal.Zero,
+					Credit:         alloc.AllocatedAmount,
+					PartyType:      &partyTypeStr,
+					PartyID:        &partyIDCopy,
+				})
+			}
+		}
+	}
+
 	if _, err = s.journalRepo.Create(ctx, tenantID, je); err != nil {
 		return nil, fmt.Errorf("create journal entry: %w", err)
 	}
@@ -370,6 +422,48 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 	}
 
 	return je, nil
+}
+
+// resolveCounterAccount determines the non-bank account for a payment voucher.
+// Priority: 1) Party default AR/AP account  2) Classification rule match  3) Hardcoded 1122/2202.
+func (s *VoucherAutoGenerateService) resolveCounterAccount(ctx context.Context, tenantID uuid.UUID, paymentType string, party *model.Party, refNo *string, partyName string, direction string) (uuid.UUID, error) {
+	if party != nil {
+		if paymentType == "receive" && party.ArAccountID != nil {
+			return *party.ArAccountID, nil
+		}
+		if paymentType == "pay" && party.ApAccountID != nil {
+			return *party.ApAccountID, nil
+		}
+	}
+
+	desc := ""
+	if refNo != nil {
+		desc = *refNo
+	}
+	result, matchErr := s.classificationSvc.MatchTransaction(ctx, tenantID, desc, partyName, direction)
+	if matchErr == nil && result.Matched && result.RuleID != nil {
+		rule, ruleErr := s.classificationSvc.GetRuleByID(ctx, tenantID, *result.RuleID)
+		if ruleErr == nil && rule != nil {
+			if paymentType == "receive" && rule.CreditAccountID != nil {
+				return *rule.CreditAccountID, nil
+			}
+			if paymentType == "pay" && rule.DebitAccountID != nil {
+				return *rule.DebitAccountID, nil
+			}
+		}
+	}
+
+	var code string
+	if paymentType == "receive" {
+		code = "1122"
+	} else {
+		code = "2202"
+	}
+	acct := s.findAccountByCode(ctx, tenantID, code)
+	if acct == nil {
+		return uuid.Nil, fmt.Errorf("fallback account (code %s) not found; no party default or classification rule matched", code)
+	}
+	return *acct, nil
 }
 
 func (s *VoucherAutoGenerateService) findAccountByCode(ctx context.Context, tenantID uuid.UUID, code string) *uuid.UUID {
