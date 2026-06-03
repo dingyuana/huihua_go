@@ -8,7 +8,12 @@ import (
 
 func Tenant(db *database.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		tenantID := c.Locals("tenant_id").(uuid.UUID)
+		tenantID, ok := c.Locals("tenant_id").(uuid.UUID)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "missing tenant context",
+			})
+		}
 
 		if err := db.SetTenant(tenantID); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

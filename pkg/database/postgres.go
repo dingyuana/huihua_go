@@ -68,10 +68,32 @@ func NewPostgres(cfg *config.Config) (*DB, error) {
 	return &DB{pool: pool}, nil
 }
 
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
+
+const tenantCtxKey contextKey = "tenant_id"
+
+// ContextWithTenant wraps a context with tenant information.
+// Repository methods should use pgxpool.Acquire + SET app.current_tenant
+// or pass tenant via this context.
+func ContextWithTenant(ctx context.Context, tenantID uuid.UUID) context.Context {
+	return context.WithValue(ctx, tenantCtxKey, tenantID)
+}
+
+// TenantFromContext extracts tenant ID from a context.
+func TenantFromContext(ctx context.Context) (uuid.UUID, bool) {
+	id, ok := ctx.Value(tenantCtxKey).(uuid.UUID)
+	return id, ok
+}
+
 func (db *DB) SetTenant(tenantID uuid.UUID) error {
-	_, err := db.pool.Exec(context.Background(),
-		fmt.Sprintf("SET app.current_tenant = '%s'", tenantID))
-	return err
+	query := fmt.Sprintf("SET app.current_tenant = '%s'", tenantID)
+	_, err := db.pool.Exec(context.Background(), query)
+	if err != nil {
+		log.Printf("[WARN] SetTenant failed for %s: %v", tenantID, err)
+		return fmt.Errorf("set tenant %s: %w", tenantID, err)
+	}
+	return nil
 }
 
 func (db *DB) GetPool() *pgxpool.Pool {

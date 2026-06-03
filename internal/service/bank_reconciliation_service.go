@@ -224,15 +224,15 @@ func (s *BankReconciliationService) GetReconciliationReport(ctx context.Context,
 	}
 
 	report := &model.ReconciliationReport{
-		ID:               record.ID,
-		BankAccountID:    bankAccountID,
-		PeriodNo:         periodNo,
-		BankBalance:      record.BankBalance,
-		BookBalance:      record.BookBalance,
-		AdjustedBalance:  record.AdjustedBalance,
-		Status:           record.Status,
-		ReconciledBy:     record.ReconciledBy,
-		ReconciledAt:     record.ReconciledAt,
+		ID:              record.ID,
+		BankAccountID:   bankAccountID,
+		PeriodNo:        periodNo,
+		BankBalance:     record.BankBalance,
+		BookBalance:     record.BookBalance,
+		AdjustedBalance: record.AdjustedBalance,
+		Status:          record.Status,
+		ReconciledBy:    record.ReconciledBy,
+		ReconciledAt:    record.ReconciledAt,
 	}
 
 	// Get unreconciled items
@@ -408,4 +408,83 @@ func (s *BankReconciliationService) SaveReconciliationResult(ctx context.Context
 	}
 
 	return nil
+}
+
+type BalanceCheckItem struct {
+	BankAccountID    uuid.UUID       `json:"bank_account_id"`
+	BankName         string          `json:"bank_name"`
+	OpeningBalance   decimal.Decimal `json:"opening_balance"`
+	TxnInflowTotal   decimal.Decimal `json:"txn_inflow_total"`
+	TxnOutflowTotal  decimal.Decimal `json:"txn_outflow_total"`
+	ExpectedBalance  decimal.Decimal `json:"expected_balance"`
+	StoredBalance    decimal.Decimal `json:"stored_balance"`
+	Difference       decimal.Decimal `json:"difference"`
+	TxnCount         int             `json:"txn_count"`
+	HasInconsistency bool            `json:"has_inconsistency"`
+}
+
+type BalanceCheckResult struct {
+	TotalAccounts     int                `json:"total_accounts"`
+	ConsistentCount   int                `json:"consistent_count"`
+	InconsistentCount int                `json:"inconsistent_count"`
+	Items             []BalanceCheckItem `json:"items"`
+}
+
+func (s *BankReconciliationService) BalanceCheck(ctx context.Context, tenantID uuid.UUID) (*BalanceCheckResult, error) {
+	accounts, err := s.bankRepo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list bank accounts: %w", err)
+	}
+
+	result := &BalanceCheckResult{TotalAccounts: len(accounts), Items: []BalanceCheckItem{}}
+
+	for _, acct := range accounts {
+		netChange, txnCount, err := s.bankTxnRepo.GetNetChangeByAccount(ctx, tenantID, acct.ID)
+		if err != nil {
+			return nil, fmt.Errorf("sum txns for %s: %w", acct.ID, err)
+		}
+
+		expected := acct.OpeningBalance.Add(netChange)
+		diff := expected.Sub(acct.CurrentBalance)
+
+		hasIssue := !diff.IsZero()
+		if hasIssue {
+			result.InconsistentCount++
+		} else {
+			result.ConsistentCount++
+		}
+
+		inflow := decimal.Zero
+		outflow := decimal.Zero
+		if !acct.OpeningBalance.IsZero() || txnCount > 0 {
+			inflow, outflow, _ = s.bankTxnRepo.GetDirectionTotalsByAccount(ctx, tenantID, acct.ID)
+		}
+
+		bankName := acct.BankName
+		if acct.BankAccountType != nil && *acct.BankAccountType == "cash" {
+			bankName = "[现金] " + bankName
+		}
+
+		result.Items = append(result.Items, BalanceCheckItem{
+			BankAccountID:    acct.ID,
+			BankName:         bankName,
+			OpeningBalance:   acct.OpeningBalance,
+			TxnInflowTotal:   inflow,
+			TxnOutflowTotal:  outflow,
+			ExpectedBalance:  expected,
+			StoredBalance:    acct.CurrentBalance,
+			Difference:       diff,
+			TxnCount:         txnCount,
+			HasInconsistency: hasIssue,
+		})
+	}
+	return result, nil
+}
+
+func (s *BankReconciliationService) GetBankAccountForReport(ctx context.Context, tenantID, bankAccountID uuid.UUID) (string, error) {
+	acct, err := s.bankRepo.GetByID(ctx, tenantID, bankAccountID)
+	if err != nil {
+		return "", err
+	}
+	return acct.BankName, nil
 }

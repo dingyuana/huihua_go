@@ -9,24 +9,25 @@ import (
 
 // PaymentEntry represents the payment_entries table.
 type PaymentEntry struct {
-	ID              uuid.UUID       `json:"id" db:"id"`
-	PaymentNo       string          `json:"payment_no" db:"payment_no"`
-	PaymentType     string          `json:"payment_type" db:"payment_type"`
-	PartyType       string          `json:"party_type" db:"party_type"`
-	PartyID         uuid.UUID       `json:"party_id" db:"party_id"`
-	PaidFromID      *uuid.UUID      `json:"paid_from_id,omitempty" db:"paid_from_id"`
-	PaidToID        *uuid.UUID      `json:"paid_to_id,omitempty" db:"paid_to_id"`
-	PaidAmount      decimal.Decimal `json:"paid_amount" db:"paid_amount"`
-	ReceivedAmount  *decimal.Decimal `json:"received_amount,omitempty" db:"received_amount"`
-	ReferenceNo     *string         `json:"reference_no,omitempty" db:"reference_no"`
-	ReferenceDate   *time.Time      `json:"reference_date,omitempty" db:"reference_date"`
-	PostingDate     time.Time       `json:"posting_date" db:"posting_date"`
-	CompanyID       uuid.UUID       `json:"company_id" db:"company_id"`
-	TenantID        uuid.UUID       `json:"tenant_id" db:"tenant_id"`
-	BankAccountID   *uuid.UUID      `json:"bank_account_id,omitempty" db:"bank_account_id"`
-	DocStatus       int16           `json:"docstatus" db:"docstatus"`
-	CreatedBy       *uuid.UUID      `json:"created_by,omitempty" db:"created_by"`
-	CreatedAt       time.Time       `json:"created_at" db:"created_at"`
+	ID               uuid.UUID        `json:"id" db:"id"`
+	PaymentNo        string           `json:"payment_no" db:"payment_no"`
+	PaymentType      string           `json:"payment_type" db:"payment_type"`
+	PartyType        string           `json:"party_type" db:"party_type"`
+	PartyID          uuid.UUID        `json:"party_id" db:"party_id"`
+	CounterpartyName *string          `json:"counterparty_name,omitempty" db:"counterparty_name"`
+	PaidFromID       *uuid.UUID       `json:"paid_from_id,omitempty" db:"paid_from_id"`
+	PaidToID         *uuid.UUID       `json:"paid_to_id,omitempty" db:"paid_to_id"`
+	PaidAmount       decimal.Decimal  `json:"paid_amount" db:"paid_amount"`
+	ReceivedAmount   *decimal.Decimal `json:"received_amount,omitempty" db:"received_amount"`
+	ReferenceNo      *string          `json:"reference_no,omitempty" db:"reference_no"`
+	ReferenceDate    *time.Time       `json:"reference_date,omitempty" db:"reference_date"`
+	PostingDate      time.Time        `json:"posting_date" db:"posting_date"`
+	CompanyID        uuid.UUID        `json:"company_id" db:"company_id"`
+	TenantID         uuid.UUID        `json:"tenant_id" db:"tenant_id"`
+	BankAccountID    *uuid.UUID       `json:"bank_account_id,omitempty" db:"bank_account_id"`
+	DocStatus        int16            `json:"docstatus" db:"docstatus"`
+	CreatedBy        *uuid.UUID       `json:"created_by,omitempty" db:"created_by"`
+	CreatedAt        time.Time        `json:"created_at" db:"created_at"`
 }
 
 // PaymentAllocation represents the payment_allocations table (linking payments to invoices).

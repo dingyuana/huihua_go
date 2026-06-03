@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"huihua/finance/internal/config"
@@ -30,13 +31,19 @@ func main() {
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			log.Printf("[ERROR] %v", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": err.Error(),
+				"error": "internal server error",
 			})
 		},
 	})
 
 	// Global middleware
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "http://localhost:3002,http://localhost:3003,http://localhost:5173",
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
+	}))
 	app.Use(logger.New())
 	app.Use(recover.New())
 
@@ -49,6 +56,12 @@ func main() {
 func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg *config.Config) {
 	// Health check (public)
 	app.Get("/health", handler.HealthCheck)
+
+	// Auth routes (public)
+	userRepo := repository.NewUserRepository(db.GetPool())
+	authSvc := service.NewAuthService(userRepo, cfg)
+	authHandler := handler.NewAuthHandler(authSvc)
+	app.Post("/api/v1/auth/login", authHandler.Login)
 
 	// Protected routes
 	api := app.Group("/api/v1", middleware.Auth(cfg))
@@ -83,6 +96,10 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	bankHandler := handler.NewBankHandler(bankSvc)
 	api.Get("/bank-accounts", bankHandler.List)
 	api.Post("/bank-accounts", bankHandler.Create)
+	api.Put("/bank-accounts/:id", bankHandler.Update)
+	api.Delete("/bank-accounts/:id", bankHandler.Delete)
+	api.Post("/bank-accounts/:id/adjust-balance", bankHandler.AdjustBalance)
+	api.Get("/bank-accounts/:id/balance-adjustments", bankHandler.ListBalanceAdjustments)
 
 	// Party routes
 	partyRepo := repository.NewPartyRepository(db.GetPool())
@@ -98,7 +115,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Account setup routes
 	companyRepo := repository.NewCompanyRepository(db.GetPool())
 	periodRepo := repository.NewPeriodRepository(db.GetPool())
-	setupSvc := service.NewSetupService(companyRepo, periodRepo, accountSvc)
+	setupSvc := service.NewSetupService(companyRepo, periodRepo, accountSvc, db.GetPool())
 	setupHandler := handler.NewSetupHandler(setupSvc)
 	api.Get("/account-setup/status", setupHandler.GetStatus)
 	api.Post("/account-setup/wizard", setupHandler.CreateCompany)
@@ -122,13 +139,16 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/invoices", invoiceHandler.List)
 	api.Post("/invoices", invoiceHandler.Create)
 	api.Post("/invoices/import", invoiceHandler.ImportFromExcel)
+	api.Post("/invoices/import-excel", invoiceHandler.ImportExcelFile)
 	api.Post("/invoices/parse", invoiceHandler.Parse)
 	api.Get("/invoices/:id", invoiceHandler.GetByID)
+	api.Put("/invoices/:id", invoiceHandler.Update)
+	api.Delete("/invoices/:id", invoiceHandler.Delete)
 	api.Put("/invoices/:id/status", invoiceHandler.UpdateStatus)
 
 	// Classification rule routes
 	classificationRuleRepo := repository.NewClassificationRuleRepository(db.GetPool())
-	classificationRuleSvc := service.NewClassificationRuleService(classificationRuleRepo, accountRepo)
+	classificationRuleSvc := service.NewClassificationRuleService(classificationRuleRepo)
 	classificationRuleHandler := handler.NewClassificationRuleHandler(classificationRuleSvc)
 	api.Get("/classification-rules", classificationRuleHandler.List)
 	api.Post("/classification-rules", classificationRuleHandler.Create)
@@ -136,18 +156,30 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Delete("/classification-rules/:id", classificationRuleHandler.Delete)
 	api.Post("/classification-rules/reorder", classificationRuleHandler.Reorder)
 	api.Post("/classification-rules/match", classificationRuleHandler.Match)
+	api.Post("/classification-rules/seed", classificationRuleHandler.Seed)
 
 	// Bank transaction routes
 	bankTransactionRepo := repository.NewBankTransactionRepository(db.GetPool())
-	bankTxnSvc := service.NewBankTransactionService(bankTransactionRepo, classificationRuleSvc, bankRepo)
+	bankTxnSvc := service.NewBankTransactionService(bankTransactionRepo, classificationRuleSvc, bankRepo, partySvc)
 	bankTxnHandler := handler.NewBankTransactionHandler(bankTxnSvc)
 	api.Get("/bank-transactions", bankTxnHandler.List)
+	api.Post("/bank-transactions/preview", bankTxnHandler.PreviewExcel)
 	api.Post("/bank-transactions/import", bankTxnHandler.Import)
+	api.Post("/bank-transactions/classify-all", bankTxnHandler.ClassifyAll)
 	api.Post("/bank-transactions/:id/classify", bankTxnHandler.Classify)
 	api.Post("/bank-transactions/:id/mark-matched", bankTxnHandler.MarkMatched)
 	api.Get("/bank-transactions/unmatched", bankTxnHandler.GetUnmatched)
 	api.Get("/bank-transactions/:id", bankTxnHandler.GetByID)
 	api.Delete("/bank-transactions/:id", bankTxnHandler.Delete)
+
+	// Bank transaction review workflow routes (TASK-BANK-01.4)
+	bankTxnReviewSvc := service.NewBankTxnReviewService(db.GetPool(), bankTransactionRepo, nil, nil)
+	bankTxnReviewHandler := handler.NewBankTxnReviewHandler(bankTxnReviewSvc, bankTransactionRepo)
+	api.Get("/bank-transactions/review-list", bankTxnReviewHandler.ReviewList)
+	api.Get("/bank-transactions/review-stats", bankTxnReviewHandler.ReviewStats)
+	api.Post("/bank-transactions/preview-draft/:id", bankTxnReviewHandler.PreviewDraft)
+	api.Post("/bank-transactions/submit-review", bankTxnReviewHandler.SubmitReview)
+	api.Post("/bank-transactions/reject-manual", bankTxnReviewHandler.RejectManual)
 
 	// Voucher template routes
 	voucherTemplateRepo := repository.NewVoucherTemplateRepository(db.GetPool())
@@ -174,6 +206,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Delete("/vouchers/:id", voucherHandler.Delete)
 	api.Post("/vouchers/:id/submit", voucherHandler.Submit)
 	api.Post("/vouchers/:id/approve", voucherHandler.Approve)
+	api.Post("/vouchers/batch-submit", voucherHandler.BatchSubmit)
+	api.Post("/vouchers/batch-approve", voucherHandler.BatchApprove)
 	api.Post("/vouchers/:id/reject", voucherHandler.Reject)
 	api.Post("/vouchers/:id/cancel", voucherHandler.Cancel)
 	api.Post("/vouchers/:id/reverse", voucherHandler.Reverse)
@@ -192,11 +226,15 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Accounting period routes
 	periodRepo = repository.NewPeriodRepository(db.GetPool())
-	periodSvc := service.NewPeriodService(periodRepo, journalRepo, glEntryRepo, accountRepo)
+	periodSvc := service.NewPeriodService(periodRepo, journalRepo, glEntryRepo, accountRepo, depreciationRepo, bankTransactionRepo, invoiceRepo)
 	periodHandler := handler.NewPeriodHandler(periodSvc)
 	api.Get("/periods", periodHandler.List)
 	api.Get("/periods/current", periodHandler.GetCurrent)
+	api.Get("/periods/voucher-gaps", periodHandler.VoucherGaps)
+	api.Get("/periods/pre-close-check", periodHandler.PreCloseCheck)
+	api.Get("/periods/close-check-summary", periodHandler.CloseCheckSummary)
 	api.Post("/periods/:period_no/close", periodHandler.Close)
+	api.Post("/periods/:period_no/unclose", periodHandler.Unclose)
 
 	// Reconciliation (核销) routes
 	reconRepo := repository.NewReconciliationRepository(db.GetPool())
@@ -207,12 +245,17 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/reconciliation/pairs/:id/confirm", reconciliationHandler.ConfirmPair)
 	api.Post("/reconciliation/pairs/:id/unconfirm", reconciliationHandler.UnconfirmPair)
 	api.Get("/reconciliation/unmatched", reconciliationHandler.GetUnmatched)
+	api.Post("/reconciliation/manual", reconciliationHandler.ManualMatch)
+
+	// Bank reconciliation (银企对账) routes
+	bankReconciliationSvc := service.NewBankReconciliationService(bankTransactionRepo, journalRepo, bankRepo, glEntryRepo)
+	reconHandler := handler.NewBankReconciliationHandler(bankReconciliationSvc)
 
 	// Bank reconciliation routes
-	reconSvc := service.NewBankReconciliationService(bankTransactionRepo, journalRepo, bankRepo, glEntryRepo)
-	reconHandler := handler.NewBankReconciliationHandler(reconSvc)
 	api.Post("/bank-reconciliation/reconcile", reconHandler.Reconcile)
 	api.Get("/bank-reconciliation/report", reconHandler.GetReport)
+	api.Get("/bank-reconciliation/balance-check", reconHandler.BalanceCheck)
+	api.Get("/bank-reconciliation/diff-report", reconHandler.GetDiffReport)
 	api.Post("/bank-reconciliation/mark-done", reconHandler.MarkDone)
 	api.Get("/bank-reconciliation/status", reconHandler.GetStatus)
 
@@ -222,6 +265,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/reports/trial-balance", reportHandler.GetTrialBalance)
 	api.Get("/reports/income-statement", reportHandler.GetIncomeStatement)
 	api.Get("/reports/balance-sheet", reportHandler.GetBalanceSheet)
+	api.Get("/reports/cash-flow", reportHandler.GetCashFlowStatement)
 
 	// Approval workflow routes
 	approvalRepo := repository.NewApprovalRepository(db.GetPool())
@@ -238,13 +282,35 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Put("/approval-flows/:id", approvalHandler.UpdateApprovalFlow)
 	api.Delete("/approval-flows/:id", approvalHandler.DeleteApprovalFlow)
 
-	// Voucher auto-generate routes (from bank transactions)
+	// Payment entry repo — used by auto-gen service and payment handler
+	paymentRepo := repository.NewPaymentEntryRepository(db.GetPool())
+
+	// Voucher auto-generate routes (from bank transactions & payment entries)
 	// Placed after approvalSvc is initialized so it can be injected
 	autoGenSvc := service.NewVoucherAutoGenerateService(
 		journalRepo, glEntryRepo, bankTransactionRepo,
-		invoiceRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
+		bankRepo, invoiceRepo, paymentRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
 	)
+	// Wire auto-gen service into bank transaction handler for post-import voucher auto-generation
+	bankTxnHandler.InjectAutoGenSvc(autoGenSvc)
+
 	autoGenHandler := handler.NewVoucherAutoGenerateHandler(autoGenSvc)
+	api.Post("/bank-transactions/batch-confirm", bankTxnHandler.BatchConfirm)
 	api.Post("/bank-transactions/:id/generate-voucher", autoGenHandler.GenerateFromBankTxn)
 	api.Post("/bank-transactions/batch-generate", autoGenHandler.BatchGenerate)
+	api.Post("/invoices/:id/generate-voucher", autoGenHandler.GenerateFromInvoice)
+	api.Post("/payment-entries/:id/generate-voucher", autoGenHandler.GenerateFromPaymentEntry)
+
+	// Payment entry routes (收款/付款单)
+	paymentSvc := service.NewPaymentEntryService(paymentRepo, partyRepo, bankRepo, accountRepo, bankTransactionRepo)
+	paymentHandler := handler.NewPaymentEntryHandler(paymentSvc, bankTransactionRepo)
+	api.Get("/payment-entries", paymentHandler.List)
+	api.Post("/payment-entries", paymentHandler.CreateFromBankTransaction)
+	api.Get("/payment-entries/:id", paymentHandler.GetByID)
+	api.Put("/payment-entries/:id", paymentHandler.Update)
+	api.Delete("/payment-entries/:id", paymentHandler.Delete)
+
+	// Dashboard stats aggregation
+	dashboardHandler := handler.NewDashboardHandler(journalRepo, glEntryRepo, bankTransactionRepo, periodRepo)
+	api.Get("/dashboard/stats", dashboardHandler.GetStats)
 }

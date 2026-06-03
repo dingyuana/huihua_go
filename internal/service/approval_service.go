@@ -128,7 +128,7 @@ func (s *ApprovalService) SubmitForApproval(ctx context.Context, tenantID uuid.U
 			task := &model.ApprovalTask{
 				ID:             uuid.New(),
 				FlowID:         flow.ID,
-				JournalEntryID:  journalEntryID,
+				JournalEntryID: journalEntryID,
 				ApproverID:     approver.ApproverID,
 				Level:          level,
 				Status:         model.ApprovalStatusPending,

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,19 +22,24 @@ type BankTransactionService struct {
 	repo              *repository.BankTransactionRepository
 	classificationSvc *ClassificationRuleService
 	bankRepo          *repository.BankRepository
+	partySvc          *PartyService
 }
 
 // NewBankTransactionService creates a new BankTransactionService.
-func NewBankTransactionService(repo *repository.BankTransactionRepository, classificationSvc *ClassificationRuleService, bankRepo *repository.BankRepository) *BankTransactionService {
+func NewBankTransactionService(repo *repository.BankTransactionRepository, classificationSvc *ClassificationRuleService, bankRepo *repository.BankRepository, partySvc *PartyService) *BankTransactionService {
 	return &BankTransactionService{
 		repo:              repo,
 		classificationSvc: classificationSvc,
 		bankRepo:          bankRepo,
+		partySvc:          partySvc,
 	}
 }
 
 // ImportFromExcel parses Excel data and imports bank transactions with auto-classification.
-func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, bankAccountID uuid.UUID, data []byte) (*model.ImportResult, error) {
+// When autoCreateParty is true and a row's counterparty is missing, the system extracts a
+// candidate name from the description, creates (or reuses) a parties record, and uses the
+// resulting name as the bank transaction's counterparty_name.
+func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, bankAccountID uuid.UUID, data []byte, autoCreateParty bool) (*model.ImportResult, error) {
 	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("open excel: %w", err)
@@ -57,48 +63,142 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 		return nil, fmt.Errorf("get bank account: %w", err)
 	}
 
-	// Parse header row to find column indices
-	headerMap := make(map[string]int)
-	if len(rows) > 0 {
-		for i, col := range rows[0] {
-			headerMap[strings.ToLower(strings.TrimSpace(col))] = i
+	// Find the real header row (skip empty rows and title rows)
+	headerRowIndex := 0
+	for i, row := range rows {
+		nonEmpty := 0
+		for _, cell := range row {
+			if strings.TrimSpace(cell) != "" {
+				nonEmpty++
+			}
+		}
+		if nonEmpty >= 5 {
+			headerRowIndex = i
+			break
 		}
 	}
 
-	// Required columns: date, description
-	dateIdx, ok := headerMap["date"]
-	if !ok {
-		dateIdx, ok = headerMap["transaction date"]
-	}
-	descIdx, ok := headerMap["description"]
-	if !ok {
-		descIdx, ok = headerMap["摘要"]
+	// Parse header row to find column indices (support English and Chinese names)
+	headerMap := make(map[string]int)
+	headerCols := make([]string, 0)
+	if len(rows) > headerRowIndex {
+		for i, col := range rows[headerRowIndex] {
+			headerMap[strings.ToLower(strings.TrimSpace(col))] = i
+			headerCols = append(headerCols, col)
+		}
 	}
 
+	// Adjust total rows: count only rows with at least 1 non-blank cell.
+	result.TotalRows = 0
+	for _, row := range rows[headerRowIndex+1:] {
+		hasContent := false
+		for _, cell := range row {
+			if strings.TrimSpace(cell) != "" {
+				hasContent = true
+				break
+			}
+		}
+		if hasContent {
+			result.TotalRows++
+		}
+	}
+
+	// Helper to find a column by trying multiple possible names
+	// Tries exact match first, then substring match (for bank columns like "交易日期[Transaction Date]")
+	findCol := func(names ...string) (int, bool) {
+		// Phase 1: exact match (fast path)
+		for _, name := range names {
+			key := strings.ToLower(strings.TrimSpace(name))
+			if idx, ok := headerMap[key]; ok {
+				return idx, true
+			}
+		}
+		// Phase 2: substring match — does actual column name contain any candidate?
+		for ci, col := range headerCols {
+			colLower := strings.ToLower(col)
+			for _, name := range names {
+				if strings.Contains(colLower, strings.ToLower(name)) {
+					return ci, true
+				}
+			}
+		}
+		return 0, false
+	}
+
+	// Required columns: date, description
+	dateIdx, dateFound := findCol("date", "transaction date", "交易日期", "记账日期", "发生日期", "日期")
+	descIdx, descFound := findCol("description", "摘要", "交易描述", "备注", "用途", "附言")
+
+	if !dateFound {
+		return nil, fmt.Errorf("找不到日期列，支持的列名：日期/交易日期/记账日期/发生日期/date")
+	}
+	if !descFound {
+		return nil, fmt.Errorf("找不到摘要列，支持的列名：摘要/备注/用途/附言/description")
+	}
+
+	// Also find fallback description columns (交易附言/备注/用途)
+	remarkIdx, remarkFound := findCol("交易附言", "remark", "备注", "remarks")
+	purposeIdx, purposeFound := findCol("用途", "purpose")
+
 	var txns []model.BankTransaction
-	for rowIdx, row := range rows[1:] { // skip header
-		rowNum := rowIdx + 2 // 1-indexed, header is row 1
+	for rowIdx, row := range rows[headerRowIndex+1:] {
+		rowNum := rowIdx + headerRowIndex + 2 // 1-indexed, header row found above
 
 		if len(row) == 0 {
 			continue
 		}
 
+		// Skip rows where ALL cells are empty/whitespace
+		allEmpty := true
+		for _, cell := range row {
+			if strings.TrimSpace(cell) != "" {
+				allEmpty = false
+				break
+			}
+		}
+		if allEmpty {
+			continue
+		}
+
 		// Parse date
 		var txnDate time.Time
+		dateStr := ""
 		if dateIdx < len(row) {
-			dateStr := strings.TrimSpace(row[dateIdx])
+			dateStr = strings.TrimSpace(row[dateIdx])
 			txnDate, err = parseDate(dateStr)
 			if err != nil {
 				result.FailedCount++
 				result.FailedRows = append(result.FailedRows, rowNum)
+				result.FailedReasons = append(result.FailedReasons, model.FailedRowDetail{
+					Row: rowNum, Date: dateStr, Reason: "日期格式无法解析: " + dateStr,
+				})
 				continue
 			}
+		} else {
+			result.FailedCount++
+			result.FailedRows = append(result.FailedRows, rowNum)
+			result.FailedReasons = append(result.FailedReasons, model.FailedRowDetail{
+				Row: rowNum, Reason: "该行没有日期列数据",
+			})
+			continue
 		}
 
-		// Parse description
+		// Parse description — try main column first, then fallback to 交易附言/备注/用途
 		var description *string
 		if descIdx < len(row) {
 			desc := strings.TrimSpace(row[descIdx])
+			if desc != "" {
+				description = &desc
+			}
+		}
+		if description == nil && remarkFound && remarkIdx < len(row) {
+			desc := strings.TrimSpace(row[remarkIdx])
+			if desc != "" {
+				description = &desc
+			}
+		}
+		if description == nil && purposeFound && purposeIdx < len(row) {
+			desc := strings.TrimSpace(row[purposeIdx])
 			if desc != "" {
 				description = &desc
 			}
@@ -107,14 +207,17 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 		if description == nil {
 			result.FailedCount++
 			result.FailedRows = append(result.FailedRows, rowNum)
+			result.FailedReasons = append(result.FailedReasons, model.FailedRowDetail{
+				Row: rowNum, Date: dateStr, Reason: "摘要为空，需要手工补录",
+			})
 			continue
 		}
 
 		// Parse income (debit) and expense (credit)
 		var debit, credit decimal.Decimal
-		incomeIdx := headerMap["income"]
-		expenseIdx := headerMap["expense"]
-		amountIdx, _ := headerMap["amount"]
+		incomeIdx, _ := findCol("income", "收入金额", "贷方金额", "收入", "credit")
+		expenseIdx, _ := findCol("expense", "支出金额", "借方金额", "支出", "debit")
+		amountIdx, _ := findCol("amount", "金额", "发生金额", "交易金额")
 
 		if incomeIdx < len(row) && row[incomeIdx] != "" {
 			if v, err := strconv.ParseFloat(strings.ReplaceAll(row[incomeIdx], ",", ""), 64); err == nil && v > 0 {
@@ -136,35 +239,93 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 			}
 		}
 
+		if debit.IsZero() && credit.IsZero() {
+			result.FailedCount++
+			result.FailedRows = append(result.FailedRows, rowNum)
+			result.FailedReasons = append(result.FailedReasons, model.FailedRowDetail{
+				Row: rowNum, Date: dateStr, Reason: "金额为空或解析为 0，跳过空白行",
+			})
+			continue
+		}
+
 		// Determine direction
 		var direction *string
 		if debit.GreaterThan(decimal.Zero) {
-			directionStr := "debit"
+			directionStr := "in"
 			direction = &directionStr
 		} else if credit.GreaterThan(decimal.Zero) {
-			directionStr := "credit"
+			directionStr := "out"
 			direction = &directionStr
+		} else {
+			dirIdx, _ := findCol("direction", "收支方向", "方向", "借贷方向")
+			if dirIdx < len(row) {
+				dirVal := strings.ToLower(strings.TrimSpace(row[dirIdx]))
+				if dirVal == "收入" || dirVal == "in" || dirVal == "贷方" || dirVal == "credit" || dirVal == "收" {
+					directionStr := "in"
+					direction = &directionStr
+				} else if dirVal == "支出" || dirVal == "out" || dirVal == "借方" || dirVal == "debit" || dirVal == "支" {
+					directionStr := "out"
+					direction = &directionStr
+				}
+			}
 		}
 
-		// Parse counterparty
-		var counterparty *string
-		cpIdx, ok := headerMap["counterparty"]
-		if !ok {
-			cpIdx, _ = headerMap["对方账户"]
+		cpPrimary := "付款人名称"
+		if direction != nil && *direction == "out" {
+			cpPrimary = "收款人名称"
 		}
-		if cpIdx < len(row) {
-			cp := strings.TrimSpace(row[cpIdx])
-			if cp != "" {
+		cpSecondary := "收款人名称"
+		if cpPrimary == "收款人名称" {
+			cpSecondary = "付款人名称"
+		}
+		var counterparty *string
+		cpCascades := [][]string{
+			{cpPrimary},
+			{cpSecondary},
+			{"对方户名", "对方名称", "对方账户", "交易对方", "counterparty"},
+			{"付款人", "收款人"},
+		}
+		for _, names := range cpCascades {
+			if counterparty != nil {
+				break
+			}
+			idx, ok := findCol(names...)
+			if !ok || idx >= len(row) {
+				continue
+			}
+			cp := strings.TrimSpace(row[idx])
+			if cp != "" && !looksLikeBankCode(cp) {
 				counterparty = &cp
+			}
+		}
+
+		if counterparty == nil && autoCreateParty && s.partySvc != nil && description != nil {
+			if candidate := extractCounterpartyName(*description); candidate != "" {
+				partyType := "both"
+				if direction != nil {
+					if *direction == "in" {
+						partyType = "customer"
+					} else if *direction == "out" {
+						partyType = "supplier"
+					}
+				}
+				name, created, err := s.partySvc.EnsureParty(ctx, tenantID, &model.Party{
+					PartyType: partyType,
+					Name:      candidate,
+					IsActive:  true,
+				})
+				if err == nil {
+					counterparty = &name
+					if created {
+						result.AutoCreatedParties++
+					}
+				}
 			}
 		}
 
 		// Parse reference no (optional)
 		var referenceNo *string
-		refIdx, ok := headerMap["voucher no"]
-		if !ok {
-			refIdx, _ = headerMap["凭证号"]
-		}
+		refIdx, _ := findCol("voucher no", "reference", "流水号", "凭证号", "交易流水号", "交易编号", "ref")
 		if refIdx < len(row) {
 			ref := strings.TrimSpace(row[refIdx])
 			if ref != "" {
@@ -173,18 +334,18 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 		}
 
 		txn := model.BankTransaction{
-			ID:              uuid.New(),
-			TenantID:        tenantID,
-			BankAccountID:   bankAccountID,
-			TxnDate:         txnDate,
-			Description:     description,
-			Debit:           debit,
-			Credit:          credit,
-			Direction:       direction,
-			ReferenceNo:     referenceNo,
+			ID:               uuid.New(),
+			TenantID:         tenantID,
+			BankAccountID:    bankAccountID,
+			TxnDate:          txnDate,
+			Description:      description,
+			Debit:            debit,
+			Credit:           credit,
+			Direction:        direction,
+			ReferenceNo:      referenceNo,
 			CounterpartyName: counterparty,
-			Matched:         false,
-			CompanyID:       bankAccount.CompanyID,
+			Matched:          false,
+			CompanyID:        bankAccount.CompanyID,
 		}
 
 		// Auto-classify using classification rules
@@ -193,28 +354,33 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 			descStr = *description
 		}
 
-		var amount decimal.Decimal
+		counterpartyStr := ""
+		if counterparty != nil {
+			counterpartyStr = *counterparty
+		}
+
+		txnDirection := ""
 		if debit.GreaterThan(decimal.Zero) {
-			amount = debit
+			txnDirection = "in"
 		} else {
-			amount = credit
+			txnDirection = "out"
 		}
 
-		dirStr := "credit"
-		if debit.GreaterThan(decimal.Zero) {
-			dirStr = "debit"
-		}
-
-		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, amount, dirStr)
+		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, counterpartyStr, txnDirection)
 		if err == nil && matchResult != nil && matchResult.Matched && matchResult.RuleID != nil {
-			txn.Matched = true
-			// Store match info in RawData
+			if matchResult.Classification != nil {
+				txn.Classification = matchResult.Classification
+			}
 			rawData, _ := json.Marshal(map[string]interface{}{
-				"rule_id":   matchResult.RuleID,
-				"rule_name": matchResult.RuleName,
-				"account_id": matchResult.AccountID,
+				"rule_id":        matchResult.RuleID,
+				"rule_name":      matchResult.RuleName,
+				"classification": matchResult.Classification,
 			})
 			txn.RawData = rawData
+		} else {
+			// Smart fallback when no rule matches
+			cls := fallbackClassify(descStr, counterpartyStr, txnDirection, debit, credit)
+			txn.Classification = &cls
 		}
 
 		txns = append(txns, txn)
@@ -227,6 +393,7 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 		if err != nil {
 			return nil, fmt.Errorf("import batch: %w", err)
 		}
+		result.ImportedTxns = txns
 	}
 
 	return result, nil
@@ -244,29 +411,43 @@ func (s *BankTransactionService) ClassifyTransaction(ctx context.Context, tenant
 		descStr = *txn.Description
 	}
 
-	var amount decimal.Decimal
+	counterpartyStr := ""
+	if txn.CounterpartyName != nil {
+		counterpartyStr = *txn.CounterpartyName
+	}
+
+	txnDirection := ""
 	if txn.Debit.GreaterThan(decimal.Zero) {
-		amount = txn.Debit
+		txnDirection = "in"
 	} else {
-		amount = txn.Credit
+		txnDirection = "out"
 	}
 
-	dirStr := "credit"
-	if txn.Debit.GreaterThan(decimal.Zero) {
-		dirStr = "debit"
-	}
-
-	matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, amount, dirStr)
+	matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, counterpartyStr, txnDirection)
 	if err != nil {
 		return nil, fmt.Errorf("match transaction: %w", err)
 	}
 
-	// Update transaction with match result
+	// Determine classification
+	classification := "pending"
+	if matchResult.Matched && matchResult.Classification != nil {
+		classification = *matchResult.Classification
+	} else {
+		classification = fallbackClassify(descStr, counterpartyStr, txnDirection, txn.Debit, txn.Credit)
+	}
+
+	// Update transaction with match result and classification
 	if matchResult.Matched && matchResult.RuleID != nil {
 		err = s.repo.UpdateMatchedInfo(ctx, tenantID, txnID, *matchResult.RuleID)
 		if err != nil {
 			return nil, fmt.Errorf("update matched info: %w", err)
 		}
+	}
+
+	// Update classification in DB
+	err = s.repo.UpdateClassification(ctx, tenantID, txnID, classification)
+	if err != nil {
+		return nil, fmt.Errorf("update classification: %w", err)
 	}
 
 	return matchResult, nil
@@ -286,29 +467,35 @@ func (s *BankTransactionService) ClassifyAllPending(ctx context.Context, tenantI
 			descStr = *txn.Description
 		}
 
-		var amount decimal.Decimal
+		counterpartyStr := ""
+		if txn.CounterpartyName != nil {
+			counterpartyStr = *txn.CounterpartyName
+		}
+
+		txnDirection := ""
 		if txn.Debit.GreaterThan(decimal.Zero) {
-			amount = txn.Debit
+			txnDirection = "in"
 		} else {
-			amount = txn.Credit
+			txnDirection = "out"
 		}
 
-		dirStr := "credit"
-		if txn.Debit.GreaterThan(decimal.Zero) {
-			dirStr = "debit"
+		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, counterpartyStr, txnDirection)
+
+		// Determine classification
+		classification := "pending"
+		if err == nil && matchResult != nil && matchResult.Matched && matchResult.Classification != nil {
+			classification = *matchResult.Classification
+		} else {
+			classification = fallbackClassify(descStr, counterpartyStr, txnDirection, txn.Debit, txn.Credit)
 		}
 
-		matchResult, err := s.classificationSvc.MatchTransaction(ctx, tenantID, descStr, amount, dirStr)
-		if err != nil || matchResult == nil || !matchResult.Matched {
-			continue
-		}
+		// Update classification in DB
+		_ = s.repo.UpdateClassification(ctx, tenantID, txn.ID, classification)
 
-		if matchResult.RuleID != nil {
+		if matchResult != nil && matchResult.Matched && matchResult.RuleID != nil {
 			err = s.repo.UpdateMatchedInfo(ctx, tenantID, txn.ID, *matchResult.RuleID)
-			if err == nil {
-				classifiedCount++
-			}
 		}
+		classifiedCount++
 	}
 
 	return classifiedCount, nil
@@ -326,7 +513,12 @@ func (s *BankTransactionService) GetTransaction(ctx context.Context, tenantID, i
 
 // DeleteTransaction deletes a bank transaction.
 func (s *BankTransactionService) DeleteTransaction(ctx context.Context, tenantID, id uuid.UUID) error {
-	return s.repo.UpdateStatus(ctx, tenantID, id, false)
+	return s.repo.UpdateMatched(ctx, tenantID, id, false)
+}
+
+// MarkAsConfirmed marks a single transaction as confirmed (人工确认).
+func (s *BankTransactionService) MarkAsConfirmed(ctx context.Context, tenantID, id uuid.UUID) error {
+	return s.repo.MarkAsConfirmed(ctx, tenantID, id)
 }
 
 // MarkAsMatched marks transactions as matched.
@@ -347,6 +539,7 @@ func (s *BankTransactionService) GetUnmatched(ctx context.Context, tenantID, ban
 // parseDate tries to parse a date string in various formats.
 func parseDate(s string) (time.Time, error) {
 	formats := []string{
+		"20060102",
 		"2006-01-02",
 		"2006/01/02",
 		"01/02/2006",
@@ -364,4 +557,103 @@ func parseDate(s string) (time.Time, error) {
 	}
 
 	return time.Time{}, fmt.Errorf("cannot parse date: %s", s)
+}
+
+// fallbackClassify determines a business classification using heuristics
+// when no classification rule matches. It uses direction, description keywords,
+// counterparty patterns, and amount thresholds.
+func fallbackClassify(description, counterparty, direction string, debit, credit decimal.Decimal) string {
+	desc := strings.ToLower(description)
+	cp := strings.ToLower(counterparty)
+
+	// Fee-related keywords → bank_fee (银行费用)
+	feeKeywords := []string{"手续费", "服务费", "账户管理费", "年费", "短信费", "工本费", "汇费", "电报费", "网银费"}
+	for _, kw := range feeKeywords {
+		if strings.Contains(desc, kw) {
+			return "bank_fee"
+		}
+	}
+
+	// Interest-related keywords → interest_income (利息收入)
+	interestKeywords := []string{"利息", "结息", "派息"}
+	for _, kw := range interestKeywords {
+		if strings.Contains(desc, kw) {
+			return "interest_income"
+		}
+	}
+
+	// Insurance-related keywords → insurance_fee (保险费用)
+	insuranceKeywords := []string{"保险", "保费", "投保", "财产险", "责任险", "雇主责任险", "意外险"}
+	for _, kw := range insuranceKeywords {
+		if strings.Contains(desc, kw) || strings.Contains(cp, kw) {
+			return "insurance_fee"
+		}
+	}
+
+	// Tax payment keywords → tax_payment (税务缴费)
+	taxKeywords := []string{"税款", "税金", "缴税", "扣税", "增值税", "所得税", "附加税", "社保", "公积金", "实时缴税", "国税", "地税", "税务局", "国家金库", "国库", "印花税", "城建税", "教育费附加"}
+	for _, kw := range taxKeywords {
+		if strings.Contains(desc, kw) || strings.Contains(cp, kw) {
+			return "tax_payment"
+		}
+	}
+
+	// Transfer between own accounts → internal_transfer
+	transferKeywords := []string{"转账", "划转", "调拨", "转存", "转入", "转出"}
+	for _, kw := range transferKeywords {
+		if strings.Contains(desc, kw) {
+			return "internal_transfer"
+		}
+	}
+
+	// Small-amount outgoing → likely bank_fee (e.g. < 50 CNY)
+	amount := decimal.Zero
+	if direction == "out" {
+		amount = credit
+	} else {
+		amount = debit
+	}
+	threshold := decimal.NewFromFloat(50)
+	if direction == "out" && amount.GreaterThan(decimal.Zero) && amount.LessThanOrEqual(threshold) {
+		return "bank_fee"
+	}
+
+	// Direction-based default
+	if direction == "in" {
+		return "business_receipt"
+	}
+	return "business_payment"
+}
+
+var (
+	counterpartyTaxBureauRe = regexp.MustCompile(`(?:国家税务总局\p{Han}{0,15}税务局|\p{Han}{2,20}税务局)`)
+	counterpartyGovRe       = regexp.MustCompile(`\p{Han}{2,20}(?:社保局|公积金中心|社保中心|海关)`)
+	counterpartyCompanyRe   = regexp.MustCompile(`\p{Han}{2,30}(?:有限公司|股份有限公司|集团|有限责任公司|股份公司|总公司|分公司|子公司|集团公司)`)
+	counterpartyShortOrgRe  = regexp.MustCompile(`\p{Han}{4,20}(?:公司|厂|店|商行|银行|事务所|医院|学校|中心)`)
+)
+
+func extractCounterpartyName(description string) string {
+	desc := strings.TrimSpace(description)
+	if desc == "" {
+		return ""
+	}
+	if m := counterpartyTaxBureauRe.FindString(desc); m != "" {
+		return strings.TrimSpace(m)
+	}
+	if m := counterpartyGovRe.FindString(desc); m != "" {
+		return strings.TrimSpace(m)
+	}
+	if m := counterpartyCompanyRe.FindString(desc); m != "" {
+		return strings.TrimSpace(m)
+	}
+	if m := counterpartyShortOrgRe.FindString(desc); m != "" {
+		return strings.TrimSpace(m)
+	}
+	return ""
+}
+
+var bankCodeOnlyRe = regexp.MustCompile(`^\d{4,20}$`)
+
+func looksLikeBankCode(s string) bool {
+	return bankCodeOnlyRe.MatchString(strings.TrimSpace(s))
 }

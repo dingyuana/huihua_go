@@ -50,6 +50,23 @@ func (h *ReportHandler) GetIncomeStatement(c *fiber.Ctx) error {
 	return c.JSON(report)
 }
 
+// GetCashFlowStatement handles GET /api/v1/reports/cash-flow?period_no=X
+func (h *ReportHandler) GetCashFlowStatement(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	periodNo := c.QueryInt("period_no", 0)
+	if periodNo <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "period_no is required"})
+	}
+
+	report, err := h.svc.GetCashFlowStatement(c.Context(), tenantID, periodNo)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(report)
+}
+
 // GetBalanceSheet handles GET /api/v1/reports/balance-sheet?period_no=X
 func (h *ReportHandler) GetBalanceSheet(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)

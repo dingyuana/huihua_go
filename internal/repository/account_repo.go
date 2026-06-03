@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"huihua/finance/internal/model"
 )
@@ -31,6 +32,30 @@ func (r *AccountRepository) Create(ctx context.Context, tenantID uuid.UUID, a *m
 	}
 
 	err := r.pool.QueryRow(ctx, query,
+		a.ID, a.Code, a.Name, a.AccountType, a.RootType, a.ParentID,
+		a.Lft, a.Rgt, a.IsGroup, a.CompanyID, tenantID, a.Currency,
+		a.IsActive, a.OpeningBalance,
+	).Scan(&a.CreatedAt, &a.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("create account: %w", err)
+	}
+
+	a.TenantID = tenantID
+	return a, nil
+}
+
+// CreateWithTx inserts a new account within a transaction.
+func (r *AccountRepository) CreateWithTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, a *model.Account) (*model.Account, error) {
+	query := `
+		INSERT INTO accounts (id, code, name, account_type, root_type, parent_id, lft, rgt, is_group, company_id, tenant_id, currency, is_active, opening_balance)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		RETURNING created_at, updated_at`
+
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+
+	err := tx.QueryRow(ctx, query,
 		a.ID, a.Code, a.Name, a.AccountType, a.RootType, a.ParentID,
 		a.Lft, a.Rgt, a.IsGroup, a.CompanyID, tenantID, a.Currency,
 		a.IsActive, a.OpeningBalance,

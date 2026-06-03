@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS reconciliation_pairs (
 );
 
 ALTER TABLE reconciliation_pairs ENABLE ROW LEVEL SECURITY;
-FORCE ROW LEVEL SECURITY;
+ALTER TABLE reconciliation_pairs FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation_reconciliation_pairs ON reconciliation_pairs
     FOR ALL USING (tenant_id = current_setting('app.current_tenant')::uuid)

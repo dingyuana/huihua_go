@@ -63,6 +63,25 @@ func (r *PeriodRepository) BatchCreate(ctx context.Context, tenantID uuid.UUID, 
 	return nil
 }
 
+// BatchCreateWithTx inserts multiple periods within a transaction.
+func (r *PeriodRepository) BatchCreateWithTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, periods []model.AccountingPeriod) error {
+	for i, p := range periods {
+		p.ID = uuid.New()
+		p.TenantID = tenantID
+		p.CreatedAt = time.Now()
+		if p.Status == "" {
+			p.Status = "open"
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods (id, tenant_id, period_no, period_name, start_date, end_date, status, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
+			p.ID, p.TenantID, p.PeriodNo, p.PeriodName, p.StartDate, p.EndDate, p.Status, p.CreatedAt); err != nil {
+			return err
+		}
+		periods[i] = p
+	}
+	return nil
+}
+
 // ListByTenant retrieves all periods for a tenant.
 func (r *PeriodRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]model.AccountingPeriod, error) {
 	rows, err := r.pool.Query(ctx, `
@@ -100,4 +119,21 @@ func (r *PeriodRepository) UpdateStatus(ctx context.Context, tenantID uuid.UUID,
 		WHERE tenant_id = $1 AND period_no = $2`,
 		tenantID, periodNo, status, cb, closedAt)
 	return err
+}
+
+// GetCurrentOpen returns the currently open period for a tenant.
+func (r *PeriodRepository) GetCurrentOpen(ctx context.Context, tenantID uuid.UUID) (*model.AccountingPeriod, error) {
+	query := `
+		SELECT id, tenant_id, period_no, period_name, start_date, end_date, status, closed_by, closed_at, created_at
+		FROM accounting_periods
+		WHERE tenant_id = $1 AND status = 'open'
+		ORDER BY start_date DESC LIMIT 1`
+	p := &model.AccountingPeriod{}
+	err := r.pool.QueryRow(ctx, query, tenantID).Scan(
+		&p.ID, &p.TenantID, &p.PeriodNo, &p.PeriodName, &p.StartDate, &p.EndDate,
+		&p.Status, &p.ClosedBy, &p.ClosedAt, &p.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }

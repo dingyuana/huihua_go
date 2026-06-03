@@ -171,7 +171,7 @@ func (s *OpeningBalanceService) ValidateOpeningBalance(ctx context.Context, tena
 		result.Errors = append(result.Errors, model.OpeningBalanceError{
 			AccountCode: "",
 			AccountName: "",
-			Message:     fmt.Sprintf("Opening balance is not balanced: debit total (%s) != credit total (%s), diff = %s",
+			Message: fmt.Sprintf("Opening balance is not balanced: debit total (%s) != credit total (%s), diff = %s",
 				totalDebit.String(), totalCredit.String(), result.BalanceDiff.String()),
 		})
 	}

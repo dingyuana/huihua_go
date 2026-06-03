@@ -25,7 +25,7 @@ func NewAuditHandler(svc *service.AuditService) *AuditHandler {
 // ListAuditLogs handles GET /api/v1/audit-logs
 // Supports query parameters: object_type, object_id, actor_id, start_time, end_time, limit, offset
 func (h *AuditHandler) ListAuditLogs(c *fiber.Ctx) error {
-	tenantID := middleware.GetTenantID(c)
+	tenantID := middleware.MustGetTenantID(c)
 
 	filter := repository.AuditFilter{}
 
@@ -111,7 +111,7 @@ func (h *AuditHandler) ListAuditLogs(c *fiber.Ctx) error {
 
 // GetAuditLogsByObject handles GET /api/v1/audit-logs/:object_type/:object_id
 func (h *AuditHandler) GetAuditLogsByObject(c *fiber.Ctx) error {
-	tenantID := middleware.GetTenantID(c)
+	tenantID := middleware.MustGetTenantID(c)
 
 	objectType := c.Params("object_type")
 	if objectType == "" {

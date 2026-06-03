@@ -2,122 +2,65 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
 )
 
 // ClassificationRuleService handles classification rule business logic.
 type ClassificationRuleService struct {
-	repo        *repository.ClassificationRuleRepository
-	accountRepo *repository.AccountRepository
+	repo *repository.ClassificationRuleRepository
 }
 
 // NewClassificationRuleService creates a new ClassificationRuleService.
-func NewClassificationRuleService(repo *repository.ClassificationRuleRepository, accountRepo *repository.AccountRepository) *ClassificationRuleService {
-	return &ClassificationRuleService{repo: repo, accountRepo: accountRepo}
+func NewClassificationRuleService(repo *repository.ClassificationRuleRepository) *ClassificationRuleService {
+	return &ClassificationRuleService{repo: repo}
 }
 
-// MatchTransaction finds the first matching rule for given keywords and amount.
-// Returns the matched rule details or nil if no match.
-func (s *ClassificationRuleService) MatchTransaction(ctx context.Context, tenantID uuid.UUID, keywords string, amount decimal.Decimal, direction string) (*model.RuleMatchResult, error) {
-	rules, err := s.repo.FindMatchBatch(ctx, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("match transaction: %w", err)
-	}
-
-	for _, rule := range rules {
-		// Direction filter
-		if rule.DebitDirection != nil && *rule.DebitDirection != "both" && *rule.DebitDirection != direction {
-			continue
-		}
-
-		// Keywords OR matching
-		var kwArray []string
-		if err := json.Unmarshal(rule.Keywords, &kwArray); err != nil {
-			continue
-		}
-
-		matched := false
-		for _, kw := range kwArray {
-			if kw != "" && containsSubstring(keywords, kw) {
-				matched = true
-				break
-			}
-		}
-		if matched {
-			account, _ := s.accountRepo.GetByID(ctx, tenantID, rule.AccountID)
-			result := &model.RuleMatchResult{
-				Matched:  true,
-				RuleID:   &rule.ID,
-				RuleName: &rule.RuleName,
-				Priority: &rule.Priority,
-			}
-			if account != nil {
-				result.AccountID = &rule.AccountID
-				result.AccountCode = &account.Code
-				result.AccountName = &account.Name
-			}
-			if rule.PartyType != nil {
-				result.PartyType = rule.PartyType
-			}
-			return result, nil
-		}
-	}
-
-	return &model.RuleMatchResult{Matched: false}, nil
-}
-
-// CreateRule creates a new classification rule with auto-assigned priority.
+// CreateRule creates a new classification rule.
 func (s *ClassificationRuleService) CreateRule(ctx context.Context, tenantID uuid.UUID, req *model.CreateRuleRequest) (*model.ClassificationRule, error) {
-	// Validate account exists and type matches
-	accountID, err := uuid.Parse(req.AccountID)
-	if err != nil {
-		return nil, errors.New("invalid account_id format")
+	// Validate request
+	if req.Name == "" {
+		return nil, errors.New("rule name is required")
 	}
-	if err := s.ValidateAccount(ctx, tenantID, accountID); err != nil {
-		return nil, err
+	if req.Pattern == "" {
+		return nil, errors.New("pattern is required")
 	}
-
-	// Validate keywords
-	if len(req.Keywords) == 0 {
-		return nil, errors.New("keywords cannot be empty")
+	if req.Classification == "" {
+		return nil, errors.New("classification is required")
 	}
 
-	// Auto-assign priority
-	maxPriority, err := s.repo.GetMaxPriority(ctx, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("get max priority: %w", err)
+	// Auto-assign priority if not specified
+	if req.Priority <= 0 {
+		maxPriority, err := s.repo.GetMaxPriority(ctx, tenantID)
+		if err != nil {
+			return nil, fmt.Errorf("get max priority: %w", err)
+		}
+		req.Priority = maxPriority + 1
 	}
 
-	isActive := true
-	if req.IsActive != nil {
-		isActive = *req.IsActive
+	// Set defaults
+	if req.RuleType == "" {
+		req.RuleType = "keyword"
 	}
-
-	debitDirection := "both"
-	if req.DebitDirection != nil {
-		debitDirection = *req.DebitDirection
-	}
-
-	keywordsJSON, err := json.Marshal(req.Keywords)
-	if err != nil {
-		return nil, fmt.Errorf("marshal keywords: %w", err)
+	if req.MatchField == "" {
+		req.MatchField = "description"
 	}
 
 	rule := &model.ClassificationRule{
-		RuleName:       req.RuleName,
-		Priority:       maxPriority + 1,
-		Keywords:       keywordsJSON,
-		AccountID:      accountID,
-		PartyType:      req.PartyType,
-		DebitDirection: &debitDirection,
-		IsActive:       isActive,
+		Name:            req.Name,
+		RuleType:        req.RuleType,
+		Pattern:         req.Pattern,
+		MatchField:      req.MatchField,
+		Direction:       req.Direction,
+		Classification:  req.Classification,
+		Priority:        req.Priority,
+		IsActive:        req.IsActive,
+		DebitAccountID:  req.DebitAccountID,
+		CreditAccountID: req.CreditAccountID,
 	}
 
 	return s.repo.Create(ctx, tenantID, rule)
@@ -130,40 +73,41 @@ func (s *ClassificationRuleService) UpdateRule(ctx context.Context, tenantID, id
 		return fmt.Errorf("rule not found: %w", err)
 	}
 
-	if req.RuleName != nil {
-		rule.RuleName = *req.RuleName
+	if req.Name != nil {
+		rule.Name = *req.Name
 	}
-	if req.Keywords != nil {
-		keywordsJSON, err := json.Marshal(req.Keywords)
-		if err != nil {
-			return fmt.Errorf("marshal keywords: %w", err)
-		}
-		rule.Keywords = keywordsJSON
+	if req.RuleType != nil {
+		rule.RuleType = *req.RuleType
 	}
-	if req.AccountID != nil {
-		accountID, err := uuid.Parse(*req.AccountID)
-		if err != nil {
-			return errors.New("invalid account_id format")
-		}
-		if err := s.ValidateAccount(ctx, tenantID, accountID); err != nil {
-			return err
-		}
-		rule.AccountID = accountID
+	if req.Pattern != nil {
+		rule.Pattern = *req.Pattern
 	}
-	if req.PartyType != nil {
-		rule.PartyType = req.PartyType
+	if req.MatchField != nil {
+		rule.MatchField = *req.MatchField
 	}
-	if req.DebitDirection != nil {
-		rule.DebitDirection = req.DebitDirection
+	if req.Direction != nil {
+		rule.Direction = *req.Direction
+	}
+	if req.Classification != nil {
+		rule.Classification = *req.Classification
+	}
+	if req.Priority != nil {
+		rule.Priority = *req.Priority
 	}
 	if req.IsActive != nil {
 		rule.IsActive = *req.IsActive
+	}
+	if req.DebitAccountID != nil {
+		rule.DebitAccountID = req.DebitAccountID
+	}
+	if req.CreditAccountID != nil {
+		rule.CreditAccountID = req.CreditAccountID
 	}
 
 	return s.repo.Update(ctx, tenantID, id, rule)
 }
 
-// DeleteRule soft-deletes a classification rule.
+// DeleteRule removes a classification rule.
 func (s *ClassificationRuleService) DeleteRule(ctx context.Context, tenantID, id uuid.UUID) error {
 	return s.repo.Delete(ctx, tenantID, id)
 }
@@ -173,62 +117,139 @@ func (s *ClassificationRuleService) ListRules(ctx context.Context, tenantID uuid
 	return s.repo.ListByTenant(ctx, tenantID)
 }
 
-// ReorderPriority reorders rule priorities based on the provided ordered list.
+// ReorderPriority updates rule priorities based on ordered rule IDs.
 func (s *ClassificationRuleService) ReorderPriority(ctx context.Context, tenantID uuid.UUID, ruleIDs []uuid.UUID) error {
 	return s.repo.ReorderPriority(ctx, tenantID, ruleIDs)
 }
 
-// ValidateAccount validates that the account exists and has an appropriate type for classification rules.
-func (s *ClassificationRuleService) ValidateAccount(ctx context.Context, tenantID, accountID uuid.UUID) error {
-	account, err := s.accountRepo.GetByID(ctx, tenantID, accountID)
+// MatchTransaction finds the first matching rule for given transaction.
+func (s *ClassificationRuleService) MatchTransaction(ctx context.Context, tenantID uuid.UUID, description, counterparty, direction string) (*model.RuleMatchResult, error) {
+	rules, err := s.repo.ListActiveRules(ctx, tenantID)
 	if err != nil {
-		return errors.New("account_id not found")
+		return nil, fmt.Errorf("match transaction: %w", err)
 	}
-	// Accept any account type for classification rules (service level decides appropriateness)
-	if account.AccountType == nil {
-		return errors.New("account must have a type")
+
+	for _, rule := range rules {
+		if s.repo.MatchRule(&rule, description, counterparty, direction) {
+			return &model.RuleMatchResult{
+				Matched:        true,
+				RuleID:         &rule.ID,
+				RuleName:       &rule.Name,
+				Classification: &rule.Classification,
+			}, nil
+		}
 	}
+
+	return &model.RuleMatchResult{Matched: false}, nil
+}
+
+// GetRuleByID returns a single rule including its per-rule account mapping.
+func (s *ClassificationRuleService) GetRuleByID(ctx context.Context, tenantID, id uuid.UUID) (*model.ClassificationRule, error) {
+	return s.repo.GetByID(ctx, tenantID, id)
+}
+
+// SeedRules creates initial default rules for a tenant.
+func (s *ClassificationRuleService) SeedRules(ctx context.Context, tenantID uuid.UUID) error {
+	// Check if tenant already has rules
+	existingRules, err := s.repo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("check existing rules: %w", err)
+	}
+	if len(existingRules) > 0 {
+		return errors.New("tenant already has rules")
+	}
+
+	// Default rules
+	defaultRules := []*model.CreateRuleRequest{
+		{
+			Name:           "银行手续费",
+			RuleType:       "keyword_regex",
+			Pattern:        "手续费|工本费|年费|账户管理费",
+			MatchField:     "description",
+			Direction:      "out",
+			Classification: "bank_fee",
+			Priority:       1,
+			IsActive:       true,
+		},
+		{
+			Name:           "利息收入",
+			RuleType:       "keyword_regex",
+			Pattern:        "利息|结息|存款利息",
+			MatchField:     "description",
+			Direction:      "in",
+			Classification: "interest_income",
+			Priority:       2,
+			IsActive:       true,
+		},
+		{
+			Name:           "业务收款",
+			RuleType:       "keyword",
+			Pattern:        "货款",
+			MatchField:     "description",
+			Direction:      "in",
+			Classification: "business_receipt",
+			Priority:       3,
+			IsActive:       true,
+		},
+		{
+			Name:           "业务付款",
+			RuleType:       "keyword",
+			Pattern:        "货款",
+			MatchField:     "description",
+			Direction:      "out",
+			Classification: "business_payment",
+			Priority:       4,
+			IsActive:       true,
+		},
+		{
+			Name:           "内部转账",
+			RuleType:       "keyword_regex",
+			Pattern:        "转账|转存|调拨|上划|下拨",
+			MatchField:     "description",
+			Direction:      "",
+			Classification: "internal_transfer",
+			Priority:       5,
+			IsActive:       true,
+		},
+		{
+			Name:           "税务缴费",
+			RuleType:       "keyword_regex",
+			Pattern:        "税|税务|缴税|税金|税款|增值税|所得税|城建税|教育费附加|国家金库|国库|印花",
+			MatchField:     "description",
+			Direction:      "out",
+			Classification: "tax_payment",
+			Priority:       6,
+			IsActive:       true,
+		},
+		{
+			Name:           "社保缴费",
+			RuleType:       "keyword_regex",
+			Pattern:        "社保|公积金|养老|医疗|失业|工伤|生育",
+			MatchField:     "description",
+			Direction:      "out",
+			Classification: "social_security",
+			Priority:       7,
+			IsActive:       true,
+		},
+		{
+			Name:           "保险费用",
+			RuleType:       "keyword_regex",
+			Pattern:        "保险|保费|投保|财产险|责任险|雇主责任险|意外险",
+			MatchField:     "description",
+			Direction:      "out",
+			Classification: "insurance_fee",
+			Priority:       8,
+			IsActive:       true,
+		},
+	}
+
+	for i, ruleReq := range defaultRules {
+		ruleReq.Priority = i + 1
+		_, err := s.CreateRule(ctx, tenantID, ruleReq)
+		if err != nil {
+			return fmt.Errorf("create rule %d: %w", i+1, err)
+		}
+	}
+
 	return nil
-}
-
-// ValidateRule performs full rule validation.
-func (s *ClassificationRuleService) ValidateRule(ctx context.Context, tenantID uuid.UUID, req *model.CreateRuleRequest) error {
-	if req.RuleName == "" {
-		return errors.New("rule_name is required")
-	}
-	if len(req.Keywords) == 0 {
-		return errors.New("keywords cannot be empty")
-	}
-	accountID, err := uuid.Parse(req.AccountID)
-	if err != nil {
-		return errors.New("invalid account_id format")
-	}
-	return s.ValidateAccount(ctx, tenantID, accountID)
-}
-
-// containsSubstring checks if keyword exists in text (case-insensitive).
-func containsSubstring(text, keyword string) bool {
-	if len(keyword) == 0 {
-		return false
-	}
-	textLower := toLowerString(text)
-	keywordLower := toLowerString(keyword)
-	for i := 0; i <= len(textLower)-len(keywordLower); i++ {
-		if textLower[i:i+len(keywordLower)] == keywordLower {
-			return true
-		}
-	}
-	return false
-}
-
-func toLowerString(s string) string {
-	b := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		b[i] = c
-	}
-	return string(b)
 }

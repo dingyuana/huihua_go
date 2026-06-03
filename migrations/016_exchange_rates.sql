@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS exchange_rates (
 
 -- RLS
 ALTER TABLE exchange_rates ENABLE ROW LEVEL SECURITY;
-FORCE ROW LEVEL SECURITY;
+ALTER TABLE exchange_rates FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation_exchange_rates ON exchange_rates
     FOR ALL USING (tenant_id = current_setting('app.current_tenant')::uuid) WITH CHECK (tenant_id = current_setting('app.current_tenant')::uuid);

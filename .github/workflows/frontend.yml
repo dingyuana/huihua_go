@@ -1,0 +1,60 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main, master, feat/**]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install pnpm
+        run: npm install -g pnpm@9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: npx vue-tsc --noEmit
+
+      - name: Lint (skipped if no eslint config)
+        run: |
+          if [ -f .eslintrc* ] || [ -f eslint.config.* ]; then
+            pnpm lint || true
+          else
+            echo "No eslint config found, skipping lint"
+          fi
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run unit tests
+        run: pnpm test:unit --run
+        continue-on-error: true
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 7

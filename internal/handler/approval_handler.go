@@ -21,8 +21,8 @@ func NewApprovalHandler(approvalSvc *service.ApprovalService) *ApprovalHandler {
 
 // ApprovalSubmitRequest is the request body for submitting a voucher for approval.
 type ApprovalSubmitRequest struct {
-	UserID     string `json:"user_id"`
-	VoucherID string `json:"voucher_id"`
+	UserID    string  `json:"user_id"`
+	VoucherID string  `json:"voucher_id"`
 	FlowID    *string `json:"flow_id,omitempty"` // optional specific approval flow
 }
 
@@ -63,8 +63,8 @@ func (h *ApprovalHandler) SubmitForApproval(c *fiber.Ctx) error {
 
 // ApproveRequest is the request body for approving a voucher.
 type ApproveRequest struct {
-	UserID   string `json:"user_id"`
-	Comment  string `json:"comment"`
+	UserID  string `json:"user_id"`
+	Comment string `json:"comment"`
 }
 
 // Approve handles POST /api/v1/approvals/:id/approve
