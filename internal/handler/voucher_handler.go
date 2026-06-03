@@ -349,6 +349,23 @@ func (h *VoucherHandler) GetByID(c *fiber.Ctx) error {
 	return c.JSON(voucher)
 }
 
+// SuggestAccounts handles POST /api/v1/vouchers/suggest-accounts
+func (h *VoucherHandler) SuggestAccounts(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req service.SuggestAccountsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	resp, err := h.voucherSvc.SuggestAccounts(c.Context(), tenantID, &req)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": resp})
+}
+
 // Create handles POST /api/v1/vouchers
 func (h *VoucherHandler) Create(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)

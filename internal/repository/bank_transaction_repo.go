@@ -284,6 +284,50 @@ func (r *BankTransactionRepository) SetMatchedPaymentEntry(ctx context.Context, 
 	return err
 }
 
+// FindByMatchedGLEntryID returns all bank transactions that have the given
+// journal entry as their matched voucher. Used to revert source-doc status
+// when a voucher is deleted.
+func (r *BankTransactionRepository) FindByMatchedGLEntryID(ctx context.Context, tenantID, journalEntryID uuid.UUID) ([]model.BankTransaction, error) {
+	query := `
+		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
+		       reference_no, counterparty_name, classification, matched, confirmed, matched_payment_entry_id, matched_gl_entry_id,
+		       imported_from, raw_data, company_id, created_at
+		FROM bank_transactions
+		WHERE tenant_id = $1 AND matched_gl_entry_id = $2`
+
+	rows, err := r.pool.Query(ctx, query, tenantID, journalEntryID)
+	if err != nil {
+		return nil, fmt.Errorf("find by matched gl entry id: %w", err)
+	}
+	defer rows.Close()
+
+	var txns []model.BankTransaction
+	for rows.Next() {
+		var t model.BankTransaction
+		if err := rows.Scan(
+			&t.ID, &t.TenantID, &t.BankAccountID, &t.TxnDate, &t.Description, &t.Debit, &t.Credit, &t.Direction,
+			&t.ReferenceNo, &t.CounterpartyName, &t.Classification, &t.Matched, &t.Confirmed, &t.MatchedPaymentEntryID, &t.MatchedGLEntryID,
+			&t.ImportedFrom, &t.RawData, &t.CompanyID, &t.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		txns = append(txns, t)
+	}
+	return txns, rows.Err()
+}
+
+// UnlinkVoucher clears the matched_gl_entry_id and matched flag for a bank
+// transaction when its voucher is deleted. Returns the affected row count.
+func (r *BankTransactionRepository) UnlinkVoucher(ctx context.Context, tenantID, txnID uuid.UUID) error {
+	query := `
+		UPDATE bank_transactions
+		SET matched_gl_entry_id = NULL, matched = FALSE, updated_at = NOW()
+		WHERE tenant_id = $1 AND id = $2`
+
+	_, err := r.pool.Exec(ctx, query, tenantID, txnID)
+	return err
+}
+
 // MarkAsReconciled marks all transactions for a bank account in a period as reconciled.
 func (r *BankTransactionRepository) MarkAsReconciled(ctx context.Context, tenantID, bankAccountID uuid.UUID, periodNo int) error {
 	query := `

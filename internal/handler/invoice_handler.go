@@ -3,11 +3,13 @@ package handler
 import (
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"github.com/xuri/excelize/v2"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/service"
 )
@@ -192,6 +194,175 @@ func (h *InvoiceHandler) ImportFromExcel(c *fiber.Ctx) error {
 		"imported": len(invoices),
 		"invoices": invoices,
 	})
+}
+
+// PreviewExcel parses Excel file and returns column names and sample data for invoice import.
+// POST /api/v1/invoices/preview-excel
+func (h *InvoiceHandler) PreviewExcel(c *fiber.Ctx) error {
+	log.Println("=== Invoice PreviewExcel called ===")
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Println("FormFile error:", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "file required: " + err.Error()})
+	}
+	log.Printf("File received: name=%s, size=%d", file.Filename, file.Size)
+
+	f, err := file.Open()
+	if err != nil {
+		log.Println("Open file error:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "open file error: " + err.Error()})
+	}
+	defer f.Close()
+
+	excelFile, err := excelize.OpenReader(f)
+	if err != nil {
+		log.Println("OpenReader error:", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid excel file: " + err.Error()})
+	}
+	defer excelFile.Close()
+
+	sheetName := excelFile.GetSheetName(0)
+	log.Println("Sheet name:", sheetName)
+
+	rows, err := excelFile.GetRows(sheetName)
+	if err != nil {
+		log.Println("GetRows error:", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "read excel error: " + err.Error()})
+	}
+
+	log.Printf("Total rows in sheet: %d", len(rows))
+
+	if len(rows) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "empty excel file"})
+	}
+
+	headerRowIndex := 0
+	for i, row := range rows {
+		nonEmpty := 0
+		for _, cell := range row {
+			if strings.TrimSpace(cell) != "" {
+				nonEmpty++
+			}
+		}
+		if nonEmpty >= 5 {
+			headerRowIndex = i
+			log.Printf("Found potential header at row %d: %v", i, row)
+			break
+		}
+	}
+
+	columns := make([]string, len(rows[headerRowIndex]))
+	for i, col := range rows[headerRowIndex] {
+		columns[i] = strings.TrimSpace(col)
+	}
+	log.Printf("Using columns found at row %d: %v", headerRowIndex, columns)
+
+	validRows := 0
+	for i := headerRowIndex + 1; i < len(rows); i++ {
+		hasContent := false
+		for _, cell := range rows[i] {
+			if strings.TrimSpace(cell) != "" {
+				hasContent = true
+				break
+			}
+		}
+		if hasContent {
+			validRows++
+		}
+	}
+
+	sampleData := [][]string{}
+	for i := headerRowIndex + 1; i < len(rows) && i <= headerRowIndex+10; i++ {
+		if len(rows[i]) > 0 {
+			rowData := make([]string, len(rows[i]))
+			for j, cell := range rows[i] {
+				rowData[j] = strings.TrimSpace(cell)
+			}
+			sampleData = append(sampleData, rowData)
+		}
+	}
+
+	log.Printf("Valid data rows: %d", validRows)
+	log.Println("=== Invoice PreviewExcel completed ===")
+
+	return c.JSON(fiber.Map{
+		"columns":    columns,
+		"sample":     sampleData,
+		"total_rows": validRows,
+		"header_row": headerRowIndex,
+	})
+}
+
+// BatchImportPreview handles batch import preview with AI deduplication check.
+// POST /api/v1/invoices/sales/import/preview
+func (h *InvoiceHandler) BatchImportPreview(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "file required: " + err.Error()})
+	}
+
+	f, err := file.Open()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "open file error: " + err.Error()})
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "read file error: " + err.Error()})
+	}
+
+	result, err := h.svc.BatchImportPreview(c.Context(), tenantID, data)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(result)
+}
+
+// BatchImportConfirm confirms and imports the batch invoices.
+// POST /api/v1/invoices/sales/import/confirm
+func (h *InvoiceHandler) BatchImportConfirm(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req model.InvoiceBatchConfirmRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body: " + err.Error()})
+	}
+
+	result, err := h.svc.BatchImportConfirm(c.Context(), tenantID, &req)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(result)
+}
+
+// ConfirmSalesInvoice confirms a sales invoice and generates accounts receivable.
+// POST /api/v1/invoices/sales/confirm
+func (h *InvoiceHandler) ConfirmSalesInvoice(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	var req model.InvoiceConfirmRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body: " + err.Error()})
+	}
+
+	invoiceID, err := uuid.Parse(req.InvoiceID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid invoice_id"})
+	}
+
+	err = h.svc.ConfirmSalesInvoice(c.Context(), tenantID, invoiceID, userID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "invoice confirmed and accounts receivable generated"})
 }
 
 // ImportExcelFile handles file-upload-based invoice import.

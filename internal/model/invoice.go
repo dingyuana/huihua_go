@@ -115,3 +115,49 @@ type InvoiceFilter struct {
 	Limit      int        `json:"limit,omitempty"`
 	Offset     int        `json:"offset,omitempty"`
 }
+
+// InvoiceBatchPreviewResult represents the result of batch import preview.
+type InvoiceBatchPreviewResult struct {
+	BatchID     string                 `json:"batch_id"`
+	TotalRows   int                    `json:"total_rows"`
+	ValidRows   int                    `json:"valid_rows"`
+	ErrorRows   int                    `json:"error_rows"`
+	DuplicateRows int                  `json:"duplicate_rows"`
+	Details     []InvoicePreviewDetail `json:"details"`
+}
+
+// InvoicePreviewDetail represents a single invoice row in preview.
+type InvoicePreviewDetail struct {
+	RowIndex       int     `json:"row_index"`
+	InvoiceNo      string  `json:"invoice_no"`
+	InvoiceType    string  `json:"invoice_type"`
+	CustomerName   string  `json:"customer_name"`
+	PostingDate    string  `json:"posting_date"`
+	TotalAmount    float64 `json:"total_amount"`
+	NetAmount      float64 `json:"net_amount"`
+	TaxAmount      float64 `json:"tax_amount"`
+	Status         string  `json:"status"`
+	ValidationErr  string  `json:"validation_err,omitempty"`
+	IsDuplicate    bool    `json:"is_duplicate,omitempty"`
+	DuplicateInfo  string  `json:"duplicate_info,omitempty"`
+}
+
+// InvoiceBatchConfirmRequest represents a request to confirm batch import.
+type InvoiceBatchConfirmRequest struct {
+	BatchID      string   `json:"batch_id"`
+	SelectedIDs  []string `json:"selected_ids"`
+	CorrectedData []map[string]interface{} `json:"corrected_data,omitempty"`
+}
+
+// InvoiceBatchConfirmResult represents the result of batch import confirmation.
+type InvoiceBatchConfirmResult struct {
+	Imported   int               `json:"imported"`
+	Skipped    int               `json:"skipped"`
+	Errors     int               `json:"errors"`
+	FailedRows []FailedRowDetail `json:"failed_rows,omitempty"`
+}
+
+// InvoiceConfirmRequest represents a request to confirm a sales invoice.
+type InvoiceConfirmRequest struct {
+	InvoiceID string `json:"invoice_id"`
+}

@@ -9,11 +9,27 @@ export interface InvoiceFileImportResult {
   failed_rows?: Array<{ row: number; reason: string; date?: string }>
 }
 
+export interface ExcelPreviewResult {
+  columns: string[]
+  sample: string[][]
+  total_rows: number
+  header_row: number
+}
+
 /** 上传发票 */
 export function uploadInvoice(file: File): Promise<ApiResponse<SalesInvoice>> {
   const form = new FormData()
   form.append('file', file)
   return request.post('/invoices/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+/** 预览Excel文件 */
+export function previewInvoiceExcel(file: File): Promise<ApiResponse<ExcelPreviewResult>> {
+  const form = new FormData()
+  form.append('file', file)
+  return request.post('/invoices/preview-excel', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
@@ -56,4 +72,62 @@ export function deleteInvoice(id: string): Promise<ApiResponse<void>> {
 /** 根据发票生成凭证 */
 export function generateVoucherFromInvoice(id: string): Promise<ApiResponse<any>> {
   return request.post(`/invoices/${id}/generate-voucher`)
+}
+
+export interface InvoiceBatchPreviewResult {
+  batch_id: string
+  total_rows: number
+  valid_rows: number
+  error_rows: number
+  duplicate_rows: number
+  details: Array<{
+    row_index: number
+    invoice_no: string
+    invoice_type: string
+    customer_name: string
+    posting_date: string
+    total_amount: number
+    net_amount: number
+    tax_amount: number
+    status: string
+    validation_err?: string
+    is_duplicate?: boolean
+    duplicate_info?: string
+  }>
+}
+
+export interface InvoiceBatchConfirmRequest {
+  batch_id: string
+  selected_ids: string[]
+  corrected_data?: Array<Record<string, any>>
+}
+
+export interface InvoiceBatchConfirmResult {
+  imported: number
+  skipped: number
+  errors: number
+  failed_rows?: Array<{ row: number; reason: string }>
+}
+
+export interface InvoiceConfirmRequest {
+  invoice_id: string
+}
+
+/** 销售发票批量导入预览 */
+export function batchImportPreview(file: File): Promise<ApiResponse<InvoiceBatchPreviewResult>> {
+  const form = new FormData()
+  form.append('file', file)
+  return request.post('/invoices/sales/import/preview', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+/** 销售发票批量导入确认 */
+export function batchImportConfirm(data: InvoiceBatchConfirmRequest): Promise<ApiResponse<InvoiceBatchConfirmResult>> {
+  return request.post('/invoices/sales/import/confirm', data)
+}
+
+/** 确认销售发票（生成应收账款） */
+export function confirmSalesInvoice(invoiceID: string): Promise<ApiResponse<void>> {
+  return request.post('/invoices/sales/confirm', { invoice_id: invoiceID })
 }

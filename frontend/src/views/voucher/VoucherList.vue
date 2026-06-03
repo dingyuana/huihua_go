@@ -32,8 +32,23 @@
         <el-table-column prop="posting_date" label="日期" width="110">
           <template #default="{ row }">{{ (row.posting_date || '').slice(0, 10) }}</template>
         </el-table-column>
-        <el-table-column label="对方名称" min-width="180" show-overflow-tooltip>
+        <el-table-column label="对方名称" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">{{ row.counterparty_name || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="科目" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.first_account_code">
+              <el-tag size="small" type="info">{{ row.first_account_code }}</el-tag>
+              {{ row.first_account_name }}
+            </span>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源单据" width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-tag v-if="row.source_doc_no" size="small" type="success">{{ row.source_doc_no }}</el-tag>
+            <span v-else>—</span>
+          </template>
         </el-table-column>
         <el-table-column prop="remark" label="摘要" min-width="200" show-overflow-tooltip />
         <el-table-column label="借方合计" width="120" align="right"><template #default="{ row }">{{ row.debit_total || '0.00' }}</template></el-table-column>

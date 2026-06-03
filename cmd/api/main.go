@@ -139,6 +139,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/invoices", invoiceHandler.List)
 	api.Post("/invoices", invoiceHandler.Create)
 	api.Post("/invoices/import", invoiceHandler.ImportFromExcel)
+	api.Post("/invoices/preview-excel", invoiceHandler.PreviewExcel)
 	api.Post("/invoices/import-excel", invoiceHandler.ImportExcelFile)
 	api.Post("/invoices/parse", invoiceHandler.Parse)
 	api.Get("/invoices/unmatched", invoiceHandler.ListUnmatched)
@@ -146,6 +147,10 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Put("/invoices/:id", invoiceHandler.Update)
 	api.Delete("/invoices/:id", invoiceHandler.Delete)
 	api.Put("/invoices/:id/status", invoiceHandler.UpdateStatus)
+	// Sales invoice batch import routes
+	api.Post("/invoices/sales/import/preview", invoiceHandler.BatchImportPreview)
+	api.Post("/invoices/sales/import/confirm", invoiceHandler.BatchImportConfirm)
+	api.Post("/invoices/sales/confirm", invoiceHandler.ConfirmSalesInvoice)
 
 	// Classification rule routes
 	classificationRuleRepo := repository.NewClassificationRuleRepository(db.GetPool())
@@ -161,6 +166,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Bank transaction routes
 	bankTransactionRepo := repository.NewBankTransactionRepository(db.GetPool())
+	paymentRepo := repository.NewPaymentEntryRepository(db.GetPool())
 	bankTxnSvc := service.NewBankTransactionService(bankTransactionRepo, classificationRuleSvc, bankRepo, partySvc)
 	bankTxnHandler := handler.NewBankTransactionHandler(bankTxnSvc)
 	api.Get("/bank-transactions", bankTxnHandler.List)
@@ -198,9 +204,10 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Voucher state machine routes
 	auditRepo = repository.NewAuditRepository(db.GetPool())
 	stateMachine := service.NewVoucherStateMachine(journalRepo, auditRepo, glEntryRepo)
-	voucherSvc := service.NewVoucherService(journalRepo, voucherTemplateSvc)
+	voucherSvc := service.NewVoucherService(journalRepo, voucherTemplateSvc, bankTransactionRepo, paymentRepo, accountRepo, classificationRuleSvc)
 	voucherHandler := handler.NewVoucherHandler(stateMachine, journalRepo, voucherSvc)
 	api.Get("/vouchers", voucherHandler.List)
+	api.Post("/vouchers/suggest-accounts", voucherHandler.SuggestAccounts)
 	api.Post("/vouchers", voucherHandler.Create)
 	api.Get("/vouchers/:id", voucherHandler.GetByID)
 	api.Put("/vouchers/:id", voucherHandler.Update)
@@ -283,14 +290,12 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Put("/approval-flows/:id", approvalHandler.UpdateApprovalFlow)
 	api.Delete("/approval-flows/:id", approvalHandler.DeleteApprovalFlow)
 
-	// Payment entry repo — used by auto-gen service and payment handler
-	paymentRepo := repository.NewPaymentEntryRepository(db.GetPool())
-
 	// Voucher auto-generate routes (from bank transactions & payment entries)
 	// Placed after approvalSvc is initialized so it can be injected
+	busDocMappingRepo := repository.NewBusDocMappingRepository(db.GetPool())
 	autoGenSvc := service.NewVoucherAutoGenerateService(
 		journalRepo, glEntryRepo, bankTransactionRepo,
-		bankRepo, invoiceRepo, paymentRepo, partyRepo, accountRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
+		bankRepo, invoiceRepo, paymentRepo, partyRepo, accountRepo, busDocMappingRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
 	)
 	// Wire auto-gen service into bank transaction handler for post-import voucher auto-generation
 	bankTxnHandler.InjectAutoGenSvc(autoGenSvc)

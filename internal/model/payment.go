@@ -26,6 +26,9 @@ type PaymentEntry struct {
 	TenantID         uuid.UUID        `json:"tenant_id" db:"tenant_id"`
 	BankAccountID    *uuid.UUID       `json:"bank_account_id,omitempty" db:"bank_account_id"`
 	DocStatus        int16            `json:"docstatus" db:"docstatus"`
+	VoucherID        *uuid.UUID       `json:"voucher_id,omitempty" db:"voucher_id"`
+	VoucherNo        *string          `json:"voucher_no,omitempty" db:"voucher_no"`
+	Description      *string          `json:"description,omitempty" db:"description"`
 	CreatedBy        *uuid.UUID       `json:"created_by,omitempty" db:"created_by"`
 	CreatedAt        time.Time        `json:"created_at" db:"created_at"`
 }

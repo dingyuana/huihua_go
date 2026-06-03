@@ -28,6 +28,10 @@ func newTestVoucherService(t *testing.T) *VoucherService {
 			repository.NewVoucherTemplateRepository(pool),
 			repository.NewAccountRepository(pool),
 		),
+		repository.NewBankTransactionRepository(pool),
+		repository.NewPaymentEntryRepository(pool),
+		repository.NewAccountRepository(pool),
+		NewClassificationRuleService(repository.NewClassificationRuleRepository(pool)),
 	)
 }
 

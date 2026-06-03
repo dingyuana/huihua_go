@@ -176,7 +176,6 @@
 
         <div style="margin-top: 20px; text-align: center">
           <el-button v-if="currentPayment.docstatus === 0" type="primary" :loading="voucherLoading" @click="handleGenerateVoucher">生成凭证</el-button>
-          <el-button v-if="currentPayment.docstatus === 0" type="primary" plain>提交审核</el-button>
           <el-button v-if="currentPayment.docstatus === 1" type="danger">作废</el-button>
           <el-button @click="showDrawer = false">关闭</el-button>
         </div>
@@ -189,6 +188,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchPayments, fetchPaymentDetail, generateVoucherFromPayment, fetchUnmatchedInvoices, allocateInvoices } from '@/api/modules/payment'
+import { deleteVoucher } from '@/api/modules/voucher'
 import DocStatusTag from '@/components/business/DocStatusTag.vue'
 import type { PaymentEntry } from '@/types/models/payment'
 
@@ -221,6 +221,7 @@ const stats = computed(() => {
 const showDrawer = ref(false)
 const currentPayment = ref<PaymentEntry | null>(null)
 const voucherLoading = ref(false)
+const voidLoading = ref(false)
 
 // Invoice matching
 const unmatchedInvoices = ref<any[]>([])

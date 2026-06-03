@@ -96,6 +96,7 @@ func (s *PaymentEntryService) CreateFromBankTransaction(
 		CompanyID:        companyID,
 		BankAccountID:    &bankTxn.BankAccountID,
 		DocStatus:        0,
+		Description:      bankTxn.Description,
 		CreatedBy:        &userID,
 	}
 

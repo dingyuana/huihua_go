@@ -25,6 +25,9 @@
         <el-form-item label="摘要" style="flex:1">
           <el-input v-model="form.remark" :disabled="readonly" placeholder="请输入摘要" />
         </el-form-item>
+        <el-form-item v-if="isNew && !readonly">
+          <el-button type="success" plain :loading="suggesting" @click="suggestAccounts">🪄 智能推荐科目</el-button>
+        </el-form-item>
       </el-form>
 
       <!-- 分录行表格 -->
@@ -243,6 +246,36 @@ function onLineChange(index: number, field: string) {
   const line = lines.value[index]
   if (field === 'debit' && line.debit) line.credit = ''
   if (field === 'credit' && line.credit) line.debit = ''
+}
+
+const suggesting = ref(false)
+async function suggestAccounts() {
+  if (!form.remark) {
+    ElMessage.warning('请先输入摘要')
+    return
+  }
+  suggesting.value = true
+  try {
+    const res: any = await request.post('/vouchers/suggest-accounts', {
+      remark: form.remark,
+      counterparty: '',
+      direction: '',
+      amount: totalDebit.value,
+    })
+    const data = res?.data
+    if (data?.debit_account && data?.credit_account) {
+      lines.value[0].account = { id: data.debit_account.id, code: data.debit_account.code, name: data.debit_account.name }
+      lines.value[1].account = { id: data.credit_account.id, code: data.credit_account.code, name: data.credit_account.name }
+      const hint = data.matched_rule ? `（匹配规则：${data.matched_rule}）` : '（启发式推荐）'
+      ElMessage.success(`已推荐：借 ${data.debit_account.code} ${data.debit_account.name} / 贷 ${data.credit_account.code} ${data.credit_account.name} ${hint}`)
+    } else {
+      ElMessage.warning('未能推荐科目，请手动选择')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '推荐失败')
+  } finally {
+    suggesting.value = false
+  }
 }
 
 function saveDraft() {

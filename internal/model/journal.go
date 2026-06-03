@@ -62,6 +62,11 @@ type JournalEntry struct {
 	DebitTotal       decimal.Decimal `json:"debit_total,omitempty" db:"debit_total"`
 	CreditTotal      decimal.Decimal `json:"credit_total,omitempty" db:"credit_total"`
 	CounterpartyName *string         `json:"counterparty_name,omitempty" db:"counterparty_name"`
+	SourceDocType    *string         `json:"source_doc_type,omitempty" db:"source_doc_type"`
+	SourceDocID      *uuid.UUID      `json:"source_doc_id,omitempty" db:"source_doc_id"`
+	SourceDocNo      *string         `json:"source_doc_no,omitempty" db:"source_doc_no"`
+	FirstAccountCode *string         `json:"first_account_code,omitempty" db:"first_account_code"`
+	FirstAccountName *string         `json:"first_account_name,omitempty" db:"first_account_name"`
 }
 
 // JournalEntryLine represents the journal_entry_lines table.

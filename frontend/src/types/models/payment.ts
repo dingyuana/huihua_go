@@ -15,6 +15,7 @@ export interface PaymentEntry {
   posting_date: string
   bank_account_id: string | null
   docstatus: number
+  voucher_id?: string
   created_at?: string
 }
 

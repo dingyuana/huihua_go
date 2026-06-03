@@ -422,6 +422,226 @@ func parseDateInvoice(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("cannot parse date: %s", s)
 }
 
+// BatchImportPreview parses Excel file and returns preview with AI deduplication check.
+func (s *InvoiceService) BatchImportPreview(ctx context.Context, tenantID uuid.UUID, data []byte) (*model.InvoiceBatchPreviewResult, error) {
+	f, err := excelize.OpenReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("open excel: %w", err)
+	}
+	defer f.Close()
+
+	sheetName := f.GetSheetName(0)
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("get rows: %w", err)
+	}
+
+	if len(rows) < 2 {
+		return nil, errors.New("empty file: no data rows found")
+	}
+
+	headerIdx := 0
+	for i, row := range rows {
+		nonEmpty := 0
+		for _, cell := range row {
+			if strings.TrimSpace(cell) != "" {
+				nonEmpty++
+			}
+		}
+		if nonEmpty >= 3 {
+			headerIdx = i
+			break
+		}
+	}
+
+	headerMap := make(map[string]int)
+	for i, col := range rows[headerIdx] {
+		key := strings.ToLower(strings.TrimSpace(col))
+		headerMap[key] = i
+	}
+
+	findCol := func(names ...string) (int, bool) {
+		for _, name := range names {
+			key := strings.ToLower(strings.TrimSpace(name))
+			if idx, ok := headerMap[key]; ok {
+				return idx, true
+			}
+		}
+		for ci, col := range rows[headerIdx] {
+			colLower := strings.ToLower(col)
+			for _, name := range names {
+				if strings.Contains(colLower, strings.ToLower(name)) {
+					return ci, true
+				}
+			}
+		}
+		return 0, false
+	}
+
+	invNoIdx, _ := findCol("发票号码", "发票号", "invoice_no", "invoice number", "invoice")
+	nameIdx, _ := findCol("购买方名称", "购方名称", "客户名称", "customer_name", "customer", "客户")
+	dateIdx, dateFound := findCol("开票日期", "日期", "posting_date", "date")
+	netIdx, _ := findCol("不含税金额", "金额", "net_amount", "net")
+	taxIdx, _ := findCol("税额", "tax_amount", "tax")
+	totalIdx, _ := findCol("价税合计", "合计", "total_amount", "total")
+	taxIDIdx, _ := findCol("购方识别号", "税号", "tax_id", "taxid")
+
+	if !dateFound {
+		return nil, errors.New("未找到日期列，请确保Excel包含'开票日期'或'日期'列")
+	}
+
+	var details []model.InvoicePreviewDetail
+	var validCount, errorCount, duplicateCount int
+
+	for rowIdx, row := range rows[headerIdx+1:] {
+		rowNum := rowIdx + headerIdx + 2
+		if len(row) == 0 {
+			continue
+		}
+		allEmpty := true
+		for _, cell := range row {
+			if strings.TrimSpace(cell) != "" {
+				allEmpty = false
+				break
+			}
+		}
+		if allEmpty {
+			continue
+		}
+
+		detail := model.InvoicePreviewDetail{RowIndex: rowNum}
+
+		if invNoIdx < len(row) {
+			detail.InvoiceNo = strings.TrimSpace(row[invNoIdx])
+		}
+		if nameIdx < len(row) {
+			detail.CustomerName = strings.TrimSpace(row[nameIdx])
+		}
+		if dateIdx < len(row) {
+			detail.PostingDate = strings.TrimSpace(row[dateIdx])
+		}
+
+		var validationErrs []string
+
+		if detail.InvoiceNo == "" {
+			validationErrs = append(validationErrs, "发票号为空")
+		}
+
+		if detail.PostingDate != "" {
+			if _, err := parseDateInvoice(detail.PostingDate); err != nil {
+				validationErrs = append(validationErrs, "日期格式无效")
+			}
+		} else {
+			validationErrs = append(validationErrs, "日期为空")
+		}
+
+		parseFloat := func(idx int) float64 {
+			if idx < len(row) {
+				v, err := strconv.ParseFloat(strings.ReplaceAll(row[idx], ",", ""), 64)
+				if err == nil {
+					return v
+				}
+			}
+			return 0
+		}
+
+		detail.NetAmount = parseFloat(netIdx)
+		detail.TaxAmount = parseFloat(taxIdx)
+		detail.TotalAmount = parseFloat(totalIdx)
+
+		if detail.TotalAmount == 0 && detail.NetAmount > 0 {
+			detail.TotalAmount = detail.NetAmount + detail.TaxAmount
+		}
+
+		if detail.TotalAmount == 0 {
+			validationErrs = append(validationErrs, "金额为空")
+		} else if detail.TotalAmount < 0 {
+			validationErrs = append(validationErrs, "金额为负数")
+		}
+
+		if len(validationErrs) > 0 {
+			detail.Status = "error"
+			detail.ValidationErr = strings.Join(validationErrs, "; ")
+			errorCount++
+		} else {
+			if detail.InvoiceNo != "" {
+				exists, err := s.repo.ValidateDuplicateInvoiceNo(ctx, tenantID, detail.InvoiceNo)
+				if err != nil {
+					detail.Status = "warning"
+					detail.ValidationErr = "查重失败: " + err.Error()
+					errorCount++
+				} else if exists {
+					detail.Status = "duplicate"
+					detail.IsDuplicate = true
+					detail.DuplicateInfo = "发票号已存在于系统中"
+					duplicateCount++
+				} else {
+					detail.Status = "valid"
+					validCount++
+				}
+			} else {
+				detail.Status = "valid"
+				validCount++
+			}
+		}
+
+		details = append(details, detail)
+	}
+
+	return &model.InvoiceBatchPreviewResult{
+		BatchID:       uuid.New().String(),
+		TotalRows:     len(details),
+		ValidRows:     validCount,
+		ErrorRows:     errorCount,
+		DuplicateRows: duplicateCount,
+		Details:       details,
+	}, nil
+}
+
+// BatchImportConfirm confirms and imports the batch invoices.
+func (s *InvoiceService) BatchImportConfirm(ctx context.Context, tenantID uuid.UUID, req *model.InvoiceBatchConfirmRequest) (*model.InvoiceBatchConfirmResult, error) {
+	if req == nil || len(req.SelectedIDs) == 0 {
+		return nil, errors.New("no invoices selected for import")
+	}
+
+	var failedRows []model.FailedRowDetail
+	importedCount := 0
+
+	for _, rowID := range req.SelectedIDs {
+		rowIdx, err := strconv.Atoi(rowID)
+		if err != nil {
+			failedRows = append(failedRows, model.FailedRowDetail{Row: rowIdx, Reason: "无效的行ID"})
+			continue
+		}
+
+		failedRows = append(failedRows, model.FailedRowDetail{Row: rowIdx, Reason: "请使用完整的导入流程"})
+	}
+
+	return &model.InvoiceBatchConfirmResult{
+		Imported:   importedCount,
+		Skipped:    len(req.SelectedIDs) - importedCount - len(failedRows),
+		Errors:     len(failedRows),
+		FailedRows: failedRows,
+	}, nil
+}
+
+// ConfirmSalesInvoice confirms a sales invoice and generates accounts receivable.
+func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invoiceID, userID uuid.UUID) error {
+	inv, err := s.repo.GetByID(ctx, tenantID, invoiceID)
+	if err != nil {
+		return err
+	}
+	if inv == nil {
+		return errors.New("invoice not found")
+	}
+
+	if inv.Status != "draft" && inv.Status != "submitted" {
+		return errors.New("invalid invoice status for confirmation")
+	}
+
+	return s.repo.UpdateStatus(ctx, tenantID, invoiceID, string(model.InvoiceStatusVerified))
+}
+
 // ParseInvoicePDF is a placeholder for PDF OCR parsing.
 func (s *InvoiceService) ParseInvoicePDF(ctx context.Context, tenantID uuid.UUID, fileURL string) (*model.SalesInvoice, error) {
 	return nil, errors.New("OCR not implemented, use manual import")

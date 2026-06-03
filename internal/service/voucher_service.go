@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,15 +15,30 @@ import (
 
 // VoucherService handles manual voucher CRUD operations.
 type VoucherService struct {
-	journalRepo *repository.JournalRepository
-	templateSvc *VoucherTemplateService
+	journalRepo     *repository.JournalRepository
+	templateSvc     *VoucherTemplateService
+	bankTxnRepo     *repository.BankTransactionRepository
+	paymentRepo     *repository.PaymentEntryRepository
+	accountRepo     *repository.AccountRepository
+	classificationSvc *ClassificationRuleService
 }
 
 // NewVoucherService creates a new VoucherService.
-func NewVoucherService(journalRepo *repository.JournalRepository, templateSvc *VoucherTemplateService) *VoucherService {
+func NewVoucherService(
+	journalRepo *repository.JournalRepository,
+	templateSvc *VoucherTemplateService,
+	bankTxnRepo *repository.BankTransactionRepository,
+	paymentRepo *repository.PaymentEntryRepository,
+	accountRepo *repository.AccountRepository,
+	classificationSvc *ClassificationRuleService,
+) *VoucherService {
 	return &VoucherService{
-		journalRepo: journalRepo,
-		templateSvc: templateSvc,
+		journalRepo:     journalRepo,
+		templateSvc:     templateSvc,
+		bankTxnRepo:     bankTxnRepo,
+		paymentRepo:     paymentRepo,
+		accountRepo:     accountRepo,
+		classificationSvc: classificationSvc,
 	}
 }
 
@@ -273,7 +289,101 @@ func (s *VoucherService) UpdateVoucher(ctx context.Context, tenantID, voucherID,
 	return nil
 }
 
-// DeleteVoucher deletes a draft voucher and its lines.
+// SuggestAccountsRequest is the body of POST /vouchers/suggest-accounts.
+type SuggestAccountsRequest struct {
+	Remark       string `json:"remark"`
+	Counterparty string `json:"counterparty"`
+	Direction    string `json:"direction"` // "in" | "out" | ""
+	Amount       string `json:"amount"`
+}
+
+// SuggestAccountsResponse is the response.
+type SuggestAccountsResponse struct {
+	DebitAccount  *SuggestedAccount `json:"debit_account"`
+	CreditAccount *SuggestedAccount `json:"credit_account"`
+	Matched       bool             `json:"matched"`
+	MatchedRule   string           `json:"matched_rule,omitempty"`
+}
+
+type SuggestedAccount struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+	ID   string `json:"id"`
+}
+
+// SuggestAccounts recommends debit/credit accounts for a manual voucher
+// based on the user's input summary, counterparty, direction and amount.
+func (s *VoucherService) SuggestAccounts(ctx context.Context, tenantID uuid.UUID, req *SuggestAccountsRequest) (*SuggestAccountsResponse, error) {
+	resp := &SuggestAccountsResponse{}
+
+	direction := req.Direction
+	if direction == "" {
+		direction = "in"
+	}
+
+	result, _ := s.classificationSvc.MatchTransaction(ctx, tenantID, req.Remark, req.Counterparty, direction)
+	if result != nil && result.Matched && result.RuleID != nil {
+		rule, ruleErr := s.classificationSvc.GetRuleByID(ctx, tenantID, *result.RuleID)
+		if ruleErr == nil && rule != nil {
+			if rule.DebitAccountID != nil && rule.CreditAccountID != nil {
+				if dAcc, _ := s.accountRepo.GetByID(ctx, tenantID, *rule.DebitAccountID); dAcc != nil {
+					resp.DebitAccount = &SuggestedAccount{Code: dAcc.Code, Name: dAcc.Name, ID: dAcc.ID.String()}
+				}
+				if cAcc, _ := s.accountRepo.GetByID(ctx, tenantID, *rule.CreditAccountID); cAcc != nil {
+					resp.CreditAccount = &SuggestedAccount{Code: cAcc.Code, Name: cAcc.Name, ID: cAcc.ID.String()}
+				}
+				if resp.DebitAccount != nil && resp.CreditAccount != nil {
+					resp.Matched = true
+					if result.RuleName != nil {
+						resp.MatchedRule = *result.RuleName
+					}
+					return resp, nil
+				}
+			}
+		}
+	}
+
+	debitCode, creditCode := s.heuristicByKeywords(req.Remark, direction)
+	if dAcc, _ := s.accountRepo.GetByCode(ctx, tenantID, debitCode); dAcc != nil {
+		resp.DebitAccount = &SuggestedAccount{Code: dAcc.Code, Name: dAcc.Name, ID: dAcc.ID.String()}
+	}
+	if cAcc, _ := s.accountRepo.GetByCode(ctx, tenantID, creditCode); cAcc != nil {
+		resp.CreditAccount = &SuggestedAccount{Code: cAcc.Code, Name: cAcc.Name, ID: cAcc.ID.String()}
+	}
+	return resp, nil
+}
+
+// heuristicByKeywords provides a best-effort fallback when no classification
+// rule matches. Returns (debit_account_code, credit_account_code) for the
+// given direction. Codes reference parent account codes when sub-accounts
+// are not seeded in the chart of accounts.
+func (s *VoucherService) heuristicByKeywords(remark, direction string) (string, string) {
+	lower := strings.ToLower(remark)
+	switch {
+	case strings.Contains(lower, "工资") || strings.Contains(lower, "薪资") || strings.Contains(lower, "薪酬"):
+		return "2211", "1002"
+	case strings.Contains(lower, "差旅"),
+		strings.Contains(lower, "办公费") || strings.Contains(lower, "办公"),
+		strings.Contains(lower, "招待") || strings.Contains(lower, "餐饮"),
+		strings.Contains(lower, "运输") || strings.Contains(lower, "物流"),
+		strings.Contains(lower, "服务费"),
+		strings.Contains(lower, "费用"):
+		return "5601", "1002"
+	case strings.Contains(lower, "货款") || strings.Contains(lower, "应收") || strings.Contains(lower, "收款") || direction == "in":
+		return "1002", "1122"
+	case strings.Contains(lower, "货款") && direction == "out" || strings.Contains(lower, "付款"):
+		return "2202", "1002"
+	default:
+		if direction == "in" {
+			return "1002", "1122"
+		}
+		return "5601", "1002"
+	}
+}
+
+// DeleteVoucher deletes a draft voucher and reverts its source document
+// status (payment entry DocStatus, voucher link, bank transaction matched
+// flag) so the user can regenerate the voucher from scratch.
 func (s *VoucherService) DeleteVoucher(ctx context.Context, tenantID, voucherID, updatedBy uuid.UUID) error {
 	je, err := s.journalRepo.GetByID(ctx, tenantID, voucherID)
 	if err != nil {
@@ -284,7 +394,8 @@ func (s *VoucherService) DeleteVoucher(ctx context.Context, tenantID, voucherID,
 		return errors.New("only draft vouchers can be deleted")
 	}
 
-	// Use transaction for atomic deletion of header + lines
+	linkedTxns, _ := s.bankTxnRepo.FindByMatchedGLEntryID(ctx, tenantID, voucherID)
+
 	tx, err := s.journalRepo.BeginTx(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -301,6 +412,35 @@ func (s *VoucherService) DeleteVoucher(ctx context.Context, tenantID, voucherID,
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	if je.SourceDocType != nil && *je.SourceDocType == "payment_entry" && je.SourceDocID != nil {
+		pe, perr := s.paymentRepo.GetByID(ctx, tenantID, *je.SourceDocID)
+		if perr == nil && pe != nil {
+			pe.DocStatus = 0
+			pe.VoucherID = nil
+			pe.VoucherNo = nil
+			if uerr := s.paymentRepo.Update(ctx, tenantID, pe); uerr != nil {
+				return fmt.Errorf("revert payment entry %s: %w", pe.ID, uerr)
+			}
+		}
+	}
+
+	for _, txn := range linkedTxns {
+		if err := s.bankTxnRepo.UnlinkVoucher(ctx, tenantID, txn.ID); err != nil {
+			return fmt.Errorf("unlink bank txn %s: %w", txn.ID, err)
+		}
+		if txn.MatchedPaymentEntryID != nil {
+			pe, perr := s.paymentRepo.GetByID(ctx, tenantID, *txn.MatchedPaymentEntryID)
+			if perr == nil && pe != nil {
+				pe.DocStatus = 0
+				pe.VoucherID = nil
+				pe.VoucherNo = nil
+				if uerr := s.paymentRepo.Update(ctx, tenantID, pe); uerr != nil {
+					return fmt.Errorf("revert payment entry %s: %w", pe.ID, uerr)
+				}
+			}
+		}
 	}
 
 	return nil

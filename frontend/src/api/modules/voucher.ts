@@ -59,3 +59,8 @@ export function approveVoucher(id: string): Promise<ApiResponse<JournalEntry>> {
 export function rejectVoucher(id: string, reason: string): Promise<ApiResponse<void>> {
   return request.post(`/vouchers/${id}/reject`, { reason })
 }
+
+/** 删除草稿凭证（同时回滚关联单据状态） */
+export function deleteVoucher(id: string): Promise<ApiResponse<void>> {
+  return request.delete(`/vouchers/${id}`)
+}

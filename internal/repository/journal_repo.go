@@ -24,8 +24,8 @@ func NewJournalRepository(pool *pgxpool.Pool) *JournalRepository {
 // Create inserts a new journal entry and returns it.
 func (r *JournalRepository) Create(ctx context.Context, tenantID uuid.UUID, je *model.JournalEntry) (*model.JournalEntry, error) {
 	query := `
-		INSERT INTO journal_entries (id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark, docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		INSERT INTO journal_entries (id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark, docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by, counterparty_name, source_doc_type, source_doc_id, source_doc_no)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		RETURNING created_at, updated_at`
 
 	if je.ID == uuid.Nil {
@@ -35,7 +35,8 @@ func (r *JournalRepository) Create(ctx context.Context, tenantID uuid.UUID, je *
 	err := r.pool.QueryRow(ctx, query,
 		je.ID, je.VoucherNo, je.VoucherType, je.PostingDate, je.CompanyID,
 		tenantID, je.Remark, je.DocStatus, je.ReversedID, je.ReversalID,
-		je.SubmittedBy, je.SubmittedAt, je.CreatedBy,
+		je.SubmittedBy, je.SubmittedAt, je.CreatedBy, je.CounterpartyName,
+		je.SourceDocType, je.SourceDocID, je.SourceDocNo,
 	).Scan(&je.CreatedAt, &je.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create journal entry: %w", err)
@@ -50,7 +51,7 @@ func (r *JournalRepository) GetByID(ctx context.Context, tenantID uuid.UUID, id 
 	query := `
 		SELECT id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark,
 		       docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by,
-		       created_at, updated_at
+		       created_at, updated_at, counterparty_name, source_doc_type, source_doc_id, source_doc_no
 		FROM journal_entries
 		WHERE id = $1 AND tenant_id = $2`
 
@@ -59,6 +60,7 @@ func (r *JournalRepository) GetByID(ctx context.Context, tenantID uuid.UUID, id 
 		&je.ID, &je.VoucherNo, &je.VoucherType, &je.PostingDate, &je.CompanyID,
 		&je.TenantID, &je.Remark, &je.DocStatus, &je.ReversedID, &je.ReversalID,
 		&je.SubmittedBy, &je.SubmittedAt, &je.CreatedBy, &je.CreatedAt, &je.UpdatedAt,
+		&je.CounterpartyName, &je.SourceDocType, &je.SourceDocID, &je.SourceDocNo,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get journal entry by id: %w", err)
@@ -143,8 +145,8 @@ func (r *JournalRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
 // CreateTx inserts a new journal entry within an existing transaction and returns it.
 func (r *JournalRepository) CreateTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, je *model.JournalEntry) (*model.JournalEntry, error) {
 	query := `
-		INSERT INTO journal_entries (id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark, docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		INSERT INTO journal_entries (id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark, docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by, counterparty_name)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING created_at, updated_at`
 
 	if je.ID == uuid.Nil {
@@ -154,7 +156,7 @@ func (r *JournalRepository) CreateTx(ctx context.Context, tx pgx.Tx, tenantID uu
 	err := tx.QueryRow(ctx, query,
 		je.ID, je.VoucherNo, je.VoucherType, je.PostingDate, je.CompanyID,
 		tenantID, je.Remark, je.DocStatus, je.ReversedID, je.ReversalID,
-		je.SubmittedBy, je.SubmittedAt, je.CreatedBy,
+		je.SubmittedBy, je.SubmittedAt, je.CreatedBy, je.CounterpartyName,
 	).Scan(&je.CreatedAt, &je.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create journal entry: %w", err)
@@ -468,9 +470,17 @@ func (r *JournalRepository) ListVouchers(ctx context.Context, tenantID uuid.UUID
 		       je.tenant_id, je.remark, je.docstatus, je.reversed_id, je.reversal_id,
 		       je.submitted_by, je.submitted_at, je.created_by, je.created_at, je.updated_at,
 		       COALESCE(jl.debit_total, 0) AS debit_total, COALESCE(jl.credit_total, 0) AS credit_total,
-		       (SELECT counterparty_name FROM bank_transactions
-		        WHERE matched_gl_entry_id = je.id AND tenant_id = je.tenant_id
-		        LIMIT 1) AS counterparty_name
+		       je.counterparty_name, je.source_doc_type, je.source_doc_id, je.source_doc_no,
+		       (SELECT a.code FROM journal_entry_lines jel
+		         JOIN accounts a ON a.id = jel.account_id
+		         WHERE jel.journal_entry_id = je.id
+		         ORDER BY jel.debit DESC, jel.credit DESC
+		         LIMIT 1) AS first_account_code,
+		       (SELECT a.name FROM journal_entry_lines jel
+		         JOIN accounts a ON a.id = jel.account_id
+		         WHERE jel.journal_entry_id = je.id
+		         ORDER BY jel.debit DESC, jel.credit DESC
+		         LIMIT 1) AS first_account_name
 		FROM journal_entries je
 		LEFT JOIN LATERAL (
 		    SELECT SUM(jel.debit) AS debit_total, SUM(jel.credit) AS credit_total
@@ -530,7 +540,9 @@ func (r *JournalRepository) ListVouchers(ctx context.Context, tenantID uuid.UUID
 			&je.ID, &je.VoucherNo, &je.VoucherType, &je.PostingDate, &je.CompanyID,
 			&je.TenantID, &je.Remark, &je.DocStatus, &je.ReversedID, &je.ReversalID,
 			&je.SubmittedBy, &je.SubmittedAt, &je.CreatedBy, &je.CreatedAt, &je.UpdatedAt,
-			&je.DebitTotal, &je.CreditTotal, &je.CounterpartyName,
+			&je.DebitTotal, &je.CreditTotal,
+			&je.CounterpartyName, &je.SourceDocType, &je.SourceDocID, &je.SourceDocNo,
+			&je.FirstAccountCode, &je.FirstAccountName,
 		); err != nil {
 			return nil, fmt.Errorf("scan voucher: %w", err)
 		}
