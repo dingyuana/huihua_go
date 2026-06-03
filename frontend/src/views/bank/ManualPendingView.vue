@@ -140,11 +140,13 @@ onMounted(() => {
 
 async function loadData() {
   try {
+    // Backend returns { data: [...], total, page, page_size }
+    // Axios interceptor unwraps response.data, so res = { data: [...], total, page, page_size }
     const res: any = await getReviewList({ status: 'manual_pending', page: page.value, page_size: pageSize.value })
-    const list = res?.data?.list || res?.data || []
+    const list = res?.data || []
     if (Array.isArray(list)) {
       txnList.value = list
-      total.value = res?.data?.total || list.length
+      total.value = res?.total || list.length
     }
   } catch (e: any) {
     ElMessage.error('加载失败: ' + (e?.message || ''))
@@ -174,14 +176,14 @@ async function makeVoucher(row: TxnRow) {
 
 async function makeReceipt(row: TxnRow) {
   try {
-    const res: any = await request.post('/payment-entries', {
+    const data: any = await request.post('/payment-entries', {
       bank_transaction_id: row.id,
       payment_type: 'receive',
       party_type: 'customer',
       party_id: '00000000-0000-0000-0000-000000000000',
       posting_date: new Date().toISOString().slice(0, 10),
     })
-    if (res?.data?.payment_entry?.id) {
+    if (data?.payment_entry?.id) {
       ElMessage.success('收款单已生成')
       loadData()
     }
@@ -192,14 +194,14 @@ async function makeReceipt(row: TxnRow) {
 
 async function makePayment(row: TxnRow) {
   try {
-    const res: any = await request.post('/payment-entries', {
+    const data: any = await request.post('/payment-entries', {
       bank_transaction_id: row.id,
       payment_type: 'pay',
       party_type: 'supplier',
       party_id: '00000000-0000-0000-0000-000000000000',
       posting_date: new Date().toISOString().slice(0, 10),
     })
-    if (res?.data?.payment_entry?.id) {
+    if (data?.payment_entry?.id) {
       ElMessage.success('付款单已生成')
       loadData()
     }
@@ -210,6 +212,7 @@ async function makePayment(row: TxnRow) {
 
 async function markDone(row: TxnRow) {
   try {
+    // submitReview returns { data: { approved_count, results } } after Axios unwrap
     const res: any = await submitReview({ txn_ids: [row.id] })
     if (res?.data?.approved_count > 0) {
       ElMessage.success('已标记为完成')
