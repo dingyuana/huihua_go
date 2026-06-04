@@ -463,7 +463,7 @@ func (s *InvoiceService) parseExcelRows(rows [][]string, headerIdx int, cols *co
 	statusIdx, _ := cols.get("发票状态", "状态", "status")
 	remarkIdx, _ := cols.get("备注", "remark", "说明")
 	invoiceCategoryIdx, _ := cols.get("发票票种", "发票种类", "票种", "invoice_category")
-	sourceRedNoIdx, _ := cols.get("对应蓝字发票号", "原蓝字发票号", "红冲发票号", "source_red_invoice_no", "原发票号")
+	sourceRedNoIdx, _ := cols.get("对应蓝字发票号", "原蓝字发票号", "红冲发票号", "source_red_invoice_no")
 	isPositiveIdx, isPositiveFound := cols.get("是否正数发票")
 	isReturnIdx, isReturnFound := cols.get("是否红字", "是否红冲", "is_return", "红字")
 	itemDescIdx, _ := cols.get("货物或应税劳务名称", "货物名称", "商品名称", "名称", "description", "摘要")
@@ -760,10 +760,8 @@ func buildInvoicesFromGroups(validGroups []struct {
 func extractBlueInvoiceNo(remark string) string {
 	patterns := []*regexp.Regexp{
 		regexp.MustCompile(`对应蓝字发票号[：:]\s*(\d{8,20})`),
-		regexp.MustCompile(`原发票号[：:]\s*(\d{8,20})`),
 		regexp.MustCompile(`红冲发票[：:号]?\s*(\d{8,20})`),
 		regexp.MustCompile(`对应正数发票号码[：:]\s*(\d{8,20})`),
-		regexp.MustCompile(`原[始]?(?:发票|凭证)号?[：:]\s*(\d{8,20})`),
 		regexp.MustCompile(`蓝字发票[：:号]?\s*(\d{8,20})`),
 	}
 	for _, p := range patterns {

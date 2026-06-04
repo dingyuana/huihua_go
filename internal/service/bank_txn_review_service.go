@@ -32,10 +32,10 @@ type SubmitReviewResult struct {
 // TxnResult describes the outcome of processing a single transaction.
 type TxnResult struct {
 	TxnID      string     `json:"txn_id"`
-	Outcome   string     `json:"outcome"` // "voucher_generated" | "payment_created" | "skipped"
+	Outcome   string     `json:"outcome"` // "awaiting_approval" | "pending_review" | "skipped"
 	VoucherID *uuid.UUID `json:"voucher_id,omitempty"`
 	PaymentID *uuid.UUID `json:"payment_id,omitempty"`
-	Reason    string     `json:"reason,omitempty"`
+	Reason    string     `json:"reason,omitempty"` // reason if skipped/pending
 }
 
 // DraftContent carries human-modified draft fields for a specific txn.
@@ -58,13 +58,10 @@ func NewBankTxnReviewService(
 	}
 }
 
-// SubmitReview atomically reviews one or more classified bank transactions.
-// For A-class transactions it generates a voucher (docstatus=1); for B-class
-// transactions it generates a payment entry (confirmed). Both update the txn
-// status and set matched=true — all inside a single DB transaction.
-//
-// AC5: the status change, matched flag, and generated document are committed
-// together; AC6: any error triggers a full rollback with no dirty data.
+// SubmitReview 审核人对银行流水进行审批操作。
+// 本函数生成的是草稿状态的业务单据（凭证草稿 docstatus=0 / 付款单草稿 docstatus=0），
+// 所有 status 标签（voucher_generated/payment_created）表示"草稿已生成、等待审核"，
+// 不是"已完成"。真正的审核（approve/reject）由人执行。
 func (s *BankTxnReviewService) SubmitReview(
 	ctx context.Context,
 	tenantID uuid.UUID,
@@ -117,6 +114,7 @@ func (s *BankTxnReviewService) SubmitReview(
 		switch classifyType(classification) {
 		// 第一类直接制证：银行费用/税费/社保/利息/保险
 		case "A":
+			// 凭证草稿已生成，等人审核
 			voucher, err := s.voucherAutoSvc.GenerateFromBankTxn(ctx, tenantID, txnID, uuid.Nil)
 			if err != nil {
 				return nil, fmt.Errorf("generate voucher for %s: %w", txnIDStr, err)
@@ -134,6 +132,7 @@ func (s *BankTxnReviewService) SubmitReview(
 
 		// 第二类需中转（生成 PaymentEntry）
 		case "B":
+			// 付款单草稿已生成，等人审核
 			paymentType := "pay"
 			if txn.Direction != nil && *txn.Direction == "in" {
 				paymentType = "receive"
@@ -166,7 +165,7 @@ func (s *BankTxnReviewService) SubmitReview(
 			// C-class or unknown — skip
 			results.Results = append(results.Results, TxnResult{
 				TxnID: txnIDStr, Outcome: "skipped",
-				Reason: fmt.Sprintf("classification %q is C-class (unhandled)", classification),
+				Reason: fmt.Sprintf("classification %q needs manual handling", classification),
 			})
 			continue
 		}
