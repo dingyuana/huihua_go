@@ -765,6 +765,31 @@ function closeUpload() {
   margin-bottom: 16px;
   h3 { font-size: 18px; }
 }
+.stats-card { margin-bottom: 16px; }
+.stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: center;
+}
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+  .stat-label { color: #666; font-size: 14px; }
+  .stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    min-width: 24px;
+    text-align: center;
+    &.draft { color: #909399; }
+    &.pending { color: #e6a23c; }
+    &.confirmed { color: #409eff; }
+    &.partial { color: #faad14; }
+    &.paid { color: #67c23a; }
+  }
+}
 .filter-card {
   margin-bottom: 16px;
 }
