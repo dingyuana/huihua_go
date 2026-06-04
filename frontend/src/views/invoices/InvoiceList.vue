@@ -65,6 +65,12 @@
             <el-option label="进项" value="purchase" />
           </el-select>
         </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="filter.isReturn" placeholder="全部" style="width: 120px" clearable>
+            <el-option label="正常" :value="false" />
+            <el-option label="红字" :value="true" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="日期">
           <el-date-picker v-model="filter.dateRange" type="daterange" range-separator="~" start-placeholder="开始" end-placeholder="结束" style="width: 240px" />
         </el-form-item>
@@ -117,7 +123,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="红字状态" width="90">
+        <el-table-column label="状态" width="70">
           <template #default="{ row }">
             <el-tag v-if="row.is_return" type="danger" size="small">红字</el-tag>
             <el-tag v-else type="success" size="small">正常</el-tag>
@@ -125,10 +131,13 @@
         </el-table-column>
         <el-table-column label="对应蓝字发票" width="150" show-overflow-tooltip>
           <template #default="{ row }">
-            <el-link v-if="row.source_red_invoice_no" type="primary" :underline="false" size="small">
-              {{ row.source_red_invoice_no }}
-            </el-link>
-            <span v-else>—</span>
+            <template v-if="row.is_return">
+              <el-link v-if="row.source_red_invoice_no" type="primary" :underline="false" size="small">
+                {{ row.source_red_invoice_no }}
+              </el-link>
+              <span v-else>—</span>
+            </template>
+            <span v-else class="no-col">—</span>
           </template>
         </el-table-column>
         <el-table-column prop="customer_name" label="对方单位" min-width="150" />
@@ -416,6 +425,7 @@ interface InvoiceItem {
 const filter = reactive({
   status: '',
   type: '',
+  isReturn: null as boolean | null,
   dateRange: null as [string, string] | null,
   keyword: '',
 })
@@ -453,6 +463,7 @@ async function loadData() {
     const params: any = {}
     if (filter.status) params.status = filter.status
     if (filter.type) params.type = filter.type
+    if (filter.isReturn !== null) params.is_return = filter.isReturn
     if (filter.keyword) params.keyword = filter.keyword
     if (filter.dateRange && filter.dateRange.length === 2) {
       params.from_date = filter.dateRange[0]

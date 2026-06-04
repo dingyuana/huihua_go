@@ -25,6 +25,7 @@ type SalesInvoice struct {
 	InvoiceCode         *string         `json:"invoice_code,omitempty" db:"invoice_code"`
 	InvoiceType         string          `json:"invoice_type" db:"invoice_type"`
 	CustomerID          uuid.UUID       `json:"customer_id" db:"customer_id"`
+	CustomerName        string          `json:"customer_name" db:"-"`
 	TaxID               *string         `json:"tax_id,omitempty" db:"tax_id"`
 	CompanyID           uuid.UUID       `json:"company_id" db:"company_id"`
 	TenantID            uuid.UUID       `json:"tenant_id" db:"tenant_id"`

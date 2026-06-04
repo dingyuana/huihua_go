@@ -48,11 +48,13 @@ func (r *InvoiceRepository) Create(ctx context.Context, tenantID uuid.UUID, inv 
 // ListByTenant retrieves invoices with filters.
 func (r *InvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, filters model.InvoiceFilter) ([]model.SalesInvoice, error) {
 	query := `
-		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
-			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
-			status, tax_template_id, return_against, is_return, invoice_category, remark, source_red_invoice_no,
-			docstatus, created_by, created_at
-		FROM sales_invoices WHERE tenant_id = $1`
+		SELECT s.id, s.invoice_no, s.invoice_code, s.invoice_type, s.customer_id, s.tax_id, s.company_id,
+			s.tenant_id, s.posting_date, s.due_date, s.total_amount, s.tax_amount, s.net_amount, s.outstanding_amount,
+			s.status, s.tax_template_id, s.return_against, s.is_return, s.invoice_category, s.remark, s.source_red_invoice_no,
+			s.docstatus, s.created_by, s.created_at, COALESCE(p.name, '') AS customer_name
+		FROM sales_invoices s
+		LEFT JOIN parties p ON p.id = s.customer_id
+		WHERE s.tenant_id = $1`
 	args := []interface{}{tenantID}
 	argIdx := 2
 
@@ -104,7 +106,7 @@ func (r *InvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID
 			&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate, &inv.TotalAmount,
 			&inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount, &inv.Status, &inv.TaxTemplateID,
 			&inv.ReturnAgainst, &inv.IsReturn, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
-			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt); err != nil {
+			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt, &inv.CustomerName); err != nil {
 			return nil, err
 		}
 		invoices = append(invoices, inv)
