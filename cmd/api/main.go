@@ -320,6 +320,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Payment entry routes (收款/付款单)
 	paymentSvc := service.NewPaymentEntryService(paymentRepo, partyRepo, bankRepo, accountRepo, bankTransactionRepo)
+	paymentSvc.InjectReconciliationService(reconciliationSvc)
 	paymentHandler := handler.NewPaymentEntryHandler(paymentSvc, bankTransactionRepo, invoiceSvc)
 	api.Get("/payment-entries", paymentHandler.List)
 	api.Post("/payment-entries", paymentHandler.CreateFromBankTransaction)
@@ -327,6 +328,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Put("/payment-entries/:id", paymentHandler.Update)
 	api.Delete("/payment-entries/:id", paymentHandler.Delete)
 	api.Post("/payment-entries/:id/allocate", paymentHandler.Allocate)
+	api.Post("/payment-entries/:id/approve", paymentHandler.ApprovePaymentEntry)
 
 	// Dashboard stats aggregation
 	dashboardHandler := handler.NewDashboardHandler(journalRepo, glEntryRepo, bankTransactionRepo, periodRepo)

@@ -375,3 +375,151 @@ func withinDays(a, b time.Time, days int) bool {
 	}
 	return diff.Hours() < float64(days)*24
 }
+
+// ReconcilePaymentEntry reconciles a single PaymentEntry with invoices.
+// Returns a pending reconciliation pair for human confirmation.
+// Returns nil,nil if no match found (not an error — e.g. pure payment with no invoice).
+func (s *ReconciliationService) ReconcilePaymentEntry(
+	ctx context.Context,
+	tenantID, paymentEntryID uuid.UUID,
+) (*model.ReconciliationPair, error) {
+	// 1. Load PaymentEntry via raw SQL
+	var pe model.PaymentEntry
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
+			paid_from_id, paid_to_id, paid_amount, received_amount,
+			reference_no, reference_date, posting_date,
+			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, payment_method, created_by, created_at
+		FROM payment_entries
+		WHERE id = $1 AND tenant_id = $2`, paymentEntryID, tenantID,
+	).Scan(
+		&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID, &pe.CounterpartyName,
+		&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount,
+		&pe.ReferenceNo, &pe.ReferenceDate, &pe.PostingDate,
+		&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.VoucherID, &pe.VoucherNo, &pe.Description, &pe.PaymentMethod, &pe.CreatedBy, &pe.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load payment entry: %w", err)
+	}
+
+	// 2. Query outstanding invoices (outstanding_amount > 0, status = verified)
+	invoices, err := s.invoiceRepo.ListByTenant(ctx, tenantID, model.InvoiceFilter{Status: "verified"})
+	if err != nil {
+		return nil, fmt.Errorf("list invoices: %w", err)
+	}
+
+	// Filter to outstanding only
+	var outstandingInvoices []model.SalesInvoice
+	for _, inv := range invoices {
+		if inv.OutstandingAmount.GreaterThan(decimal.Zero) {
+			outstandingInvoices = append(outstandingInvoices, inv)
+		}
+	}
+	if len(outstandingInvoices) == 0 {
+		return nil, nil // no outstanding invoices
+	}
+
+	// Collect payment amount
+	paymentAmt := pe.PaidAmount
+	if paymentAmt.IsZero() && pe.ReceivedAmount != nil {
+		paymentAmt = *pe.ReceivedAmount
+	}
+
+	// Collect payment description/reference for matching
+	peDesc := ""
+	if pe.Description != nil {
+		peDesc = *pe.Description
+	}
+	peRef := ""
+	if pe.ReferenceNo != nil {
+		peRef = *pe.ReferenceNo
+	}
+	peParty := ""
+	if pe.CounterpartyName != nil {
+		peParty = *pe.CounterpartyName
+	}
+
+	var matchedInv *model.SalesInvoice
+
+	// L1: payment entry description/reference contains invoice ID
+	for i := range outstandingInvoices {
+		inv := &outstandingInvoices[i]
+		if strings.Contains(peRef, inv.ID.String()) || strings.Contains(peDesc, inv.ID.String()) {
+			matchedInv = inv
+			break
+		}
+	}
+
+	// L2: invoice_no appears in PaymentEntry description
+	if matchedInv == nil {
+		for i := range outstandingInvoices {
+			inv := &outstandingInvoices[i]
+			if peDesc != "" && inv.InvoiceNo != "" && strings.Contains(peDesc, inv.InvoiceNo) {
+				matchedInv = inv
+				break
+			}
+		}
+	}
+
+	// L3: counterparty + amount + date (±3 days)
+	if matchedInv == nil {
+		for i := range outstandingInvoices {
+			inv := &outstandingInvoices[i]
+			if paymentAmt.Equal(inv.TotalAmount) &&
+				peParty != "" &&
+				withinDays(pe.PostingDate, inv.PostingDate, 3) {
+				matchedInv = inv
+				break
+			}
+		}
+	}
+
+	if matchedInv == nil {
+		return nil, nil // no match found — not an error
+	}
+
+	// 4. Determine allocation amount (min of payment and outstanding)
+	allocAmt := paymentAmt
+	if allocAmt.GreaterThan(matchedInv.OutstandingAmount) {
+		allocAmt = matchedInv.OutstandingAmount
+	}
+
+	// 4a. Create payment_allocations record (status = pending)
+	allocID := uuid.New()
+	now := time.Now()
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO payment_allocations (id, payment_entry_id, invoice_id, invoice_type, allocated_amount, tenant_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		allocID, paymentEntryID, matchedInv.ID, nil, allocAmt, tenantID, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create payment allocation: %w", err)
+	}
+
+	// 4b. Update invoice outstanding_amount
+	newOutstanding := matchedInv.OutstandingAmount.Sub(allocAmt)
+	_, err = s.pool.Exec(ctx, `
+		UPDATE invoices SET outstanding_amount = $1 WHERE id = $2 AND tenant_id = $3`,
+		newOutstanding, matchedInv.ID, tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update invoice outstanding: %w", err)
+	}
+
+	// 5. Return ReconciliationPair (status = pending)
+	pair := model.ReconciliationPair{
+		ID:         uuid.New(),
+		TenantID:   tenantID,
+		SourceType: "payment_entry",
+		SourceID:   paymentEntryID,
+		TargetType: "invoice",
+		TargetID:   matchedInv.ID,
+		Amount:     allocAmt,
+		Status:     "pending",
+		MatchLevel: "auto",
+		MatchedAt:  &now,
+		CreatedAt:   now,
+	}
+
+	return &pair, nil
+}

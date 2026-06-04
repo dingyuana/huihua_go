@@ -17,6 +17,7 @@ type PaymentEntryService struct {
 	bankRepo    *repository.BankRepository
 	accountRepo *repository.AccountRepository
 	bankTxnRepo *repository.BankTransactionRepository
+	reconSvc    *ReconciliationService
 }
 
 func NewPaymentEntryService(
@@ -33,6 +34,11 @@ func NewPaymentEntryService(
 		accountRepo: accountRepo,
 		bankTxnRepo: bankTxnRepo,
 	}
+}
+
+// InjectReconciliationService injects the reconciliation service.
+func (s *PaymentEntryService) InjectReconciliationService(reconSvc *ReconciliationService) {
+	s.reconSvc = reconSvc
 }
 
 type CreatePaymentFromBankTxnRequest struct {
@@ -181,4 +187,31 @@ func (s *PaymentEntryService) CreateFromBankTxn(ctx context.Context, tenantID, b
 	}
 
 	return s.CreateFromBankTransaction(ctx, tenantID, userID, req, bankTxn, bankTxn.CompanyID)
+}
+
+// Approve submits and approves a payment entry, triggering automatic invoice reconciliation.
+func (s *PaymentEntryService) Approve(ctx context.Context, tenantID, paymentID, userID uuid.UUID) (*model.ReconciliationPair, error) {
+	// 1. Load PaymentEntry, verify DocStatus == 1 (submitted)
+	pe, err := s.repo.GetByID(ctx, tenantID, paymentID)
+	if err != nil {
+		return nil, fmt.Errorf("load payment entry: %w", err)
+	}
+	if pe.DocStatus != 1 {
+		return nil, fmt.Errorf("payment entry must be in submitted status (docstatus=1), got %d", pe.DocStatus)
+	}
+
+	// 2. Update DocStatus to 2 (approved)
+	if err := s.repo.UpdateStatus(ctx, tenantID, paymentID, 2); err != nil {
+		return nil, fmt.Errorf("update docstatus: %w", err)
+	}
+
+	// 3. Call reconciliation service
+	if s.reconSvc == nil {
+		return nil, nil // reconciliation service not injected — skip
+	}
+	pair, err := s.reconSvc.ReconcilePaymentEntry(ctx, tenantID, paymentID)
+	if err != nil {
+		return nil, fmt.Errorf("reconcile payment entry: %w", err)
+	}
+	return pair, nil
 }

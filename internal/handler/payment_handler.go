@@ -249,3 +249,29 @@ func (h *PaymentEntryHandler) Delete(c *fiber.Ctx) error {
 		"message": "payment entry deleted",
 	})
 }
+
+// ApprovePaymentEntry handles POST /api/v1/payment-entries/:id/approve
+func (h *PaymentEntryHandler) ApprovePaymentEntry(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid id",
+		})
+	}
+
+	pair, err := h.svc.Approve(c.Context(), tenantID, id, userID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	// pair may be nil (no match found) — this is not an error
+	return c.JSON(fiber.Map{
+		"data": pair,
+	})
+}
