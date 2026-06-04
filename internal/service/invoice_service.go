@@ -383,44 +383,21 @@ func (s *InvoiceService) resolveCustomer(ctx context.Context, tenantID uuid.UUID
 		return party.ID, nil
 	}
 
-	// 3. If not found, auto-create a formal customer
-	today := time.Now().Format("20060102")
-	seq := 1
-	parties, listErr := s.partyRepo.List(ctx, tenantID)
-	if listErr == nil {
-		for _, p := range parties {
-			if p.Code != nil && strings.HasPrefix(*p.Code, "AUTO"+today) {
-				seq++
-			}
-		}
-	}
-	code := fmt.Sprintf("AUTO%s%04d", today, seq)
-
+	// 3. If not found, auto-create via upsert (handles concurrent duplicates atomically)
 	newParty := &model.Party{
 		PartyType: "customer",
 		Name:      buyerName,
-		Code:      &code,
+		Code:      nil, // upsert auto-generates no code — that's fine
 		Source:    "auto_import",
 	}
 	if buyerTaxID != "" {
 		newParty.TaxNumber = &buyerTaxID
 	}
-	created, cerr := s.partyRepo.Create(ctx, tenantID, newParty)
-	if cerr != nil || created == nil {
-		// If concurrent creation failed (unique constraint), re-query by tax_id
-		if buyerTaxID != "" {
-			parties, reErr := s.partyRepo.List(ctx, tenantID)
-			if reErr == nil {
-				for _, p := range parties {
-					if p.TaxNumber != nil && *p.TaxNumber == buyerTaxID {
-						return p.ID, nil
-					}
-				}
-			}
-		}
-		return uuid.Nil, fmt.Errorf("auto-create failed: %w", cerr)
+	id, err := s.partyRepo.Upsert(ctx, tenantID, newParty)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("Upsert failed: %w", err)
 	}
-	return created.ID, nil
+	return id, nil
 }
 
 func findExcelHeader(rows [][]string) int {
@@ -1060,7 +1037,16 @@ func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invo
 	}
 
 	// 2. Check status
-	if inv.Status != "draft" && inv.Status != "submitted" && inv.Status != "verified" {
+	// Normalize status for confirmation eligibility check (support legacy Chinese values)
+	normalizedStatus := inv.Status
+	if normalizedStatus == "正常" || normalizedStatus == "unpaid" {
+		normalizedStatus = "draft"
+	} else if normalizedStatus == "已确认" {
+		normalizedStatus = "verified"
+	} else if normalizedStatus == "部分核销" {
+		normalizedStatus = "partially_paid"
+	}
+	if normalizedStatus != "draft" && normalizedStatus != "submitted" && normalizedStatus != "verified" {
 		return errors.New("invalid invoice status for confirmation")
 	}
 

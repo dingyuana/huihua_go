@@ -46,10 +46,49 @@ func (r *PartyRepository) Create(ctx context.Context, tenantID uuid.UUID, p *mod
 	return p, nil
 }
 
+// Upsert inserts or updates a party, returning the party ID.
+// On conflict of (tenant_id, tax_number) with non-null tax_number, updates name
+// but preserves existing values for all other fields.
+// Used for auto-import customer creation to handle concurrent tax_id duplicates.
+func (r *PartyRepository) Upsert(ctx context.Context, tenantID uuid.UUID, p *model.Party) (uuid.UUID, error) {
+	p.TenantID = tenantID
+	p.ID = uuid.New()
+	p.CreatedAt = time.Now()
+	p.UpdatedAt = time.Now()
+	if !p.IsActive {
+		p.IsActive = true
+	}
+	if p.Source == "" {
+		p.Source = "manual"
+	}
+
+	var id uuid.UUID
+	err := r.pool.QueryRow(ctx, `
+		INSERT INTO parties (id, tenant_id, party_type, name, tax_number, source, code,
+			bank_name, bank_account, contact_name, contact_phone,
+			credit_limit, payment_days, is_active, ar_account_id, ap_account_id,
+			created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		ON CONFLICT (tenant_id, tax_number) WHERE tax_number IS NOT NULL AND tax_number != ''
+		DO UPDATE SET
+			name = EXCLUDED.name,
+			updated_at = EXCLUDED.updated_at
+		RETURNING id`,
+		p.ID, p.TenantID, p.PartyType, p.Name, p.TaxNumber, p.Source, p.Code,
+		p.BankName, p.BankAccount, p.ContactName, p.ContactPhone,
+		p.CreditLimit, p.PaymentDays, p.IsActive,
+		p.ArAccountID, p.ApAccountID, p.CreatedAt, p.UpdatedAt,
+	).Scan(&id)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return id, nil
+}
+
 // List retrieves all parties for a tenant.
 func (r *PartyRepository) List(ctx context.Context, tenantID uuid.UUID) ([]model.Party, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
+		SELECT id, tenant_id, party_type, name, tax_number, source, code, bank_name, bank_account,
 			contact_name, contact_phone, credit_limit, payment_days, is_active,
 			ar_account_id, ap_account_id, created_at, updated_at
 		FROM parties WHERE tenant_id = $1 AND is_active = TRUE ORDER BY name`,
@@ -62,7 +101,7 @@ func (r *PartyRepository) List(ctx context.Context, tenantID uuid.UUID) ([]model
 	var parties []model.Party
 	for rows.Next() {
 		var p model.Party
-		if err := rows.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.BankName, &p.BankAccount,
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.Source, &p.Code, &p.BankName, &p.BankAccount,
 			&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive,
 			&p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
