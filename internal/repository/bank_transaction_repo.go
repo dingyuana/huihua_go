@@ -712,3 +712,88 @@ func (r *BankTransactionRepository) CountByPeriod(ctx context.Context, tenantID 
 	}
 	return count, nil
 }
+
+// ListManualPending returns bank transactions with status='manual_pending' for the given tenant.
+// Supports optional date range and bank account filters with pagination.
+func (r *BankTransactionRepository) ListManualPending(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	startDate, endDate *time.Time,
+	bankAccountID *uuid.UUID,
+	limit, offset int,
+) ([]model.BankTransaction, int64, error) {
+	// Build WHERE clause
+	conditions := []string{"tenant_id = $1", "status = 'manual_pending'"}
+	args := []interface{}{tenantID}
+	argIdx := 2
+
+	if startDate != nil {
+		conditions = append(conditions, fmt.Sprintf("txn_date >= $%d", argIdx))
+		args = append(args, *startDate)
+		argIdx++
+	}
+	if endDate != nil {
+		conditions = append(conditions, fmt.Sprintf("txn_date <= $%d", argIdx))
+		args = append(args, *endDate)
+		argIdx++
+	}
+	if bankAccountID != nil {
+		conditions = append(conditions, fmt.Sprintf("bank_account_id = $%d", argIdx))
+		args = append(args, *bankAccountID)
+		argIdx++
+	}
+
+	whereClause := strings.Join(conditions, " AND ")
+
+	// Count total
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM bank_transactions WHERE %s`, whereClause)
+	var total int64
+	err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list manual pending count: %w", err)
+	}
+
+	// Pagination defaults
+	if limit < 1 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Query with pagination
+	query := fmt.Sprintf(`
+		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
+			reference_no, counterparty_name, classification, matched, confirmed,
+			matched_payment_entry_id, matched_gl_entry_id,
+			imported_from, raw_data, company_id, created_at
+		FROM bank_transactions
+		WHERE %s
+		ORDER BY txn_date DESC, created_at DESC
+		LIMIT $%d OFFSET $%d`, whereClause, argIdx, argIdx+1)
+	args = append(args, limit, offset)
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list manual pending: %w", err)
+	}
+	defer rows.Close()
+
+	var txns []model.BankTransaction
+	for rows.Next() {
+		var txn model.BankTransaction
+		err := rows.Scan(
+			&txn.ID, &txn.TenantID, &txn.BankAccountID, &txn.TxnDate, &txn.Description,
+			&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
+			&txn.Classification,
+			&txn.Matched, &txn.Confirmed, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID,
+			&txn.ImportedFrom, &txn.RawData, &txn.CompanyID, &txn.CreatedAt,
+		)
+		if err != nil {
+			return nil, 0, fmt.Errorf("scan transaction: %w", err)
+		}
+		txns = append(txns, txn)
+	}
+
+	return txns, total, rows.Err()
+}

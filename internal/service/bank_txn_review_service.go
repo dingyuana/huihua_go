@@ -271,3 +271,89 @@ func ptrStrVal(s *string) string {
 	}
 	return *s
 }
+
+// ProcessManual 处理 C 类流水（manual_pending），由人选择处理方式。
+// action="A": 调用 GenerateFromBankTxn 生成凭证草稿
+// action="B": 调用 CreateFromBankTransaction 生成付款单草稿（payment_type 必填）
+// 人是唯一审核主体，系统不猜测分类。
+func (s *BankTxnReviewService) ProcessManual(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	txnID string,
+	action string,
+	paymentType string,
+	userID uuid.UUID,
+) (*TxnResult, error) {
+	id, err := uuid.Parse(txnID)
+	if err != nil {
+		return &TxnResult{TxnID: txnID, Outcome: "skipped", Reason: "invalid uuid"}, nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	txn, err := s.repo.GetByIDForUpdate(ctx, tx, id)
+	if err != nil {
+		return &TxnResult{TxnID: txnID, Outcome: "skipped", Reason: fmt.Sprintf("get txn: %v", err)}, nil
+	}
+
+	if txn.Status == nil || *txn.Status != string(model.BankTxnReviewStatusManualPending) {
+		return &TxnResult{TxnID: txnID, Outcome: "skipped",
+			Reason: fmt.Sprintf("status is %v, expected manual_pending", ptrStrVal(txn.Status))}, nil
+	}
+
+	switch action {
+	case "A":
+		voucher, err := s.voucherAutoSvc.GenerateFromBankTxn(ctx, tenantID, id, uuid.Nil)
+		if err != nil {
+			return nil, fmt.Errorf("generate voucher for %s: %w", txnID, err)
+		}
+		txn.Matched = true
+		txn.MatchedGLEntryID = &voucher.ID
+		newStatus := string(model.BankTxnReviewStatusVoucherGenerated)
+		txn.Status = &newStatus
+		if err := s.updateTxnFields(ctx, tx, txn); err != nil {
+			return nil, fmt.Errorf("update txn %s: %w", txnID, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("commit: %w", err)
+		}
+		return &TxnResult{TxnID: txnID, Outcome: "voucher_generated", VoucherID: &voucher.ID}, nil
+
+	case "B":
+		if paymentType == "" {
+			return &TxnResult{TxnID: txnID, Outcome: "skipped", Reason: "payment_type required for action B"}, nil
+		}
+		req := &CreatePaymentFromBankTxnRequest{
+			BankTransactionID: id,
+			PaymentType:      paymentType,
+			PartyType:        "",
+			PartyID:          uuid.Nil,
+			CounterpartyName: txn.CounterpartyName,
+			PostingDate:      txn.TxnDate,
+			ReferenceNo:      ptrStrVal(txn.ReferenceNo),
+		}
+		payment, err := s.paymentSvc.CreateFromBankTransaction(ctx, tenantID, uuid.Nil, req, txn, txn.CompanyID)
+		if err != nil {
+			return nil, fmt.Errorf("generate payment for %s: %w", txnID, err)
+		}
+		txn.Matched = true
+		txn.MatchedPaymentEntryID = &payment.ID
+		newStatus := string(model.BankTxnReviewStatusPaymentCreated)
+		txn.Status = &newStatus
+		if err := s.updateTxnFields(ctx, tx, txn); err != nil {
+			return nil, fmt.Errorf("update txn %s: %w", txnID, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("commit: %w", err)
+		}
+		return &TxnResult{TxnID: txnID, Outcome: "payment_created", PaymentID: &payment.ID}, nil
+
+	default:
+		return &TxnResult{TxnID: txnID, Outcome: "skipped",
+			Reason: fmt.Sprintf("unknown action %q", action)}, nil
+	}
+}

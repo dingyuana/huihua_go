@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"huihua/finance/internal/repository"
@@ -155,4 +157,115 @@ func (h *BankTxnReviewHandler) RejectManual(c *fiber.Ctx) error {
 			"rejected_count": len(req.TxnIDs),
 		},
 	})
+}
+
+// ListManualPendingRequest is the query params for GET /manual-pending.
+type ListManualPendingRequest struct {
+	StartDate     string `query:"start_date"`
+	EndDate       string `query:"end_date"`
+	BankAccountID string `query:"bank_account_id"`
+	Page          int    `query:"page"`
+	PageSize      int    `query:"page_size"`
+}
+
+// ProcessManualRequest is the request body for POST /process-manual.
+type ProcessManualRequest struct {
+	Action      string `json:"action"`
+	PaymentType string `json:"payment_type"`
+}
+
+// ListManualPending GET /api/v1/bank-transactions/manual-pending
+func (h *BankTxnReviewHandler) ListManualPending(c *fiber.Ctx) error {
+	tenantID, ok := c.Locals("tenant_id").(uuid.UUID)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "tenant_id not found"})
+	}
+
+	startDateStr := c.Query("start_date")
+	endDateStr := c.Query("end_date")
+	bankAccountIDStr := c.Query("bank_account_id")
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("page_size", 50)
+
+	var startDate, endDate *time.Time
+	if startDateStr != "" {
+		t, err := time.Parse("2006-01-02", startDateStr)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid start_date"})
+		}
+		startDate = &t
+	}
+	if endDateStr != "" {
+		t, err := time.Parse("2006-01-02", endDateStr)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid end_date"})
+		}
+		endDate = &t
+	}
+
+	var bankAccountID *uuid.UUID
+	if bankAccountIDStr != "" {
+		id, err := uuid.Parse(bankAccountIDStr)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid bank_account_id"})
+		}
+		bankAccountID = &id
+	}
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 50
+	}
+	offset := (page - 1) * pageSize
+
+	txns, total, err := h.repo.ListManualPending(c.Context(), tenantID, startDate, endDate, bankAccountID, pageSize, offset)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list manual pending transactions"})
+	}
+
+	return c.JSON(fiber.Map{
+		"data":      txns,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+// ProcessManual POST /api/v1/bank-transactions/:id/process-manual
+func (h *BankTxnReviewHandler) ProcessManual(c *fiber.Ctx) error {
+	tenantID, ok := c.Locals("tenant_id").(uuid.UUID)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "tenant_id not found"})
+	}
+
+	userID, _ := c.Locals("user_id").(uuid.UUID)
+
+	txnID := c.Params("id")
+	if txnID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "transaction id is required"})
+	}
+
+	var req ProcessManualRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	if req.Action != "A" && req.Action != "B" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "action must be 'A' or 'B'"})
+	}
+	if req.Action == "B" && req.PaymentType == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "payment_type required for action B"})
+	}
+	if req.PaymentType != "" && req.PaymentType != "pay" && req.PaymentType != "receive" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "payment_type must be 'pay' or 'receive'"})
+	}
+
+	result, err := h.svc.ProcessManual(c.Context(), tenantID, txnID, req.Action, req.PaymentType, userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": result})
 }

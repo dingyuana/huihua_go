@@ -191,9 +191,11 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	bankTxnReviewHandler := handler.NewBankTxnReviewHandler(bankTxnReviewSvc, bankTransactionRepo)
 	api.Get("/bank-transactions/review-list", bankTxnReviewHandler.ReviewList)
 	api.Get("/bank-transactions/review-stats", bankTxnReviewHandler.ReviewStats)
+	api.Get("/bank-transactions/manual-pending", bankTxnReviewHandler.ListManualPending)
 	api.Post("/bank-transactions/preview-draft/:id", bankTxnReviewHandler.PreviewDraft)
 	api.Post("/bank-transactions/submit-review", bankTxnReviewHandler.SubmitReview)
 	api.Post("/bank-transactions/reject-manual", bankTxnReviewHandler.RejectManual)
+	api.Post("/bank-transactions/:id/process-manual", bankTxnReviewHandler.ProcessManual)
 
 	// Voucher template routes
 	voucherTemplateRepo := repository.NewVoucherTemplateRepository(db.GetPool())
