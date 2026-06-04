@@ -253,8 +253,8 @@ func (s *ReconciliationService) makePair(tenantID uuid.UUID, st string, sid uuid
 }
 
 // ConfirmPair confirms a matched pair.
-func (s *ReconciliationService) ConfirmPair(ctx context.Context, tenantID, pairID, userID uuid.UUID) error {
-	return s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "confirmed")
+func (s *ReconciliationService) ConfirmPair(ctx context.Context, tenantID, pairID uuid.UUID) error {
+	return s.reconRepo.ConfirmPair(ctx, tenantID, pairID)
 }
 
 type ManualMatchRequest struct {
@@ -496,15 +496,8 @@ func (s *ReconciliationService) ReconcilePaymentEntry(
 		return nil, fmt.Errorf("create payment allocation: %w", err)
 	}
 
-	// 4b. Update invoice outstanding_amount
-	newOutstanding := matchedInv.OutstandingAmount.Sub(allocAmt)
-	_, err = s.pool.Exec(ctx, `
-		UPDATE invoices SET outstanding_amount = $1 WHERE id = $2 AND tenant_id = $3`,
-		newOutstanding, matchedInv.ID, tenantID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("update invoice outstanding: %w", err)
-	}
+	// 4b. Return ReconciliationPair (status = pending)
+	// Note: invoice outstanding_amount is NOT deducted here — deferred until ConfirmPair
 
 	// 5. Return ReconciliationPair (status = pending)
 	pair := model.ReconciliationPair{

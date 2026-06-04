@@ -2,10 +2,12 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 )
 
@@ -90,4 +92,55 @@ func (r *ReconciliationRepository) GetByID(ctx context.Context, tenantID, pairID
 		return nil, err
 	}
 	return &p, nil
+}
+
+// ConfirmPair confirms a pending reconciliation pair and deducts invoice outstanding amount.
+func (r *ReconciliationRepository) ConfirmPair(ctx context.Context, tenantID, pairID uuid.UUID) error {
+	// 1. Load pair and verify status="pending"
+	pair, err := r.GetByID(ctx, tenantID, pairID)
+	if err != nil {
+		return fmt.Errorf("load pair: %w", err)
+	}
+	if pair.Status != "pending" {
+		return fmt.Errorf("pair status must be pending, got %s", pair.Status)
+	}
+
+	// 2. Update pair status to "confirmed"
+	now := time.Now()
+	_, err = r.pool.Exec(ctx, `
+		UPDATE reconciliation_pairs SET status = 'confirmed', confirmed_at = $3 WHERE id = $1 AND tenant_id = $2`,
+		pairID, tenantID, now)
+	if err != nil {
+		return fmt.Errorf("update pair status: %w", err)
+	}
+
+	// 3. Load payment_allocation to get allocated_amount and invoice_id
+	var allocAmt decimal.Decimal
+	var invoiceID uuid.UUID
+	err = r.pool.QueryRow(ctx, `
+		SELECT allocated_amount, invoice_id FROM payment_allocations
+		WHERE payment_entry_id = $1 AND invoice_id = $2 AND tenant_id = $3`,
+		pair.SourceID, pair.TargetID, tenantID,
+	).Scan(&allocAmt, &invoiceID)
+	if err != nil {
+		return fmt.Errorf("load payment allocation: %w", err)
+	}
+
+	// 4. Deduct invoice outstanding_amount
+	_, err = r.pool.Exec(ctx, `
+		UPDATE invoices SET outstanding_amount = outstanding_amount - $1 WHERE id = $2 AND tenant_id = $3`,
+		allocAmt, invoiceID, tenantID)
+	if err != nil {
+		return fmt.Errorf("update invoice outstanding: %w", err)
+	}
+
+	// 5. Update payment_allocation status (via confirmed_at timestamp — confirmed if confirmed_at is not null)
+	_, err = r.pool.Exec(ctx, `
+		UPDATE payment_allocations SET confirmed_at = $3 WHERE payment_entry_id = $1 AND invoice_id = $2 AND tenant_id = $3`,
+		pair.SourceID, pair.TargetID, tenantID, now)
+	if err != nil {
+		return fmt.Errorf("update payment allocation: %w", err)
+	}
+
+	return nil
 }

@@ -46,8 +46,7 @@ func (h *ReconciliationHandler) ConfirmPair(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
 	}
-	userID := c.Locals("user_id").(uuid.UUID)
-	if err := h.svc.ConfirmPair(c.Context(), tenantID, pairID, userID); err != nil {
+	if err := h.svc.ConfirmPair(c.Context(), tenantID, pairID); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"status": "confirmed"})
