@@ -248,6 +248,17 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/reimbursements/:id/approve", reimbursementHandler.Approve)
 	api.Post("/reimbursements/:id/generate-voucher", reimbursementHandler.GenerateVoucher)
 
+	// Payroll routes
+	payrollRepo := repository.NewPayrollRepository(db.GetPool())
+	payrollSvc := service.NewPayrollService(payrollRepo, journalRepo, accountRepo, voucherTemplateSvc)
+	payrollHandler := handler.NewPayrollHandler(payrollSvc)
+	api.Get("/payroll", payrollHandler.List)
+	api.Post("/payroll", payrollHandler.Create)
+	api.Get("/payroll/:id", payrollHandler.GetByID)
+	api.Post("/payroll/:id/submit", payrollHandler.Submit)
+	api.Post("/payroll/:id/approve", payrollHandler.Approve)
+	api.Post("/payroll/:id/generate-voucher", payrollHandler.GenerateVoucher)
+
 	// Opening balance routes
 	obRepo := repository.NewOpeningBalanceRepository(db.GetPool())
 	obSvc := service.NewOpeningBalanceService(obRepo, accountRepo)

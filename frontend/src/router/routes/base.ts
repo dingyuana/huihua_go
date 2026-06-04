@@ -175,6 +175,106 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/period/FinancialReports.vue'),
         meta: { title: '财务报表', roles: ['admin', 'boss'] },
       },
+      // ==== 资产折旧 ====
+      {
+        path: 'period/depreciation',
+        name: 'Depreciation',
+        redirect: '/depreciation/list',
+        meta: { title: '资产折旧', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'depreciation/list',
+        name: 'DepreciationList',
+        component: () => import('@/views/depreciation/DepreciationList.vue'),
+        meta: { title: '折旧记录', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'depreciation/run',
+        name: 'DepreciationRun',
+        component: () => import('@/views/depreciation/DepreciationRun.vue'),
+        meta: { title: '执行折旧', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'asset/list',
+        name: 'AssetList',
+        component: () => import('@/views/asset/AssetList.vue'),
+        meta: { title: '固定资产', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'asset/new',
+        name: 'AssetNew',
+        component: () => import('@/views/asset/AssetDetail.vue'),
+        meta: { title: '新增资产', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'asset/:id',
+        name: 'AssetDetail',
+        component: () => import('@/views/asset/AssetDetail.vue'),
+        meta: { title: '资产详情', roles: ['admin', 'agent'] },
+      },
+      // ==== 工资单 ====
+      {
+        path: 'payroll',
+        name: 'PayrollList',
+        component: () => import('@/views/payroll/PayrollList.vue'),
+        meta: { title: '工资单', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'payroll/new',
+        name: 'PayrollNew',
+        component: () => import('@/views/payroll/PayrollForm.vue'),
+        meta: { title: '新建工资单', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'payroll/:id',
+        name: 'PayrollDetail',
+        component: () => import('@/views/payroll/PayrollDetail.vue'),
+        meta: { title: '工资单详情', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'payroll/:id/edit',
+        name: 'PayrollEdit',
+        component: () => import('@/views/payroll/PayrollForm.vue'),
+        meta: { title: '编辑工资单', roles: ['admin', 'agent'] },
+      },
+      // ==== 报销单 ====
+      {
+        path: 'expense/reimbursement',
+        name: 'ReimbursementList',
+        component: () => import('@/views/reimbursement/ReimbursementList.vue'),
+        meta: { title: '报销单', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'expense/reimbursement/new',
+        name: 'ReimbursementNew',
+        component: () => import('@/views/reimbursement/ReimbursementForm.vue'),
+        meta: { title: '新建报销单', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'expense/reimbursement/:id',
+        name: 'ReimbursementDetail',
+        component: () => import('@/views/reimbursement/ReimbursementDetail.vue'),
+        meta: { title: '报销单详情', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'expense/reimbursement/:id/edit',
+        name: 'ReimbursementEdit',
+        component: () => import('@/views/reimbursement/ReimbursementForm.vue'),
+        meta: { title: '编辑报销单', roles: ['admin', 'agent'] },
+      },
+      // ==== 期初余额 ====
+      {
+        path: 'opening-balance',
+        name: 'OpeningBalance',
+        component: () => import('@/views/opening-balance/OpeningBalanceList.vue'),
+        meta: { title: '期初余额', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'opening-balance/import',
+        name: 'OpeningBalanceImport',
+        component: () => import('@/views/opening-balance/OpeningBalanceImport.vue'),
+        meta: { title: '期初余额导入', roles: ['admin', 'agent'] },
+      },
       // 后续模块路由在此嵌套
     ],
   },

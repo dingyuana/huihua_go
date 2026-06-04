@@ -1,0 +1,308 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+	"huihua/finance/internal/model"
+	"huihua/finance/internal/repository"
+)
+
+// PayrollService handles payroll business logic.
+type PayrollService struct {
+	payrollRepo   *repository.PayrollRepository
+	journalRepo   *repository.JournalRepository
+	accountRepo   *repository.AccountRepository
+	templateSvc   *VoucherTemplateService
+}
+
+// NewPayrollService creates a new PayrollService.
+func NewPayrollService(
+	payrollRepo *repository.PayrollRepository,
+	journalRepo *repository.JournalRepository,
+	accountRepo *repository.AccountRepository,
+	templateSvc *VoucherTemplateService,
+) *PayrollService {
+	return &PayrollService{
+		payrollRepo: payrollRepo,
+		journalRepo: journalRepo,
+		accountRepo: accountRepo,
+		templateSvc: templateSvc,
+	}
+}
+
+// CreatePayrollRequest is the request body for creating a payroll record.
+type CreatePayrollRequest struct {
+	EmployeeName    string  `json:"employee_name"`
+	DepartmentName  string  `json:"department_name"`
+	PeriodNo        int     `json:"period_no"`
+	GrossSalary     string  `json:"gross_salary"`
+	IndividualTax   string  `json:"individual_tax"`
+	SocialSecurity  string  `json:"social_security"`
+	HousingFund     string  `json:"housing_fund"`
+	OtherDeductions string  `json:"other_deductions"`
+	NetSalary       string  `json:"net_salary"`
+	PaymentDate     string  `json:"payment_date"`
+	BankAccountNo   string  `json:"bank_account_no"`
+	Source          string  `json:"source"`
+	Remark          *string `json:"remark,omitempty"`
+	CompanyID       string  `json:"company_id"`
+}
+
+// CreatePayroll creates a new payroll record (docstatus=0 draft).
+func (s *PayrollService) CreatePayroll(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID, req *CreatePayrollRequest) (*model.Payroll, error) {
+	payrollNo, err := s.payrollRepo.GetNextPayrollNo(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("get next payroll no: %w", err)
+	}
+
+	grossSalary, err := decimal.NewFromString(req.GrossSalary)
+	if err != nil {
+		return nil, fmt.Errorf("invalid gross_salary: %w", err)
+	}
+	individualTax, err := decimal.NewFromString(req.IndividualTax)
+	if err != nil {
+		return nil, fmt.Errorf("invalid individual_tax: %w", err)
+	}
+	socialSecurity, err := decimal.NewFromString(req.SocialSecurity)
+	if err != nil {
+		return nil, fmt.Errorf("invalid social_security: %w", err)
+	}
+	housingFund, err := decimal.NewFromString(req.HousingFund)
+	if err != nil {
+		return nil, fmt.Errorf("invalid housing_fund: %w", err)
+	}
+	otherDeductions, err := decimal.NewFromString(req.OtherDeductions)
+	if err != nil {
+		return nil, fmt.Errorf("invalid other_deductions: %w", err)
+	}
+	netSalary, err := decimal.NewFromString(req.NetSalary)
+	if err != nil {
+		return nil, fmt.Errorf("invalid net_salary: %w", err)
+	}
+
+	paymentDate, err := time.Parse("2006-01-02", req.PaymentDate)
+	if err != nil {
+		return nil, fmt.Errorf("invalid payment_date: %w", err)
+	}
+
+	companyID, err := uuid.Parse(req.CompanyID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid company_id: %w", err)
+	}
+
+	source := req.Source
+	if source == "" {
+		source = "manual"
+	}
+
+	payroll := &model.Payroll{
+		ID:              uuid.New(),
+		CompanyID:       companyID,
+		PayrollNo:       payrollNo,
+		EmployeeName:    req.EmployeeName,
+		DepartmentName:  req.DepartmentName,
+		PeriodNo:        req.PeriodNo,
+		GrossSalary:     grossSalary,
+		IndividualTax:   individualTax,
+		SocialSecurity:  socialSecurity,
+		HousingFund:     housingFund,
+		OtherDeductions: otherDeductions,
+		NetSalary:       netSalary,
+		PaymentDate:     paymentDate,
+		BankAccountNo:   req.BankAccountNo,
+		Status:          "draft",
+		DocStatus:       0,
+		Source:         source,
+		Remark:         req.Remark,
+		CreatedBy:       &userID,
+	}
+
+	return s.payrollRepo.Create(ctx, tenantID, payroll)
+}
+
+// GetPayroll retrieves a payroll record by ID.
+func (s *PayrollService) GetPayroll(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*model.Payroll, error) {
+	return s.payrollRepo.GetByID(ctx, tenantID, id)
+}
+
+// ListPayroll lists payroll records with optional period filter.
+func (s *PayrollService) ListPayroll(ctx context.Context, tenantID uuid.UUID, periodNo *int) ([]model.Payroll, error) {
+	if periodNo != nil {
+		return s.payrollRepo.ListByPeriod(ctx, tenantID, *periodNo)
+	}
+	return s.payrollRepo.ListByTenant(ctx, tenantID)
+}
+
+// Submit submits a payroll record: changes docstatus from 0 to 1.
+func (s *PayrollService) Submit(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, userID uuid.UUID) error {
+	payroll, err := s.payrollRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		return fmt.Errorf("get payroll: %w", err)
+	}
+	if payroll.DocStatus != 0 {
+		return errors.New("only draft payrolls can be submitted")
+	}
+	return s.payrollRepo.UpdateStatus(ctx, tenantID, id, 1)
+}
+
+// Approve approves a payroll record: changes docstatus from 1 to 2 and generates a voucher.
+// This is a first-class source document — approve directly generates the journal voucher.
+func (s *PayrollService) Approve(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, userID uuid.UUID) (*model.JournalEntry, error) {
+	payroll, err := s.payrollRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		return nil, fmt.Errorf("get payroll: %w", err)
+	}
+	if payroll.DocStatus != 1 {
+		return nil, errors.New("only submitted payrolls can be approved")
+	}
+
+	voucher, err := s.GenerateVoucherFromPayroll(ctx, tenantID, id, userID)
+	if err != nil {
+		return nil, fmt.Errorf("generate voucher: %w", err)
+	}
+
+	if err := s.payrollRepo.UpdateStatus(ctx, tenantID, id, 2); err != nil {
+		return nil, fmt.Errorf("update status: %w", err)
+	}
+	if err := s.payrollRepo.SetVoucherID(ctx, tenantID, id, voucher.ID, voucher.VoucherNo); err != nil {
+		return nil, fmt.Errorf("update voucher ref: %w", err)
+	}
+
+	return voucher, nil
+}
+
+// GenerateVoucherFromPayroll generates a journal voucher from a payroll record.
+// Voucher entries:
+//   - Debit: 6602 应付职工薪酬 — 工资        (gross_salary)
+//   - Credit: 2221 应交税费 — 应交个人所得税 (individual_tax)
+//   - Credit: 2241 其他应付款 — 社保          (social_security)
+//   - Credit: 2241 其他应付款 — 公积金        (housing_fund)
+//   - Credit: 1002 银行存款                (net_salary)
+func (s *PayrollService) GenerateVoucherFromPayroll(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, userID uuid.UUID) (*model.JournalEntry, error) {
+	payroll, err := s.payrollRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		return nil, fmt.Errorf("get payroll: %w", err)
+	}
+
+	// Lookup accounts
+	account6602, err := s.accountRepo.GetByCode(ctx, tenantID, "6602")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 6602: %w", err)
+	}
+	account2221, err := s.accountRepo.GetByCode(ctx, tenantID, "2221")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 2221: %w", err)
+	}
+	account2241, err := s.accountRepo.GetByCode(ctx, tenantID, "2241")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 2241: %w", err)
+	}
+	account1002, err := s.accountRepo.GetByCode(ctx, tenantID, "1002")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 1002: %w", err)
+	}
+
+	// Generate voucher number
+	voucherResp, err := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+	voucherNo := ""
+	if err == nil && voucherResp != nil {
+		voucherNo = voucherResp.VoucherNumber
+	}
+	if voucherNo == "" {
+		voucherNo = fmt.Sprintf("PY-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano()%1000000)
+	}
+
+	// Build period description for voucher remark
+	periodDesc := fmt.Sprintf("%d年%d月工资", payroll.PeriodNo/100, payroll.PeriodNo%100)
+	remark := fmt.Sprintf("%s — %s", periodDesc, payroll.EmployeeName)
+	if payroll.Remark != nil && *payroll.Remark != "" {
+		remark += "; " + *payroll.Remark
+	}
+
+	// Build journal entry
+	je := &model.JournalEntry{
+		ID:            uuid.New(),
+		VoucherNo:     voucherNo,
+		VoucherType:   ptr("Payroll"),
+		PostingDate:   payroll.PaymentDate,
+		CompanyID:     payroll.CompanyID,
+		TenantID:      tenantID,
+		DocStatus:     1,
+		CreatedBy:     userID,
+		SourceDocType: ptr("payroll"),
+		SourceDocID:   &id,
+		SourceDocNo:   &payroll.PayrollNo,
+		Remark:        &remark,
+	}
+
+	je, err = s.journalRepo.Create(ctx, tenantID, je)
+	if err != nil {
+		return nil, fmt.Errorf("create journal entry: %w", err)
+	}
+
+	// Build lines
+	lines := []model.JournalEntryLine{
+		{
+			ID:             uuid.New(),
+			JournalEntryID: je.ID,
+			AccountID:      account6602.ID,
+			Debit:          payroll.GrossSalary,
+			Credit:         decimal.Zero,
+			AccountCode:    account6602.Code,
+			AccountName:    account6602.Name,
+			TenantID:       tenantID,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: je.ID,
+			AccountID:      account2221.ID,
+			Debit:          decimal.Zero,
+			Credit:         payroll.IndividualTax,
+			AccountCode:    account2221.Code,
+			AccountName:    account2221.Name,
+			TenantID:       tenantID,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: je.ID,
+			AccountID:      account2241.ID,
+			Debit:          decimal.Zero,
+			Credit:         payroll.SocialSecurity,
+			AccountCode:    account2241.Code,
+			AccountName:    account2241.Name,
+			TenantID:       tenantID,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: je.ID,
+			AccountID:      account2241.ID,
+			Debit:          decimal.Zero,
+			Credit:         payroll.HousingFund,
+			AccountCode:    account2241.Code,
+			AccountName:    account2241.Name,
+			TenantID:       tenantID,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: je.ID,
+			AccountID:      account1002.ID,
+			Debit:          decimal.Zero,
+			Credit:         payroll.NetSalary,
+			AccountCode:    account1002.Code,
+			AccountName:    account1002.Name,
+			TenantID:       tenantID,
+		},
+	}
+
+	_, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, lines)
+	if err != nil {
+		return nil, fmt.Errorf("add journal entry lines: %w", err)
+	}
+
+	return je, nil
+}
