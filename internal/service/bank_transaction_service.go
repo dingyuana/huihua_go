@@ -516,6 +516,12 @@ func (s *BankTransactionService) DeleteTransaction(ctx context.Context, tenantID
 	return s.repo.UpdateMatched(ctx, tenantID, id, false)
 }
 
+// ClearTransactionalData clears all transactional data for a tenant.
+// Preserves master data (accounts, parties, classification rules, etc.).
+func (s *BankTransactionService) ClearTransactionalData(ctx context.Context, tenantID uuid.UUID) (map[string]int, error) {
+	return s.repo.ClearTransactionalData(ctx, tenantID)
+}
+
 // MarkAsConfirmed marks a single transaction as confirmed (人工确认).
 func (s *BankTransactionService) MarkAsConfirmed(ctx context.Context, tenantID, id uuid.UUID) error {
 	return s.repo.MarkAsConfirmed(ctx, tenantID, id)

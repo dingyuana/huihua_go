@@ -47,7 +47,8 @@ func (r *PartyRepository) Create(ctx context.Context, tenantID uuid.UUID, p *mod
 func (r *PartyRepository) List(ctx context.Context, tenantID uuid.UUID) ([]model.Party, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
-			contact_name, contact_phone, credit_limit, payment_days, is_active, created_at, updated_at
+			contact_name, contact_phone, credit_limit, payment_days, is_active,
+			ar_account_id, ap_account_id, created_at, updated_at
 		FROM parties WHERE tenant_id = $1 AND is_active = TRUE ORDER BY name`,
 		tenantID)
 	if err != nil {
@@ -90,7 +91,8 @@ func (r *PartyRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (
 func (r *PartyRepository) ListByType(ctx context.Context, tenantID uuid.UUID, partyType string) ([]model.Party, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
-			contact_name, contact_phone, credit_limit, payment_days, is_active, created_at, updated_at
+			contact_name, contact_phone, credit_limit, payment_days, is_active,
+			ar_account_id, ap_account_id, created_at, updated_at
 		FROM parties WHERE tenant_id = $1 AND party_type = $2 AND is_active = TRUE ORDER BY name`,
 		tenantID, partyType)
 	if err != nil {

@@ -225,7 +225,9 @@ func (r *InvoiceRepository) UpdateFields(ctx context.Context, tenantID, id uuid.
 	return nil
 }
 
-// ImportBatch inserts multiple invoices in a transaction.
+// ImportBatch inserts multiple invoices in a transaction, skipping rows whose
+// invoice_no already exists. Returns the rows actually inserted (i.e. without
+// the duplicates the DB silently dropped).
 func (r *InvoiceRepository) ImportBatch(ctx context.Context, tenantID uuid.UUID, invoices []model.SalesInvoice) ([]model.SalesInvoice, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -233,31 +235,36 @@ func (r *InvoiceRepository) ImportBatch(ctx context.Context, tenantID uuid.UUID,
 	}
 	defer tx.Rollback(ctx)
 
+	inserted := make([]model.SalesInvoice, 0, len(invoices))
 	for _, inv := range invoices {
 		inv.ID = uuid.New()
 		inv.TenantID = tenantID
 		inv.CreatedAt = time.Now()
 
-		_, err := tx.Exec(ctx, `
+		ctid, err := tx.Exec(ctx, `
 			INSERT INTO sales_invoices (id, invoice_no, invoice_type, customer_id, tax_id, company_id,
 				tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 				status, tax_template_id, return_against, is_return, remark, source_red_invoice_no,
 				docstatus, created_by, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+			ON CONFLICT (invoice_no) DO NOTHING`,
 			inv.ID, inv.InvoiceNo, inv.InvoiceType, inv.CustomerID, inv.TaxID, inv.CompanyID,
-			inv.TenantID, inv.PostingDate, inv.DueDate, inv.TotalAmount, inv.TaxAmount, inv.NetAmount,
-			inv.OutstandingAmount, inv.Status, inv.TaxTemplateID, inv.ReturnAgainst, inv.IsReturn,
+			inv.TenantID, inv.PostingDate, inv.DueDate, inv.TotalAmount, inv.TaxAmount, inv.NetAmount, inv.OutstandingAmount, inv.Status, inv.TaxTemplateID, inv.ReturnAgainst, inv.IsReturn,
 			inv.Remark, inv.SourceRedInvoiceNo,
 			inv.DocStatus, inv.CreatedBy, inv.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
+		if ctid.RowsAffected() == 0 {
+			continue
+		}
+		inserted = append(inserted, inv)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return invoices, nil
+	return inserted, nil
 }
 
 // GetLineItems retrieves line items for an invoice.
@@ -397,4 +404,20 @@ func (r *InvoiceRepository) GetAllocationsByPaymentEntry(ctx context.Context, te
 		allocs = append(allocs, a)
 	}
 	return allocs, rows.Err()
+}
+
+// GetDefaultCompanyID returns the first company_id for the tenant.
+// Used by file-based import to assign sales invoices to the current company.
+func (r *InvoiceRepository) GetDefaultCompanyID(ctx context.Context, tenantID uuid.UUID) (uuid.UUID, error) {
+	var companyID uuid.UUID
+	err := r.pool.QueryRow(ctx, `
+		SELECT id FROM company_settings
+		WHERE tenant_id = $1
+		ORDER BY created_at ASC
+		LIMIT 1`,
+		tenantID).Scan(&companyID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return companyID, nil
 }

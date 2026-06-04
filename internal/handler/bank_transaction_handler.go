@@ -441,6 +441,31 @@ func (h *BankTransactionHandler) GetByID(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": txn})
 }
 
+// ClearAll deletes ALL transactional data for the current tenant.
+// POST /api/v1/admin/clear-transactional-data?confirm=true
+// Preserves master data (accounts, parties, classification rules, bank accounts, etc.).
+// Requires confirm=true query parameter to prevent accidental invocation.
+func (h *BankTransactionHandler) ClearAll(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	if c.Query("confirm") != "true" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "requires confirm=true query parameter to proceed",
+		})
+	}
+
+	result, err := h.svc.ClearTransactionalData(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"message":   "transactional data cleared",
+		"tenant_id": tenantID.String(),
+		"deleted":   result,
+	})
+}
+
 // Delete deletes a bank transaction.
 // DELETE /api/v1/bank-transactions/:id
 func (h *BankTransactionHandler) Delete(c *fiber.Ctx) error {

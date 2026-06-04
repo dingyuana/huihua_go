@@ -59,10 +59,63 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 		})
 	}
 
+	result := make([]map[string]interface{}, len(invoices))
+	for i, inv := range invoices {
+		lineItems, _ := h.svc.GetLineItems(c.Context(), tenantID, inv.ID)
+		itemsResult := make([]map[string]interface{}, len(lineItems))
+		for j, item := range lineItems {
+			itemsResult[j] = map[string]interface{}{
+				"id":          item.ID,
+				"item_code":   item.ItemCode,
+				"description": item.Description,
+				"quantity":    item.Quantity.String(),
+				"unit_price":  item.UnitPrice.String(),
+				"tax_rate":    item.TaxRate.String(),
+				"tax_amount":  item.TaxAmount.String(),
+				"net_amount":  item.NetAmount.String(),
+				"total_amount": item.TotalAmount.String(),
+				"unit":        item.Unit,
+			}
+		}
+
+		result[i] = map[string]interface{}{
+			"id":                 inv.ID,
+			"type":               inv.InvoiceType,
+			"invoice_no":         inv.InvoiceNo,
+			"customer_id":        inv.CustomerID,
+			"posting_date":       inv.PostingDate.Format("2006-01-02"),
+			"total_amount":       inv.TotalAmount.String(),
+			"tax_amount":         inv.TaxAmount.String(),
+			"net_amount":         inv.NetAmount.String(),
+			"outstanding_amount": inv.OutstandingAmount.String(),
+			"status":             mapInvoiceStatus(inv.Status),
+			"remark":             inv.Remark,
+			"created_at":         inv.CreatedAt.Format("2006-01-02 15:04:05"),
+			"line_items":         itemsResult,
+		}
+	}
+
 	return c.JSON(fiber.Map{
-		"invoices": invoices,
-		"total":    len(invoices),
+		"list":  result,
+		"total": len(result),
 	})
+}
+
+func mapInvoiceStatus(status string) string {
+	switch status {
+	case "正常", "unpaid":
+		return "draft"
+	case "已确认", "verified":
+		return "verified"
+	case "部分核销", "partially_paid":
+		return "partially_paid"
+	case "已核销", "paid":
+		return "paid"
+	case "已红冲-全额", "已红冲":
+		return "cancelled"
+	default:
+		return "draft"
+	}
 }
 
 // GetByID retrieves an invoice by ID.

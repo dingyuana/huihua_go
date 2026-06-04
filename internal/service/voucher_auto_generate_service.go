@@ -152,7 +152,9 @@ func (s *VoucherAutoGenerateService) GenerateFromBankTxn(ctx context.Context, te
 	}
 
 	// Build journal entry
-	postingDate := txn.TxnDate
+	// Posting date is the voucher creation date (会计转凭证当日),
+	// not the bank transaction date — accounting practice for 跨期调整.
+	postingDate := time.Now()
 	companyID := txn.CompanyID
 	je := &model.JournalEntry{
 		ID:               uuid.New(),
@@ -217,7 +219,8 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 		TenantID:    tenantID,
 		CompanyID:   invoice.CompanyID,
 		VoucherNo:   voucherNo,
-		PostingDate: invoice.PostingDate,
+		// PostingDate = voucher creation date (会计转凭证当日), not the invoice date.
+		PostingDate: time.Now(),
 		CreatedBy:   createdBy,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -418,7 +421,8 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 		TenantID:         tenantID,
 		CompanyID:        pe.CompanyID,
 		VoucherNo:        voucherNo,
-		PostingDate:      pe.PostingDate,
+		// PostingDate = voucher creation date (会计转凭证当日), not the payment entry date.
+		PostingDate:      time.Now(),
 		CreatedBy:        userID,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),

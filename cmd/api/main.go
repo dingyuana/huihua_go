@@ -36,11 +36,12 @@ func main() {
 				"error": "internal server error",
 			})
 		},
+		BodyLimit: 50 * 1024 * 1024, // 50MB
 	})
 
 	// Global middleware
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:3002,http://localhost:3003,http://localhost:5173",
+		AllowOrigins: "http://localhost:3002,http://localhost:3003,http://localhost:5173,http://129.211.7.254:3002",
 		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
 		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
 	}))
@@ -134,7 +135,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Invoice routes
 	invoiceRepo := repository.NewInvoiceRepository(db.GetPool())
-	invoiceSvc := service.NewInvoiceService(invoiceRepo)
+	invoiceSvc := service.NewInvoiceService(invoiceRepo, partyRepo)
 	invoiceHandler := handler.NewInvoiceHandler(invoiceSvc)
 	api.Get("/invoices", invoiceHandler.List)
 	api.Post("/invoices", invoiceHandler.Create)
@@ -305,6 +306,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/bank-transactions/batch-confirm", bankTxnHandler.BatchConfirm)
 	api.Post("/bank-transactions/:id/generate-voucher", autoGenHandler.GenerateFromBankTxn)
 	api.Post("/bank-transactions/batch-generate", autoGenHandler.BatchGenerate)
+	api.Post("/admin/clear-transactional-data", bankTxnHandler.ClearAll)
 	api.Post("/invoices/:id/generate-voucher", autoGenHandler.GenerateFromInvoice)
 	api.Post("/payment-entries/:id/generate-voucher", autoGenHandler.GenerateFromPaymentEntry)
 

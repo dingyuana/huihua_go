@@ -79,7 +79,27 @@
 
     <!-- 列表 -->
     <el-card>
-      <el-table :data="invoices" border stripe size="small">
+      <el-table :data="invoices" border stripe size="small" :expand-row-keys="expandedRows" @expand-change="handleExpandChange" row-key="id">
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div v-if="row.line_items && row.line_items.length > 0">
+              <el-table :data="row.line_items" border size="mini" style="width: 100%">
+                <el-table-column prop="item_code" label="商品编码" width="120" />
+                <el-table-column prop="description" label="商品名称" min-width="200" />
+                <el-table-column prop="quantity" label="数量" width="80" align="right" />
+                <el-table-column prop="unit" label="单位" width="60" />
+                <el-table-column prop="unit_price" label="单价" width="100" align="right" />
+                <el-table-column prop="net_amount" label="不含税金额" width="120" align="right" />
+                <el-table-column prop="tax_rate" label="税率" width="80" align="right" />
+                <el-table-column prop="tax_amount" label="税额" width="100" align="right" />
+                <el-table-column prop="total_amount" label="价税合计" width="120" align="right" />
+              </el-table>
+            </div>
+            <div v-else style="padding: 16px; text-align: center; color: #999;">
+              无明细行项
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column type="selection" width="55" />
         <el-table-column prop="invoice_no" label="发票号" width="140" />
         <el-table-column label="类型" width="70">
@@ -350,6 +370,19 @@ import { generateVoucherFromInvoice, uploadInvoice, importInvoicesFile, previewI
 
 const activeTab = ref('sales')
 
+interface InvoiceLineItem {
+  id: string
+  item_code: string
+  description: string
+  quantity: string
+  unit: string
+  unit_price: string
+  net_amount: string
+  tax_rate: string
+  tax_amount: string
+  total_amount: string
+}
+
 interface InvoiceItem {
   id: string
   invoice_no: string
@@ -363,6 +396,7 @@ interface InvoiceItem {
   net_amount: string
   outstanding: string
   status: string
+  line_items?: InvoiceLineItem[]
 }
 
 const filter = reactive({
@@ -375,6 +409,16 @@ const filter = reactive({
 const invoices = ref<InvoiceItem[]>([])
 const selectedInvoices = ref<InvoiceItem[]>([])
 const confirmLoading = ref(false)
+const expandedRows = ref<string[]>([])
+
+function handleExpandChange(row: InvoiceItem, expanded: boolean) {
+  const index = expandedRows.value.indexOf(row.id)
+  if (expanded && index === -1) {
+    expandedRows.value.push(row.id)
+  } else if (!expanded && index > -1) {
+    expandedRows.value.splice(index, 1)
+  }
+}
 
 const salesBadge = computed(() => invoices.value.filter(i => i.type === 'sale' && i.status === 'draft').length)
 const purchaseBadge = computed(() => invoices.value.filter(i => i.type === 'purchase' && i.status === 'draft').length)
@@ -405,7 +449,7 @@ async function loadData() {
     else if (activeTab.value === 'expense') params.type = 'expense'
 
     const res: any = await request.get('/invoices', { params })
-    const list = res?.data?.list || res?.data
+    const list = res?.list
     if (Array.isArray(list)) { invoices.value = list }
   } catch { /* no data */ }
 }
@@ -629,6 +673,8 @@ async function handleBatchPreview() {
     let actualData = res as any
     if (actualData?.data?.columns) {
       actualData = actualData.data
+    } else if (actualData?.columns) {
+      actualData = res
     }
 
     if (actualData?.columns && Array.isArray(actualData.columns)) {
@@ -757,10 +803,11 @@ async function handleBatchImport() {
   batchLoading.value = true
   try {
     const res = await importInvoicesFile(uploadedFile.value)
-    importResult.value = res.data
+    const result = (res as any).data || res
+    importResult.value = result
     showPreview.value = false
-    ElMessage.success(`成功导入 ${res.data.imported} 条发票`)
-    if (res.data.imported > 0) loadData()
+    ElMessage.success(`成功导入 ${result.imported} 条发票`)
+    if (result.imported > 0) loadData()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error || '批量导入失败')
   }

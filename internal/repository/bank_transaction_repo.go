@@ -481,6 +481,149 @@ func (r *BankTransactionRepository) GetPool() *pgxpool.Pool {
 	return r.pool
 }
 
+// ClearTransactionalData deletes ALL transactional data for a tenant while preserving master data.
+// Deletion order respects FK constraints. Returns counts per table.
+// Master data preserved: accounts, parties, classification_rules, bank_accounts,
+// users, company_settings, accounting_periods, voucher_templates, approval_flows, exchange_rates.
+func (r *BankTransactionRepository) ClearTransactionalData(ctx context.Context, tenantID uuid.UUID) (map[string]int, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	result := make(map[string]int)
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM gl_entries WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete gl_entries: %w", err)
+	} else {
+		result["gl_entries"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM voucher_state_transitions WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete voucher_state_transitions: %w", err)
+	} else {
+		result["voucher_state_transitions"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM journal_entry_lines WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete journal_entry_lines: %w", err)
+	} else {
+		result["journal_entry_lines"] = int(tag.RowsAffected())
+	}
+
+	if _, err := tx.Exec(ctx, `UPDATE journal_entries SET reversed_id = NULL, reversal_id = NULL WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("nullify journal_entry self-refs: %w", err)
+	}
+	if tag, err := tx.Exec(ctx, `DELETE FROM journal_entries WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete journal_entries: %w", err)
+	} else {
+		result["journal_entries"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM bus_doc_mapping WHERE tenant_id = $1 AND tenant_id != '00000000-0000-0000-0000-000000000001'`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete bus_doc_mapping: %w", err)
+	} else {
+		result["bus_doc_mapping"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM payment_allocations WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete payment_allocations: %w", err)
+	} else {
+		result["payment_allocations"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM payment_entries WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete payment_entries: %w", err)
+	} else {
+		result["payment_entries"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM bank_transactions WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete bank_transactions: %w", err)
+	} else {
+		result["bank_transactions"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM invoice_line_items WHERE invoice_id IN (SELECT id FROM sales_invoices WHERE tenant_id = $1)`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete invoice_line_items: %w", err)
+	} else {
+		result["invoice_line_items"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM sales_invoices WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete sales_invoices: %w", err)
+	} else {
+		result["sales_invoices"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM depreciation_run_details WHERE run_id IN (SELECT id FROM depreciation_runs WHERE tenant_id = $1)`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete depreciation_run_details: %w", err)
+	} else {
+		result["depreciation_run_details"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM depreciation_runs WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete depreciation_runs: %w", err)
+	} else {
+		result["depreciation_runs"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM reconciliation_pairs WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete reconciliation_pairs: %w", err)
+	} else {
+		result["reconciliation_pairs"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM reconciliation_records WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete reconciliation_records: %w", err)
+	} else {
+		result["reconciliation_records"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM unreconciled_items WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete unreconciled_items: %w", err)
+	} else {
+		result["unreconciled_items"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM bank_reconciliation_details WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete bank_reconciliation_details: %w", err)
+	} else {
+		result["bank_reconciliation_details"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM bank_reconciliation_statements WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete bank_reconciliation_statements: %w", err)
+	} else {
+		result["bank_reconciliation_statements"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM ai_feedback_logs WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete ai_feedback_logs: %w", err)
+	} else {
+		result["ai_feedback_logs"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM audit_logs WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete audit_logs: %w", err)
+	} else {
+		result["audit_logs"] = int(tag.RowsAffected())
+	}
+
+	if tag, err := tx.Exec(ctx, `DELETE FROM balance_adjustments WHERE tenant_id = $1`, tenantID); err != nil {
+		return nil, fmt.Errorf("delete balance_adjustments: %w", err)
+	} else {
+		result["balance_adjustments"] = int(tag.RowsAffected())
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	return result, nil
+}
+
 func (r *BankTransactionRepository) GetNetChangeByAccount(ctx context.Context, tenantID, bankAccountID uuid.UUID) (decimal.Decimal, int, error) {
 	var totalIn, totalOut decimal.NullDecimal
 	var count int
