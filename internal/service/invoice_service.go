@@ -721,12 +721,15 @@ func buildInvoicesFromGroups(validGroups []struct {
 		if h.Remark != "" {
 			header.Remark = &h.Remark
 		}
-		header.IsReturn = h.IsReturn
-
 		srcNo := h.SourceRedInvoiceNo
-		if h.IsReturn && srcNo == "" && h.Remark != "" {
+		if srcNo == "" && h.Remark != "" {
 			srcNo = extractBlueInvoiceNo(h.Remark)
 		}
+		if !h.IsReturn && srcNo != "" {
+			h.IsReturn = true
+		}
+		header.IsReturn = h.IsReturn
+
 		if srcNo != "" {
 			header.SourceRedInvoiceNo = &srcNo
 			if srcInv, lerr := repo.GetByInvoiceNo(ctx, tenantID, srcNo); lerr == nil && srcInv != nil {

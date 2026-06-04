@@ -86,6 +86,7 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 			"invoice_category":      inv.InvoiceCategory,
 			"customer_id":           inv.CustomerID,
 			"customer_name":         inv.CustomerName,
+			"tax_id":                inv.TaxID,
 			"posting_date":          inv.PostingDate.Format("2006-01-02"),
 			"total_amount":          inv.TotalAmount.String(),
 			"tax_amount":            inv.TaxAmount.String(),
