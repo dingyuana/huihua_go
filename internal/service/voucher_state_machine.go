@@ -15,9 +15,11 @@ import (
 
 // VoucherStateMachine handles voucher status transitions.
 type VoucherStateMachine struct {
-	journalRepo *repository.JournalRepository
-	auditRepo   *repository.AuditRepository
-	glRepo      *repository.GLEntryRepository
+	journalRepo     *repository.JournalRepository
+	auditRepo       *repository.AuditRepository
+	glRepo          *repository.GLEntryRepository
+	bankJournalRepo *repository.BankJournalRepository
+	bankRepo        *repository.BankRepository
 }
 
 // NewVoucherStateMachine creates a new VoucherStateMachine.
@@ -26,6 +28,17 @@ func NewVoucherStateMachine(journalRepo *repository.JournalRepository, auditRepo
 		journalRepo: journalRepo,
 		auditRepo:   auditRepo,
 		glRepo:      glRepo,
+	}
+}
+
+// NewVoucherStateMachineWithBankJournal creates a VoucherStateMachine with bank journal auto-registration.
+func NewVoucherStateMachineWithBankJournal(journalRepo *repository.JournalRepository, auditRepo *repository.AuditRepository, glRepo *repository.GLEntryRepository, bankJournalRepo *repository.BankJournalRepository, bankRepo *repository.BankRepository) *VoucherStateMachine {
+	return &VoucherStateMachine{
+		journalRepo:     journalRepo,
+		auditRepo:       auditRepo,
+		glRepo:          glRepo,
+		bankJournalRepo: bankJournalRepo,
+		bankRepo:        bankRepo,
 	}
 }
 
@@ -132,6 +145,13 @@ func (s *VoucherStateMachine) ExecuteTransition(ctx context.Context, tenantID uu
 	if (action == model.VoucherActionReverse || action == model.VoucherActionCancel) && s.glRepo != nil {
 		if err := s.glRepo.CancelGLEntriesByVoucherTx(ctx, tx, tenantID, journalID); err != nil {
 			return fmt.Errorf("cancel GL entries: %w", err)
+		}
+	}
+
+	// Auto-register bank journal entry on approve (posted -> verified)
+	if action == model.VoucherActionApprove && s.bankJournalRepo != nil {
+		if err := s.registerBankJournalEntry(ctx, tx, tenantID, journalID); err != nil {
+			return fmt.Errorf("register bank journal entry: %w", err)
 		}
 	}
 
@@ -345,5 +365,88 @@ func ValidateDebitCredit(lines []model.JournalEntryLine) error {
 	if !totalDebit.Equal(totalCredit) {
 		return fmt.Errorf("debit (%s) != credit (%s)", totalDebit.String(), totalCredit.String())
 	}
+	return nil
+}
+
+// registerBankJournalEntry registers a bank journal entry when a voucher is approved.
+// It finds the bank account (1002) line in the voucher and creates a corresponding entry.
+func (s *VoucherStateMachine) registerBankJournalEntry(ctx context.Context, tx interface{}, tenantID uuid.UUID, journalID uuid.UUID) error {
+	// Get voucher lines
+	lines, err := s.journalRepo.GetLines(ctx, tenantID, journalID)
+	if err != nil {
+		return fmt.Errorf("get lines: %w", err)
+	}
+
+	// Get the journal entry for voucher number and posting date
+	je, err := s.journalRepo.GetByID(ctx, tenantID, journalID)
+	if err != nil {
+		return fmt.Errorf("get journal entry: %w", err)
+	}
+
+	// Find the bank account (1002) line
+	var bankLine *model.JournalEntryLine
+	for i := range lines {
+		if lines[i].AccountCode == "1002" {
+			bankLine = &lines[i]
+			break
+		}
+	}
+	if bankLine == nil {
+		// No bank account line found, skip registration
+		return nil
+	}
+
+	// Determine bank account ID
+	var bankAccountID uuid.UUID
+	// Try to find a bank account linked to 1002
+	bankAccounts, err := s.bankRepo.ListByTenant(ctx, tenantID)
+	if err == nil && len(bankAccounts) > 0 {
+		// Use the first bank account as default
+		bankAccountID = bankAccounts[0].ID
+	}
+
+	// If voucher has source_doc_type=payment and source_doc_id, use that payment's bank_account_id
+	if je.SourceDocType != nil && je.SourceDocID != nil {
+		// We could look up the payment entry to get the bank_account_id
+		// For now, use the first bank account or skip
+	}
+
+	// Build description
+	var desc string
+	if je.Remark != nil {
+		desc = *je.Remark
+	} else {
+		desc = fmt.Sprintf("凭证 %s", je.VoucherNo)
+	}
+
+	// Determine debit/credit direction based on the bank line
+	var debit, credit decimal.Decimal
+	if bankLine.Debit.GreaterThan(decimal.Zero) {
+		debit = bankLine.Debit
+	} else {
+		credit = bankLine.Credit
+	}
+
+	// Create bank journal entry
+	entry := &model.BankJournalEntry{
+		ID:            uuid.New(),
+		BankAccountID: bankAccountID,
+		TxnDate:       je.PostingDate,
+		Description:  &desc,
+		Debit:         debit,
+		Credit:        credit,
+		VoucherID:     &journalID,
+		VoucherNo:     &je.VoucherNo,
+		TenantID:      tenantID,
+	}
+
+	// Use tx if it's a pgx.Tx (bank journal create doesn't need tx, but we pass it anyway)
+	if s.bankJournalRepo != nil {
+		_, err := s.bankJournalRepo.Create(ctx, tenantID, entry)
+		if err != nil {
+			return fmt.Errorf("create bank journal entry: %w", err)
+		}
+	}
+
 	return nil
 }

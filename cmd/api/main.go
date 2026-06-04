@@ -210,7 +210,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Voucher state machine routes
 	auditRepo = repository.NewAuditRepository(db.GetPool())
-	stateMachine := service.NewVoucherStateMachine(journalRepo, auditRepo, glEntryRepo)
+	bankJournalRepo := repository.NewBankJournalRepository(db.GetPool())
+	stateMachine := service.NewVoucherStateMachineWithBankJournal(journalRepo, auditRepo, glEntryRepo, bankJournalRepo, bankRepo)
 	paymentStateMachine := service.NewPaymentStateMachine(paymentRepo, invoiceRepo, auditRepo)
 	voucherSvc := service.NewVoucherService(journalRepo, voucherTemplateSvc, bankTransactionRepo, paymentRepo, accountRepo, classificationRuleSvc, paymentStateMachine)
 	voucherHandler := handler.NewVoucherHandler(stateMachine, journalRepo, voucherSvc)
@@ -229,6 +230,19 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/vouchers/:id/reverse", voucherHandler.Reverse)
 	api.Get("/vouchers/:id/status", voucherHandler.GetStatus)
 	api.Get("/vouchers/:id/transitions", voucherHandler.GetTransitions)
+
+	// Reimbursement routes
+	reimbRepo := repository.NewReimbursementRepository(db.GetPool())
+	reimbursementSvc := service.NewReimbursementService(reimbRepo, journalRepo, accountRepo, voucherTemplateSvc)
+	reimbursementHandler := handler.NewReimbursementHandler(reimbursementSvc)
+	api.Get("/reimbursements", reimbursementHandler.List)
+	api.Post("/reimbursements", reimbursementHandler.Create)
+	api.Get("/reimbursements/:id", reimbursementHandler.GetByID)
+	api.Put("/reimbursements/:id", reimbursementHandler.Update)
+	api.Delete("/reimbursements/:id", reimbursementHandler.Delete)
+	api.Post("/reimbursements/:id/submit", reimbursementHandler.Submit)
+	api.Post("/reimbursements/:id/approve", reimbursementHandler.Approve)
+	api.Post("/reimbursements/:id/generate-voucher", reimbursementHandler.GenerateVoucher)
 
 	// Opening balance routes
 	obRepo := repository.NewOpeningBalanceRepository(db.GetPool())
