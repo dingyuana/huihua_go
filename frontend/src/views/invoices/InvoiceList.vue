@@ -46,6 +46,19 @@
           <span class="stat-label">已核销</span>
           <span class="stat-value paid">{{ paidCount }}</span>
         </div>
+        <el-divider direction="vertical" />
+        <div class="stat-item">
+          <span class="stat-label">普通发票</span>
+          <span class="stat-value confirmed">{{ normalInvoiceCount }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">增值税发票</span>
+          <span class="stat-value confirmed">{{ vatInvoiceCount }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">红字发票</span>
+          <span class="stat-value paid">{{ redInvoiceCount }}</span>
+        </div>
       </div>
     </el-card>
 
@@ -453,6 +466,14 @@ const pendingCount = computed(() => invoices.value.filter(i => i.status === 'sub
 const confirmedCount = computed(() => invoices.value.filter(i => i.status === 'verified').length)
 const partialCount = computed(() => invoices.value.filter(i => i.status === 'partially_paid').length)
 const paidCount = computed(() => invoices.value.filter(i => i.status === 'paid').length)
+
+const normalInvoiceCount = computed(() => invoices.value.filter(i =>
+  i.invoice_category && i.invoice_category.includes('普通') && !i.is_return
+).length)
+const vatInvoiceCount = computed(() => invoices.value.filter(i =>
+  i.invoice_category && i.invoice_category.includes('专用') && !i.is_return
+).length)
+const redInvoiceCount = computed(() => invoices.value.filter(i => i.is_return).length)
 
 onMounted(async () => {
   await loadData()

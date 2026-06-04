@@ -715,9 +715,8 @@ func buildInvoicesFromGroups(validGroups []struct {
 		if h.InvoiceCategory != "" {
 			header.InvoiceCategory = &h.InvoiceCategory
 		}
-		if h.Status != "" {
-			header.Status = h.Status
-		}
+		// Imported invoices always start as draft (unpaid).
+		// The "状态" column in Excel is informational only; manual 确认 is required to advance status.
 		if h.Remark != "" {
 			header.Remark = &h.Remark
 		}
