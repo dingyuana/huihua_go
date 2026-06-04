@@ -211,3 +211,47 @@ func IsValidPaymentType(t string) bool {
 		return false
 	}
 }
+
+func (r *PaymentEntryRepository) UpdateStatus(ctx context.Context, tenantID, id uuid.UUID, status int16) error {
+	_, err := r.pool.Exec(ctx, `UPDATE payment_entries SET docstatus = $3 WHERE id = $1 AND tenant_id = $2`, id, tenantID, status)
+	return err
+}
+
+func (r *PaymentEntryRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return r.pool.Begin(ctx)
+}
+
+func (r *PaymentEntryRepository) UpdateStatusAndClearVoucherTx(ctx context.Context, tx pgx.Tx, tenantID, id uuid.UUID, status int16) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE payment_entries 
+		SET docstatus = $3, voucher_id = NULL, voucher_no = NULL 
+		WHERE id = $1 AND tenant_id = $2`, id, tenantID, status)
+	return err
+}
+
+func (r *PaymentEntryRepository) GetAllocations(ctx context.Context, tenantID, paymentID uuid.UUID) ([]model.PaymentAllocation, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, payment_entry_id, invoice_id, invoice_type, allocated_amount, tenant_id, created_at
+		FROM payment_allocations 
+		WHERE tenant_id = $1 AND payment_entry_id = $2`, tenantID, paymentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var allocs []model.PaymentAllocation
+	for rows.Next() {
+		var a model.PaymentAllocation
+		if err := rows.Scan(&a.ID, &a.PaymentEntryID, &a.InvoiceID, &a.InvoiceType,
+			&a.AllocatedAmount, &a.TenantID, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		allocs = append(allocs, a)
+	}
+	return allocs, rows.Err()
+}
+
+func (r *PaymentEntryRepository) DeleteAllocationTx(ctx context.Context, tx pgx.Tx, tenantID, allocationID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `DELETE FROM payment_allocations WHERE id = $1 AND tenant_id = $2`, allocationID, tenantID)
+	return err
+}

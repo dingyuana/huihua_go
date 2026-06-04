@@ -204,7 +204,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Voucher state machine routes
 	auditRepo = repository.NewAuditRepository(db.GetPool())
 	stateMachine := service.NewVoucherStateMachine(journalRepo, auditRepo, glEntryRepo)
-	voucherSvc := service.NewVoucherService(journalRepo, voucherTemplateSvc, bankTransactionRepo, paymentRepo, accountRepo, classificationRuleSvc)
+	paymentStateMachine := service.NewPaymentStateMachine(paymentRepo, invoiceRepo, auditRepo)
+	voucherSvc := service.NewVoucherService(journalRepo, voucherTemplateSvc, bankTransactionRepo, paymentRepo, accountRepo, classificationRuleSvc, paymentStateMachine)
 	voucherHandler := handler.NewVoucherHandler(stateMachine, journalRepo, voucherSvc)
 	api.Get("/vouchers", voucherHandler.List)
 	api.Post("/vouchers/suggest-accounts", voucherHandler.SuggestAccounts)

@@ -89,6 +89,20 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="红字" width="80">
+          <template #default="{ row }">
+            <el-tag v-if="row.is_return" type="danger" size="small">🔴红字</el-tag>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="对应蓝字发票" width="150" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-link v-if="row.source_red_invoice_no" type="primary" :underline="false" size="small">
+              {{ row.source_red_invoice_no }}
+            </el-link>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="customer_name" label="对方单位" min-width="150" />
         <el-table-column prop="tax_id" label="税号" width="140" />
         <el-table-column prop="posting_date" label="开票日期" width="100" />
@@ -111,6 +125,7 @@
             <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="showDetail = row">详情</el-button>
@@ -165,6 +180,10 @@
               <p>拖拽 Excel/CSV 文件或点击上传</p>
               <p class="upload-hint">支持 .xlsx / .xls / .csv 格式</p>
             </el-upload>
+            <el-alert type="info" :closable="false" show-icon style="margin-top:12px">
+              <p><b>新增列（可选）：</b>状态、备注、对应蓝字发票号、是否红字</p>
+              <p>红字发票：是否红字填"是"，对应蓝字发票号填原蓝字发票号，红冲时自动建立 link 关系</p>
+            </el-alert>
             <div v-if="uploadedFile" class="file-info">
               <el-tag type="success" size="small">已选择</el-tag>
               <span class="file-name">{{ uploadedFile.name }}</span>

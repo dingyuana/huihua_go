@@ -7,6 +7,29 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// PaymentStatus represents the status of a payment entry.
+type PaymentStatus int16
+
+const (
+	PaymentStatusDraft     PaymentStatus = 0 // 草稿
+	PaymentStatusSubmitted PaymentStatus = 1 // 已提交
+	PaymentStatusApproved  PaymentStatus = 2 // 已审核
+	PaymentStatusPosted    PaymentStatus = 3 // 已过账（生成凭证）
+	PaymentStatusCancelled PaymentStatus = 4 // 已作废
+)
+
+// PaymentAction represents an action that triggers a status transition.
+type PaymentAction string
+
+const (
+	PaymentActionSubmit         PaymentAction = "submit"
+	PaymentActionApprove        PaymentAction = "approve"
+	PaymentActionReject         PaymentAction = "reject"
+	PaymentActionCancel         PaymentAction = "cancel"
+	PaymentActionGenerateVoucher PaymentAction = "generate_voucher"
+	PaymentActionReverse        PaymentAction = "reverse"
+)
+
 // PaymentEntry represents the payment_entries table.
 type PaymentEntry struct {
 	ID               uuid.UUID        `json:"id" db:"id"`

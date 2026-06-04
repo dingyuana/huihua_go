@@ -15,4 +15,7 @@ export interface SalesInvoice {
   outstanding_amount: string
   status: InvoiceStatus
   docstatus: number
+  is_return?: boolean
+  source_red_invoice_no?: string
+  remark?: string
 }

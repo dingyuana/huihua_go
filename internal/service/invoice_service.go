@@ -56,6 +56,11 @@ func (s *InvoiceService) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*
 	return s.repo.GetByID(ctx, tenantID, id)
 }
 
+// GetByInvoiceNo retrieves an invoice by its invoice number (used for red→blue linkage).
+func (s *InvoiceService) GetByInvoiceNo(ctx context.Context, tenantID uuid.UUID, invoiceNo string) (*model.SalesInvoice, error) {
+	return s.repo.GetByInvoiceNo(ctx, tenantID, invoiceNo)
+}
+
 // UpdateStatus updates the status of an invoice.
 func (s *InvoiceService) UpdateStatus(ctx context.Context, tenantID, id uuid.UUID, status string) error {
 	// Validate status transition
@@ -104,14 +109,18 @@ func (s *InvoiceService) ValidateInvoice(inv *model.SalesInvoice) error {
 	if inv.CompanyID == uuid.Nil {
 		return errors.New("company_id is required")
 	}
-	if inv.TotalAmount.LessThan(decimal.Zero) {
-		return errors.New("total_amount cannot be negative")
-	}
-	if inv.NetAmount.LessThan(decimal.Zero) {
-		return errors.New("net_amount cannot be negative")
-	}
-	if inv.TaxAmount.LessThan(decimal.Zero) {
-		return errors.New("tax_amount cannot be negative")
+	// Red-letter (credit_note) invoices carry negative amounts to indicate reversal.
+	// Only enforce non-negative for normal sales/purchase invoices.
+	if inv.InvoiceType != "credit_note" {
+		if inv.TotalAmount.LessThan(decimal.Zero) {
+			return errors.New("total_amount cannot be negative")
+		}
+		if inv.NetAmount.LessThan(decimal.Zero) {
+			return errors.New("net_amount cannot be negative")
+		}
+		if inv.TaxAmount.LessThan(decimal.Zero) {
+			return errors.New("tax_amount cannot be negative")
+		}
 	}
 	return nil
 }
@@ -191,6 +200,24 @@ func (s *InvoiceService) ImportFromExcel(ctx context.Context, tenantID uuid.UUID
 			NetAmount:         decimal.NewFromFloat(item.NetAmount),
 			OutstandingAmount: decimal.NewFromFloat(item.TotalAmount),
 			Status:            item.Status,
+			IsReturn:          item.IsReturn,
+		}
+
+		// Apply remark if provided
+		if item.Remark != "" {
+			r := item.Remark
+			inv.Remark = &r
+		}
+
+		// If this is a red-letter invoice, link it to the original blue invoice.
+		// SourceRedInvoiceNo carries the original invoice_no from import.
+		if item.IsReturn && item.SourceRedInvoiceNo != "" {
+			src := item.SourceRedInvoiceNo
+			inv.SourceRedInvoiceNo = &src
+			if srcInv, lerr := s.repo.GetByInvoiceNo(ctx, tenantID, src); lerr == nil && srcInv != nil {
+				srcID := srcInv.ID
+				inv.ReturnAgainst = &srcID
+			}
 		}
 
 		// Validate
@@ -278,6 +305,10 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 	netIdx, _ := findCol("不含税金额", "金额", "net_amount", "net amount", "net", "净额")
 	taxIdx, _ := findCol("税额", "tax_amount", "tax amount", "tax", "税金")
 	totalIdx, _ := findCol("价税合计", "合计", "total_amount", "total amount", "total", "总金额")
+	statusIdx, _ := findCol("状态", "status")
+	remarkIdx, _ := findCol("备注", "remark", "说明")
+	sourceRedNoIdx, _ := findCol("对应蓝字发票号", "原蓝字发票号", "红冲发票号", "source_red_invoice_no", "原发票号")
+	isReturnIdx, _ := findCol("是否红字", "是否红冲", "is_return", "红字")
 
 	if !dateFound {
 		return nil, errors.New("未找到日期列，请确保Excel包含'开票日期'或'日期'列")
@@ -366,6 +397,33 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 			NetAmount:         decimal.NewFromFloat(netAmount),
 			OutstandingAmount: decimal.NewFromFloat(totalAmount),
 			Status:            "unpaid",
+		}
+
+		if statusIdx < len(row) {
+			if s := strings.TrimSpace(row[statusIdx]); s != "" {
+				inv.Status = s
+			}
+		}
+		if remarkIdx < len(row) {
+			if r := strings.TrimSpace(row[remarkIdx]); r != "" {
+				inv.Remark = &r
+			}
+		}
+		if isReturnIdx < len(row) {
+			if v := strings.ToLower(strings.TrimSpace(row[isReturnIdx])); v == "是" || v == "yes" || v == "true" || v == "1" || v == "红字" || v == "红冲" {
+				inv.IsReturn = true
+			}
+		}
+		// If this row is a red-letter invoice and references a source blue invoice,
+		// persist the link and try to resolve the UUID for FK back-ref.
+		if inv.IsReturn && sourceRedNoIdx < len(row) {
+			if srcNo := strings.TrimSpace(row[sourceRedNoIdx]); srcNo != "" {
+				inv.SourceRedInvoiceNo = &srcNo
+				if srcInv, lerr := s.repo.GetByInvoiceNo(ctx, tenantID, srcNo); lerr == nil && srcInv != nil {
+					id := srcInv.ID
+					inv.ReturnAgainst = &id
+				}
+			}
 		}
 
 		// lightweight validation for file import — skip customer_id/company_id UUID checks since Excel has names, not UUIDs

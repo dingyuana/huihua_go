@@ -15,12 +15,13 @@ import (
 
 // VoucherService handles manual voucher CRUD operations.
 type VoucherService struct {
-	journalRepo     *repository.JournalRepository
-	templateSvc     *VoucherTemplateService
-	bankTxnRepo     *repository.BankTransactionRepository
-	paymentRepo     *repository.PaymentEntryRepository
-	accountRepo     *repository.AccountRepository
-	classificationSvc *ClassificationRuleService
+	journalRepo        *repository.JournalRepository
+	templateSvc        *VoucherTemplateService
+	bankTxnRepo        *repository.BankTransactionRepository
+	paymentRepo        *repository.PaymentEntryRepository
+	accountRepo        *repository.AccountRepository
+	classificationSvc  *ClassificationRuleService
+	paymentStateMachine *PaymentStateMachine
 }
 
 // NewVoucherService creates a new VoucherService.
@@ -31,14 +32,16 @@ func NewVoucherService(
 	paymentRepo *repository.PaymentEntryRepository,
 	accountRepo *repository.AccountRepository,
 	classificationSvc *ClassificationRuleService,
+	paymentStateMachine *PaymentStateMachine,
 ) *VoucherService {
 	return &VoucherService{
-		journalRepo:     journalRepo,
-		templateSvc:     templateSvc,
-		bankTxnRepo:     bankTxnRepo,
-		paymentRepo:     paymentRepo,
-		accountRepo:     accountRepo,
-		classificationSvc: classificationSvc,
+		journalRepo:        journalRepo,
+		templateSvc:        templateSvc,
+		bankTxnRepo:        bankTxnRepo,
+		paymentRepo:        paymentRepo,
+		accountRepo:        accountRepo,
+		classificationSvc:  classificationSvc,
+		paymentStateMachine: paymentStateMachine,
 	}
 }
 
@@ -381,17 +384,14 @@ func (s *VoucherService) heuristicByKeywords(remark, direction string) (string, 
 	}
 }
 
-// DeleteVoucher deletes a draft voucher and reverts its source document
+// DeleteVoucher deletes a voucher and reverts its source document
 // status (payment entry DocStatus, voucher link, bank transaction matched
 // flag) so the user can regenerate the voucher from scratch.
+// Supports deleting vouchers in any status with proper reverse linkage.
 func (s *VoucherService) DeleteVoucher(ctx context.Context, tenantID, voucherID, updatedBy uuid.UUID) error {
 	je, err := s.journalRepo.GetByID(ctx, tenantID, voucherID)
 	if err != nil {
 		return fmt.Errorf("get voucher: %w", err)
-	}
-
-	if je.DocStatus != 0 {
-		return errors.New("only draft vouchers can be deleted")
 	}
 
 	linkedTxns, _ := s.bankTxnRepo.FindByMatchedGLEntryID(ctx, tenantID, voucherID)
@@ -402,26 +402,30 @@ func (s *VoucherService) DeleteVoucher(ctx context.Context, tenantID, voucherID,
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.journalRepo.DeleteLinesTx(ctx, tx, tenantID, voucherID); err != nil {
-		return fmt.Errorf("delete lines: %w", err)
-	}
-
-	if err := s.journalRepo.DeleteVoucherTx(ctx, tx, tenantID, voucherID); err != nil {
-		return fmt.Errorf("delete voucher: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
-	}
-
 	if je.SourceDocType != nil && *je.SourceDocType == "payment_entry" && je.SourceDocID != nil {
-		pe, perr := s.paymentRepo.GetByID(ctx, tenantID, *je.SourceDocID)
-		if perr == nil && pe != nil {
-			pe.DocStatus = 0
-			pe.VoucherID = nil
-			pe.VoucherNo = nil
-			if uerr := s.paymentRepo.Update(ctx, tenantID, pe); uerr != nil {
-				return fmt.Errorf("revert payment entry %s: %w", pe.ID, uerr)
+		if s.paymentStateMachine != nil {
+			if err := s.paymentStateMachine.RollbackOnVoucherDelete(
+				ctx, tenantID, *je.SourceDocID, voucherID, updatedBy, je.DocStatus); err != nil {
+				return fmt.Errorf("rollback payment entry %s: %w", *je.SourceDocID, err)
+			}
+		} else {
+			pe, perr := s.paymentRepo.GetByID(ctx, tenantID, *je.SourceDocID)
+			if perr == nil && pe != nil {
+				var targetStatus int16
+				switch je.DocStatus {
+				case 3:
+					targetStatus = int16(model.PaymentStatusApproved)
+				case 2:
+					targetStatus = int16(model.PaymentStatusSubmitted)
+				default:
+					targetStatus = int16(model.PaymentStatusDraft)
+				}
+				pe.DocStatus = targetStatus
+				pe.VoucherID = nil
+				pe.VoucherNo = nil
+				if uerr := s.paymentRepo.Update(ctx, tenantID, pe); uerr != nil {
+					return fmt.Errorf("revert payment entry %s: %w", pe.ID, uerr)
+				}
 			}
 		}
 	}
@@ -433,7 +437,16 @@ func (s *VoucherService) DeleteVoucher(ctx context.Context, tenantID, voucherID,
 		if txn.MatchedPaymentEntryID != nil {
 			pe, perr := s.paymentRepo.GetByID(ctx, tenantID, *txn.MatchedPaymentEntryID)
 			if perr == nil && pe != nil {
-				pe.DocStatus = 0
+				var targetStatus int16
+				switch je.DocStatus {
+				case 3:
+					targetStatus = int16(model.PaymentStatusApproved)
+				case 2:
+					targetStatus = int16(model.PaymentStatusSubmitted)
+				default:
+					targetStatus = int16(model.PaymentStatusDraft)
+				}
+				pe.DocStatus = targetStatus
 				pe.VoucherID = nil
 				pe.VoucherNo = nil
 				if uerr := s.paymentRepo.Update(ctx, tenantID, pe); uerr != nil {
@@ -441,6 +454,18 @@ func (s *VoucherService) DeleteVoucher(ctx context.Context, tenantID, voucherID,
 				}
 			}
 		}
+	}
+
+	if err := s.journalRepo.DeleteLinesTx(ctx, tx, tenantID, voucherID); err != nil {
+		return fmt.Errorf("delete lines: %w", err)
+	}
+
+	if err := s.journalRepo.DeleteVoucherTx(ctx, tx, tenantID, voucherID); err != nil {
+		return fmt.Errorf("delete voucher: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil

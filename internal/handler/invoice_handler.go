@@ -92,17 +92,20 @@ func (h *InvoiceHandler) Create(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)
 
 	var req struct {
-		InvoiceNo         string  `json:"invoice_no"`
-		InvoiceType       string  `json:"invoice_type"`
-		CustomerID        string  `json:"customer_id"`
-		TaxID             string  `json:"tax_id,omitempty"`
-		PostingDate       string  `json:"posting_date"`
-		DueDate           string  `json:"due_date,omitempty"`
-		TotalAmount       float64 `json:"total_amount"`
-		TaxAmount         float64 `json:"tax_amount"`
-		NetAmount         float64 `json:"net_amount"`
-		OutstandingAmount float64 `json:"outstanding_amount"`
-		CompanyID         string  `json:"company_id"`
+		InvoiceNo           string  `json:"invoice_no"`
+		InvoiceType         string  `json:"invoice_type"`
+		CustomerID          string  `json:"customer_id"`
+		TaxID               string  `json:"tax_id,omitempty"`
+		PostingDate         string  `json:"posting_date"`
+		DueDate             string  `json:"due_date,omitempty"`
+		TotalAmount         float64 `json:"total_amount"`
+		TaxAmount           float64 `json:"tax_amount"`
+		NetAmount           float64 `json:"net_amount"`
+		OutstandingAmount   float64 `json:"outstanding_amount"`
+		CompanyID           string  `json:"company_id"`
+		IsReturn            bool    `json:"is_return,omitempty"`
+		SourceRedInvoiceNo  string  `json:"source_red_invoice_no,omitempty"`
+		Remark              string  `json:"remark,omitempty"`
 	}
 
 	if err := c.BodyParser(&req); err != nil {
@@ -159,6 +162,25 @@ func (h *InvoiceHandler) Create(c *fiber.Ctx) error {
 	// Parse optional tax_id
 	if req.TaxID != "" {
 		inv.TaxID = &req.TaxID
+	}
+
+	// Apply red-letter invoice fields
+	inv.IsReturn = req.IsReturn
+	if req.SourceRedInvoiceNo != "" {
+		s := req.SourceRedInvoiceNo
+		inv.SourceRedInvoiceNo = &s
+	}
+	if req.Remark != "" {
+		r := req.Remark
+		inv.Remark = &r
+	}
+
+	// Resolve red→blue invoice linkage by invoice_no
+	if inv.IsReturn && inv.SourceRedInvoiceNo != nil {
+		if srcInv, lerr := h.svc.GetByInvoiceNo(c.Context(), tenantID, *inv.SourceRedInvoiceNo); lerr == nil && srcInv != nil {
+			id := srcInv.ID
+			inv.ReturnAgainst = &id
+		}
 	}
 
 	result, err := h.svc.Create(c.Context(), tenantID, inv)
