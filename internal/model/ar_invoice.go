@@ -30,4 +30,6 @@ type ArInvoice struct {
 	CreatedAt   time.Time      `db:"created_at"`
 	ConfirmedAt *time.Time     `db:"confirmed_at"`
 	ConfirmedBy *uuid.UUID     `db:"confirmed_by"`
+	ApprovedBy  *uuid.UUID     `json:"approved_by,omitempty" db:"approved_by"`
+	ApprovedAt  *time.Time     `json:"approved_at,omitempty" db:"approved_at"`
 }

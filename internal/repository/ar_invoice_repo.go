@@ -150,12 +150,13 @@ func (r *ArInvoiceRepository) UpdateStatus(ctx context.Context, tenantID, id uui
 	return err
 }
 
-// Confirm confirms an AR invoice, setting confirmed_at, confirmed_by, and status = 'confirmed'.
+// Confirm confirms an AR invoice, setting confirmed_at, confirmed_by, approved_at, approved_by, and status = 'confirmed'.
 func (r *ArInvoiceRepository) Confirm(ctx context.Context, tenantID, id, confirmedBy uuid.UUID) error {
+	now := time.Now()
 	_, err := r.pool.Exec(ctx, `
-		UPDATE ar_invoices SET confirmed_at = $3, confirmed_by = $4, status = $5
+		UPDATE ar_invoices SET confirmed_at = $3, confirmed_by = $4, approved_at = $5, approved_by = $6, status = $7
 		WHERE tenant_id = $1 AND id = $2`,
-		tenantID, id, time.Now(), confirmedBy, model.ArInvoiceStatusConfirmed)
+		tenantID, id, now, confirmedBy, now, confirmedBy, model.ArInvoiceStatusConfirmed)
 	return err
 }
 

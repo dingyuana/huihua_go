@@ -70,6 +70,8 @@ type JournalEntry struct {
 	SourceInvoiceID  uuid.UUID       `json:"source_invoice_id,omitempty" db:"source_invoice_id"`
 	FirstAccountCode *string         `json:"first_account_code,omitempty" db:"first_account_code"`
 	FirstAccountName *string         `json:"first_account_name,omitempty" db:"first_account_name"`
+	ApprovedBy       *uuid.UUID      `json:"approved_by,omitempty" db:"approved_by"`
+	ApprovedAt       *time.Time      `json:"approved_at,omitempty" db:"approved_at"`
 }
 
 // JournalEntryLine represents the journal_entry_lines table.

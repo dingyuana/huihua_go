@@ -214,8 +214,10 @@ func (r *JournalRepository) UpdateStatusTx(ctx context.Context, tx pgx.Tx, tenan
 		return fmt.Errorf("get current status: %w", err)
 	}
 
-	// Update status
-	_, err = tx.Exec(ctx, `UPDATE journal_entries SET docstatus = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`, newStatus, journalID, tenantID)
+	// Update status + approved_by/approved_at when transitioning 0→1 (submit → posted/approve)
+	approvedBy := changedBy
+	approvedAt := time.Now()
+	_, err = tx.Exec(ctx, `UPDATE journal_entries SET docstatus = $1, updated_at = NOW(), approved_by = $2, approved_at = $3 WHERE id = $4 AND tenant_id = $5`, newStatus, approvedBy, approvedAt, journalID, tenantID)
 	if err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
@@ -260,8 +262,10 @@ func (r *JournalRepository) UpdateStatus(ctx context.Context, tenantID uuid.UUID
 		return fmt.Errorf("get current status: %w", err)
 	}
 
-	// Update status
-	_, err = tx.Exec(ctx, `UPDATE journal_entries SET docstatus = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`, newStatus, journalID, tenantID)
+	// Update status + approved_by/approved_at when transitioning 0→1 (submit → posted/approve)
+	approvedBy := changedBy
+	approvedAt := time.Now()
+	_, err = tx.Exec(ctx, `UPDATE journal_entries SET docstatus = $1, updated_at = NOW(), approved_by = $2, approved_at = $3 WHERE id = $4 AND tenant_id = $5`, newStatus, approvedBy, approvedAt, journalID, tenantID)
 	if err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
