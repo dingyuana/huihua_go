@@ -99,6 +99,37 @@ func (h *AssetDepreciationHandler) RunDepreciation(c *fiber.Ctx) error {
 	})
 }
 
+// GenerateDepreciation POST /api/v1/depreciation/generate?period_no=202506
+// 生成指定期间的折旧凭证（草稿状态）。
+// 人审核后在凭证列表点击"核准"过账。
+func (h *AssetDepreciationHandler) GenerateDepreciation(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	periodNo := c.QueryInt("period_no", 0)
+	if periodNo == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "period_no is required"})
+	}
+	run, err := h.svc.GenerateMonthlyDepreciation(c.Context(), tenantID, periodNo)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": run})
+}
+
+// GenerateAmortization POST /api/v1/depreciation/generate-amortization?period_no=202506
+// 生成指定期间的无形资产摊销凭证（草稿状态）。
+func (h *AssetDepreciationHandler) GenerateAmortization(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	periodNo := c.QueryInt("period_no", 0)
+	if periodNo == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "period_no is required"})
+	}
+	run, err := h.svc.GenerateMonthlyAmortization(c.Context(), tenantID, periodNo)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": run})
+}
+
 // ListDepreciationRuns handles GET /api/v1/depreciation/run
 // It retrieves depreciation run history, optionally filtered by period.
 func (h *AssetDepreciationHandler) ListDepreciationRuns(c *fiber.Ctx) error {

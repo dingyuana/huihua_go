@@ -131,6 +131,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/assets/:id/depreciation/schedule", depreciationHandler.GetSchedule)
 	api.Post("/depreciation/run", depreciationHandler.RunDepreciation)
 	api.Get("/depreciation/run", depreciationHandler.ListDepreciationRuns)
+	api.Post("/depreciation/generate", depreciationHandler.GenerateDepreciation)
+	api.Post("/depreciation/generate-amortization", depreciationHandler.GenerateAmortization)
 	api.Put("/assets/:id/depreciation", depreciationHandler.CreateSchedule) // alias for schedule creation
 
 	// Invoice routes

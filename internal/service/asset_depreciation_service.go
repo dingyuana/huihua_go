@@ -111,6 +111,7 @@ func (s *AssetDepreciationService) CalculateDoubleDeclining(
 
 // GenerateMonthlyDepreciation generates journal entries for depreciation in a period.
 // It processes all unposted depreciation schedules for the period.
+// Generated voucher is in draft status (docstatus=0) and needs human review before posting via VoucherStateMachine.
 func (s *AssetDepreciationService) GenerateMonthlyDepreciation(
 	ctx context.Context,
 	tenantID uuid.UUID,
@@ -157,7 +158,7 @@ func (s *AssetDepreciationService) GenerateMonthlyDepreciation(
 		VoucherType: func() *string { s := "Depreciation"; return &s }(),
 		PostingDate: time.Now(),
 		CompanyID:   companyID,
-		DocStatus:   1,
+		DocStatus:   0, // 草稿，等人审核
 		CreatedBy:   uuid.Nil, // system
 	}
 
@@ -294,4 +295,128 @@ func (s *AssetDepreciationService) GetDepreciationRuns(
 		return s.depreciationRepo.GetDepreciationRunsByPeriod(ctx, tenantID, periodNo)
 	}
 	return s.depreciationRepo.ListDepreciationRuns(ctx, tenantID)
+}
+
+// GenerateMonthlyAmortization generates journal entries for intangible asset amortization.
+// 借：6603 无形资产摊销费，贷：1702 累计摊销
+// 生成的凭证为草稿状态（docstatus=0），人审核后过账。
+func (s *AssetDepreciationService) GenerateMonthlyAmortization(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	periodNo int,
+) (*model.DepreciationRun, error) {
+	// 复用 GetUnpostedSchedulesByPeriod 获取无形资产的摊销计划
+	// 如果 repository 不区分 asset_type，用现有方法然后过滤
+	schedules, err := s.depreciationRepo.GetUnpostedSchedulesByPeriod(ctx, tenantID, periodNo)
+	if err != nil {
+		return nil, fmt.Errorf("get unposted schedules: %w", err)
+	}
+
+	if len(schedules) == 0 {
+		return nil, fmt.Errorf("no unposted amortization schedules found for period %d", periodNo)
+	}
+
+	// Get company ID from first asset
+	var companyID uuid.UUID
+	for _, sch := range schedules {
+		asset, err := s.depreciationRepo.GetAssetByID(ctx, tenantID, sch.AssetID)
+		if err != nil {
+			continue
+		}
+		companyID = asset.CompanyID
+		break
+	}
+
+	// Generate voucher number
+	voucherNo := fmt.Sprintf("AMORT-%d-%d", periodNo, time.Now().UnixNano()%1000000)
+
+	// Create journal entry for amortization
+	je := &model.JournalEntry{
+		ID:          uuid.New(),
+		VoucherNo:   voucherNo,
+		VoucherType: func() *string { s := "Amortization"; return &s }(),
+		PostingDate: time.Now(),
+		CompanyID:   companyID,
+		DocStatus:   0, // 草稿，等人审核
+		CreatedBy:   uuid.Nil,
+	}
+
+	je, err = s.journalRepo.Create(ctx, tenantID, je)
+	if err != nil {
+		return nil, fmt.Errorf("create journal entry: %w", err)
+	}
+
+	totalAmount := decimal.Zero
+	processedAssets := make(map[uuid.UUID]bool)
+	assetCount := 0
+
+	for _, schedule := range schedules {
+		asset, err := s.depreciationRepo.GetAssetByID(ctx, tenantID, schedule.AssetID)
+		if err != nil {
+			continue
+		}
+
+		if asset.DepreciationExpenseAccountID == nil || asset.AccumulatedDepreciationAccountID == nil {
+			continue
+		}
+
+		lines := []model.JournalEntryLine{
+			{
+				ID:             uuid.New(),
+				JournalEntryID: je.ID,
+				AccountID:      *asset.DepreciationExpenseAccountID,
+				Debit:          schedule.DepreciationAmount,
+				Credit:         decimal.Zero,
+				DebitCcy:       schedule.DepreciationAmount,
+				CreditCcy:      decimal.Zero,
+				ExchangeRate:   decimal.NewFromInt(1),
+				Reconciled:     false,
+			},
+			{
+				ID:             uuid.New(),
+				JournalEntryID: je.ID,
+				AccountID:      *asset.AccumulatedDepreciationAccountID,
+				Debit:          decimal.Zero,
+				Credit:         schedule.DepreciationAmount,
+				DebitCcy:       decimal.Zero,
+				CreditCcy:      schedule.DepreciationAmount,
+				ExchangeRate:   decimal.NewFromInt(1),
+				Reconciled:     false,
+			},
+		}
+
+		_, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, lines)
+		if err != nil {
+			continue
+		}
+
+		if err := s.depreciationRepo.MarkAsPosted(ctx, schedule.ID, je.ID); err != nil {
+			continue
+		}
+
+		totalAmount = totalAmount.Add(schedule.DepreciationAmount)
+		if !processedAssets[schedule.AssetID] {
+			processedAssets[schedule.AssetID] = true
+			assetCount++
+		}
+	}
+
+	run := &model.DepreciationRun{
+		ID:          uuid.New(),
+		PeriodNo:    periodNo,
+		RunDate:     time.Now(),
+		TenantID:    tenantID,
+		CompanyID:   companyID,
+		VoucherNo:   voucherNo,
+		VoucherType: je.VoucherType,
+		TotalAmount: totalAmount,
+		AssetCount:  assetCount,
+		Status:      "completed",
+	}
+
+	if err := s.depreciationRepo.CreateDepreciationRun(ctx, run); err != nil {
+		return nil, fmt.Errorf("create depreciation run: %w", err)
+	}
+
+	return run, nil
 }

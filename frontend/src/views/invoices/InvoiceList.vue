@@ -768,36 +768,30 @@ async function handleBatchPreview() {
 function autoMatchColumns() {
   const columns = fileColumns.value.map(c => c.toLowerCase().trim())
 
-  const preferredSynonyms: Record<string, string[]> = {
-    invoice_no: ['数电发票号码', '发票号码', '发票号', 'invoice no', 'invoice_number'],
-    invoice_type: ['发票票种', '发票类型', '票种', '类型', 'type'],
-    customer_name: ['购买方名称', '购方名称', '对方单位', '客户名称', '供应商', '客户', 'customer'],
-  }
-
-  const fallbackSynonyms: Record<string, string[]> = {
-    posting_date: ['开票日期', '日期', '开票日', 'date'],
-    total_amount: ['价税合计', '金额', '合计', 'total', '含税金额'],
-    tax_amount: ['税额', '税金', '税', 'tax'],
-    net_amount: ['不含税金额', '金额', '净额', 'net'],
-    tax_rate: ['税率', 'tax rate', 'rate'],
-    remark: ['备注', '说明', 'remark', 'remarks'],
-  }
-
   fieldMappings.value.forEach(mapping => {
     const fieldLower = mapping.field.toLowerCase()
-    const preferred = preferredSynonyms[mapping.fieldKey] || []
-    const syns = [...preferred, ...(fallbackSynonyms[mapping.fieldKey] || [])]
+    let matchIdx = columns.findIndex(col => col === fieldLower)
 
-    let matchIdx = syns.findIndex(syn => columns.includes(syn.toLowerCase()))
-    if (matchIdx === -1) {
-      matchIdx = columns.findIndex(col => col === fieldLower)
-    }
     if (matchIdx === -1) {
       matchIdx = columns.findIndex(col =>
         col.includes(fieldLower) || fieldLower.includes(col)
       )
     }
+
     if (matchIdx === -1) {
+      const synonyms: Record<string, string[]> = {
+        invoice_no: ['发票号', '发票号码', '数电发票号码', 'invoice no', 'invoice_number'],
+        invoice_type: ['发票类型', '类型', 'type', '发票票种', '票种'],
+        posting_date: ['开票日期', '日期', '开票日', 'date'],
+        customer_name: ['对方单位', '购买方名称', '客户名称', '购方名称', '供应商', '客户', 'customer'],
+        total_amount: ['价税合计', '金额', '合计', 'total', '含税金额'],
+        tax_amount: ['税额', '税金', '税', 'tax'],
+        net_amount: ['不含税金额', '金额', '净额', 'net'],
+        tax_rate: ['税率', 'tax rate', 'rate'],
+        remark: ['备注', '说明', 'remark', 'remarks'],
+      }
+
+      const syns = synonyms[mapping.fieldKey] || []
       matchIdx = columns.findIndex(col =>
         syns.some(syn => col === syn.toLowerCase() || col.includes(syn.toLowerCase()))
       )
