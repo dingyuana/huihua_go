@@ -215,16 +215,18 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 	}
 
 	je := &model.JournalEntry{
-		ID:          uuid.New(),
-		TenantID:    tenantID,
-		CompanyID:   invoice.CompanyID,
-		VoucherNo:   voucherNo,
-		// PostingDate = voucher creation date (会计转凭证当日), not the invoice date.
-		PostingDate: time.Now(),
-		CreatedBy:   createdBy,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-		DocStatus:   0, // draft
+		ID:              uuid.New(),
+		TenantID:        tenantID,
+		CompanyID:       invoice.CompanyID,
+		VoucherNo:       voucherNo,
+		PostingDate:     time.Now(),
+		CreatedBy:       createdBy,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		DocStatus:       0, // draft
+		SourceType:      "invoice",
+		SourceID:        invoiceID,
+		SourceInvoiceID: invoiceID,
 	}
 
 	var lines []model.JournalEntryLine

@@ -14,6 +14,8 @@ type Party struct {
 	PartyType    string          `json:"party_type" db:"party_type"`
 	Name         string          `json:"name" db:"name"`
 	TaxNumber    *string         `json:"tax_number,omitempty" db:"tax_number"`
+	Source       string          `json:"source,omitempty" db:"source"`
+	Code         *string        `json:"code,omitempty" db:"code"`
 	BankName     *string         `json:"bank_name,omitempty" db:"bank_name"`
 	BankAccount  *string         `json:"bank_account,omitempty" db:"bank_account"`
 	ContactName  *string         `json:"contact_name,omitempty" db:"contact_name"`

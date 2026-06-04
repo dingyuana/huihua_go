@@ -444,6 +444,44 @@ func (h *InvoiceHandler) ConfirmSalesInvoice(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "invoice confirmed and accounts receivable generated"})
 }
 
+// BatchConfirm handles POST /api/v1/invoices/batch-confirm
+func (h *InvoiceHandler) BatchConfirm(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	var req struct {
+		InvoiceIDs []string `json:"invoice_ids"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid request"})
+	}
+
+	success := 0
+	failed := 0
+	var failedList []fiber.Map
+
+	for _, idStr := range req.InvoiceIDs {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			failed++
+			failedList = append(failedList, fiber.Map{"id": idStr, "reason": "invalid uuid"})
+			continue
+		}
+		if err := h.svc.ConfirmSalesInvoice(c.Context(), tenantID, id, userID); err != nil {
+			failed++
+			failedList = append(failedList, fiber.Map{"id": idStr, "reason": err.Error()})
+			continue
+		}
+		success++
+	}
+
+	return c.JSON(fiber.Map{
+		"success_count": success,
+		"failed_count":  failed,
+		"failed_list":   failedList,
+	})
+}
+
 // ImportExcelFile handles file-upload-based invoice import.
 // POST /api/v1/invoices/import-excel
 func (h *InvoiceHandler) ImportExcelFile(c *fiber.Ctx) error {

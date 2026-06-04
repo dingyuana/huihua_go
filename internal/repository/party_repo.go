@@ -29,12 +29,15 @@ func (r *PartyRepository) Create(ctx context.Context, tenantID uuid.UUID, p *mod
 	if !p.IsActive {
 		p.IsActive = true
 	}
+	if p.Source == "" {
+		p.Source = "manual"
+	}
 
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO parties (id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
+		INSERT INTO parties (id, tenant_id, party_type, name, tax_number, source, code, bank_name, bank_account,
 			contact_name, contact_phone, credit_limit, payment_days, is_active, ar_account_id, ap_account_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
-		p.ID, p.TenantID, p.PartyType, p.Name, p.TaxNumber, p.BankName, p.BankAccount,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+		p.ID, p.TenantID, p.PartyType, p.Name, p.TaxNumber, p.Source, p.Code, p.BankName, p.BankAccount,
 		p.ContactName, p.ContactPhone, p.CreditLimit, p.PaymentDays, p.IsActive,
 		p.ArAccountID, p.ApAccountID, p.CreatedAt, p.UpdatedAt)
 	if err != nil {

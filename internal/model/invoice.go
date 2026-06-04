@@ -125,12 +125,14 @@ type InvoiceFilter struct {
 
 // InvoiceBatchPreviewResult represents the result of batch import preview.
 type InvoiceBatchPreviewResult struct {
-	BatchID     string                 `json:"batch_id"`
-	TotalRows   int                    `json:"total_rows"`
-	ValidRows   int                    `json:"valid_rows"`
-	ErrorRows   int                    `json:"error_rows"`
-	DuplicateRows int                  `json:"duplicate_rows"`
-	Details     []InvoicePreviewDetail `json:"details"`
+	BatchID       string                 `json:"batch_id"`
+	TotalRows     int                    `json:"total_rows"`
+	ValidRows     int                    `json:"valid_rows"`
+	ErrorRows     int                    `json:"error_rows"`
+	DuplicateRows int                    `json:"duplicate_rows"`
+	Details       []InvoicePreviewDetail `json:"details"`
+	CustomerMatches []CustomerMatchInfo  `json:"customer_matches"`
+	WillGenerateAs  WillGenerateSummary  `json:"will_generate_as"`
 }
 
 // InvoicePreviewDetail represents a single invoice row in preview.
@@ -162,6 +164,22 @@ type InvoiceBatchConfirmResult struct {
 	Skipped    int               `json:"skipped"`
 	Errors     int               `json:"errors"`
 	FailedRows []FailedRowDetail `json:"failed_rows,omitempty"`
+}
+
+// CustomerMatchInfo represents the customer matching result for a preview row.
+type CustomerMatchInfo struct {
+	RowIndex       int     `json:"row_index"`
+	Status         string  `json:"status"` // "matched" | "fuzzy" | "auto_created"
+	CustomerID     *string `json:"customer_id,omitempty"`
+	CustomerName   string  `json:"customer_name"`
+	WarningMessage string  `json:"warning_message,omitempty"`
+}
+
+// WillGenerateSummary represents the summary of documents that will be generated.
+type WillGenerateSummary struct {
+	InvoicesWillCreate  int `json:"invoices_will_create"`
+	ARWillCreate        int `json:"ar_will_create"`
+	VouchersWillCreate  int `json:"vouchers_will_create"`
 }
 
 // InvoiceConfirmRequest represents a request to confirm a sales invoice.

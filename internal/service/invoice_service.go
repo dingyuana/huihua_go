@@ -19,13 +19,25 @@ import (
 
 // InvoiceService handles invoice operations.
 type InvoiceService struct {
-	repo     *repository.InvoiceRepository
-	partyRepo *repository.PartyRepository
+	repo            *repository.InvoiceRepository
+	partyRepo       *repository.PartyRepository
+	arInvoiceRepo   *repository.ArInvoiceRepository
+	voucherAutoSvc  *VoucherAutoGenerateService
 }
 
 // NewInvoiceService creates a new InvoiceService.
-func NewInvoiceService(repo *repository.InvoiceRepository, partyRepo *repository.PartyRepository) *InvoiceService {
-	return &InvoiceService{repo: repo, partyRepo: partyRepo}
+func NewInvoiceService(
+	repo *repository.InvoiceRepository,
+	partyRepo *repository.PartyRepository,
+	arInvoiceRepo *repository.ArInvoiceRepository,
+	voucherAutoSvc *VoucherAutoGenerateService,
+) *InvoiceService {
+	return &InvoiceService{
+		repo:           repo,
+		partyRepo:      partyRepo,
+		arInvoiceRepo:  arInvoiceRepo,
+		voucherAutoSvc: voucherAutoSvc,
+	}
 }
 
 // Create creates a new invoice.
@@ -347,23 +359,68 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 	}, nil
 }
 
-func (s *InvoiceService) resolveCustomer(ctx context.Context, tenantID uuid.UUID, buyerName string) (uuid.UUID, error) {
+func (s *InvoiceService) resolveCustomer(ctx context.Context, tenantID uuid.UUID, buyerName, buyerTaxID string) (uuid.UUID, error) {
 	if s.partyRepo == nil {
 		return uuid.Nil, errors.New("party repository not available")
 	}
+
+	// 1. Try to find by tax_id first
+	if buyerTaxID != "" {
+		parties, err := s.partyRepo.List(ctx, tenantID)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		for _, p := range parties {
+			if p.TaxNumber != nil && *p.TaxNumber == buyerTaxID {
+				return p.ID, nil
+			}
+		}
+	}
+
+	// 2. Fall back to name match
 	party, err := s.partyRepo.GetByName(ctx, tenantID, buyerName)
 	if err == nil && party != nil {
 		return party.ID, nil
 	}
-	newParty, cerr := s.partyRepo.Create(ctx, tenantID, &model.Party{
-		TenantID:  tenantID,
+
+	// 3. If not found, auto-create a formal customer
+	today := time.Now().Format("20060102")
+	seq := 1
+	parties, listErr := s.partyRepo.List(ctx, tenantID)
+	if listErr == nil {
+		for _, p := range parties {
+			if p.Code != nil && strings.HasPrefix(*p.Code, "AUTO"+today) {
+				seq++
+			}
+		}
+	}
+	code := fmt.Sprintf("AUTO%s%04d", today, seq)
+
+	newParty := &model.Party{
 		PartyType: "customer",
 		Name:      buyerName,
-	})
-	if cerr != nil || newParty == nil {
+		Code:      &code,
+		Source:    "auto_import",
+	}
+	if buyerTaxID != "" {
+		newParty.TaxNumber = &buyerTaxID
+	}
+	created, cerr := s.partyRepo.Create(ctx, tenantID, newParty)
+	if cerr != nil || created == nil {
+		// If concurrent creation failed (unique constraint), re-query by tax_id
+		if buyerTaxID != "" {
+			parties, reErr := s.partyRepo.List(ctx, tenantID)
+			if reErr == nil {
+				for _, p := range parties {
+					if p.TaxNumber != nil && *p.TaxNumber == buyerTaxID {
+						return p.ID, nil
+					}
+				}
+			}
+		}
 		return uuid.Nil, fmt.Errorf("auto-create failed: %w", cerr)
 	}
-	return newParty.ID, nil
+	return created.ID, nil
 }
 
 func findExcelHeader(rows [][]string) int {
@@ -520,7 +577,7 @@ func (s *InvoiceService) parseExcelRows(rows [][]string, headerIdx int, cols *co
 			buyerName = "默认客户"
 		}
 
-		customerID, cerr := s.resolveCustomer(ctx, tenantID, buyerName)
+		customerID, cerr := s.resolveCustomer(ctx, tenantID, buyerName, getCell(buyerTaxIdIdx))
 		if cerr != nil {
 			failedRows = append(failedRows, model.FailedRowDetail{Row: rowNum, Date: invNo, Reason: fmt.Sprintf("客户解析失败 [%s]: %v", buyerName, cerr)})
 			continue
@@ -921,13 +978,41 @@ func (s *InvoiceService) BatchImportPreview(ctx context.Context, tenantID uuid.U
 		details = append(details, detail)
 	}
 
+	// Build customer matches info
+	customerMatches := make([]model.CustomerMatchInfo, 0, len(details))
+	for i, detail := range details {
+		status := "matched"
+		warning := ""
+		if detail.Status == "error" || detail.Status == "warning" {
+			status = "error"
+			if detail.ValidationErr != "" {
+				warning = detail.ValidationErr
+			}
+		} else if detail.Status == "duplicate" {
+			status = "fuzzy"
+			warning = detail.DuplicateInfo
+		}
+		customerMatches = append(customerMatches, model.CustomerMatchInfo{
+			RowIndex:       i + 1,
+			Status:         status,
+			CustomerName:   detail.CustomerName,
+			WarningMessage: warning,
+		})
+	}
+
 	return &model.InvoiceBatchPreviewResult{
-		BatchID:       uuid.New().String(),
-		TotalRows:     len(details),
-		ValidRows:     validCount,
-		ErrorRows:     errorCount,
-		DuplicateRows: duplicateCount,
-		Details:       details,
+		BatchID:          uuid.New().String(),
+		TotalRows:        len(details),
+		ValidRows:        validCount,
+		ErrorRows:        errorCount,
+		DuplicateRows:    duplicateCount,
+		Details:          details,
+		CustomerMatches:  customerMatches,
+		WillGenerateAs: model.WillGenerateSummary{
+			InvoicesWillCreate: validCount,
+			ARWillCreate:       0,
+			VouchersWillCreate: 0,
+		},
 	}, nil
 }
 
@@ -958,8 +1043,14 @@ func (s *InvoiceService) BatchImportConfirm(ctx context.Context, tenantID uuid.U
 	}, nil
 }
 
-// ConfirmSalesInvoice confirms a sales invoice and generates accounts receivable.
+// VoucherAutoGenerateService getter for injection (used by main.go after initialization)
+func (s *InvoiceService) InjectAutoGenSvc(svc *VoucherAutoGenerateService) {
+	s.voucherAutoSvc = svc
+}
+
+// ConfirmSalesInvoice confirms a sales invoice, generates an ArInvoice draft, and triggers voucher auto-generation.
 func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invoiceID, userID uuid.UUID) error {
+	// 1. Get invoice
 	inv, err := s.repo.GetByID(ctx, tenantID, invoiceID)
 	if err != nil {
 		return err
@@ -968,10 +1059,51 @@ func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invo
 		return errors.New("invoice not found")
 	}
 
-	if inv.Status != "draft" && inv.Status != "submitted" {
+	// 2. Check status
+	if inv.Status != "draft" && inv.Status != "submitted" && inv.Status != "verified" {
 		return errors.New("invalid invoice status for confirmation")
 	}
 
+	// 3. Check if ArInvoice already exists (prevent duplicate)
+	if s.arInvoiceRepo != nil {
+		existing, err := s.arInvoiceRepo.ListByInvoiceID(ctx, tenantID, invoiceID)
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			return errors.New("ar_invoice already exists for this invoice")
+		}
+	}
+
+	// 4. Generate ArInvoice draft
+	if s.arInvoiceRepo != nil {
+		ar := &model.ArInvoice{
+			ID:         uuid.New(),
+			TenantID:   tenantID,
+			CompanyID:  inv.CompanyID,
+			CustomerID: inv.CustomerID,
+			InvoiceID:  invoiceID,
+			InvoiceNo:  inv.InvoiceNo,
+			Amount:     inv.TotalAmount,
+			DueDate:    inv.DueDate,
+			Status:     string(model.ArInvoiceStatusDraft),
+			SourceType: "auto_import",
+			CreatedBy:  &userID,
+			CreatedAt:  time.Now(),
+		}
+		if err := s.arInvoiceRepo.Create(ctx, ar); err != nil {
+			return fmt.Errorf("failed to create ar_invoice: %v", err)
+		}
+	}
+
+	// 5. Trigger voucher auto-generation (non-critical, log on failure)
+	if s.voucherAutoSvc != nil {
+		if _, err := s.voucherAutoSvc.GenerateFromInvoice(ctx, tenantID, invoiceID, userID); err != nil {
+			fmt.Printf("[WARN] failed to generate voucher for invoice %s: %v\n", invoiceID, err)
+		}
+	}
+
+	// 6. Update invoice status to verified
 	return s.repo.UpdateStatus(ctx, tenantID, invoiceID, string(model.InvoiceStatusVerified))
 }
 

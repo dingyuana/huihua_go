@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -142,4 +143,103 @@ func (h *AuditHandler) GetAuditLogsByObject(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"data": logs,
 	})
+}
+
+// AuditWorkbenchHandler handles HTTP requests for audit workbench.
+type AuditWorkbenchHandler struct {
+	invoiceRepo   *repository.InvoiceRepository
+	arInvoiceRepo *repository.ArInvoiceRepository
+	journalRepo   *repository.JournalRepository
+}
+
+// NewAuditWorkbenchHandler creates a new AuditWorkbenchHandler.
+func NewAuditWorkbenchHandler(
+	invoiceRepo *repository.InvoiceRepository,
+	arInvoiceRepo *repository.ArInvoiceRepository,
+	journalRepo *repository.JournalRepository,
+) *AuditWorkbenchHandler {
+	return &AuditWorkbenchHandler{
+		invoiceRepo:   invoiceRepo,
+		arInvoiceRepo: arInvoiceRepo,
+		journalRepo:   journalRepo,
+	}
+}
+
+// AuditTasksResult is the response for GET /api/v1/audit/tasks
+type AuditTasksResult struct {
+	InvoiceDrafts []model.SalesInvoice `json:"invoice_drafts"`
+	ArInvoices    []*model.ArInvoice   `json:"ar_invoices"`
+	Vouchers      []model.JournalEntry `json:"vouchers"`
+	Summary       AuditTaskSummary     `json:"summary"`
+}
+
+type AuditTaskSummary struct {
+	InvoiceDraftCount   int `json:"invoice_draft_count"`
+	ArInvoiceDraftCount int `json:"ar_invoice_draft_count"`
+	VoucherDraftCount  int `json:"voucher_draft_count"`
+	BlockedCount       int `json:"blocked_count"`
+}
+
+// GetAuditTasks handles GET /api/v1/audit/tasks
+func (h *AuditWorkbenchHandler) GetAuditTasks(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	ctx := context.Background()
+
+	statusDraft := "draft"
+
+	// Invoice drafts
+	invoiceDrafts, err := h.invoiceRepo.ListByTenant(ctx, tenantID, model.InvoiceFilter{Status: statusDraft})
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// ArInvoice drafts
+	arInvoices, err := h.arInvoiceRepo.ListByTenant(ctx, tenantID, &statusDraft)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Voucher drafts (docstatus=0) using ListVouchers
+	docStatusZero := int16(0)
+	vouchers, err := h.journalRepo.ListVouchers(ctx, tenantID, nil, nil, nil, &docStatusZero, nil, 50, 0)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// BlockedCount: vouchers where source_type='invoice' and the ArInvoice is still draft
+	blockedCount := 0
+	for _, v := range vouchers {
+		if v.SourceType == "invoice" && v.SourceID != uuid.Nil {
+			ar, err := h.arInvoiceRepo.GetByID(ctx, tenantID, v.SourceID)
+			if err == nil && ar != nil && ar.Status == "draft" {
+				blockedCount++
+			}
+		}
+	}
+
+	// Limit each list to 50 for performance
+	limit := 50
+	if len(invoiceDrafts) > limit {
+		invoiceDrafts = invoiceDrafts[:limit]
+	}
+	if len(arInvoices) > limit {
+		arInvoices = arInvoices[:limit]
+	}
+	if len(vouchers) > limit {
+		vouchers = vouchers[:limit]
+	}
+
+	result := AuditTasksResult{
+		InvoiceDrafts: invoiceDrafts,
+		ArInvoices:    arInvoices,
+		Vouchers:     vouchers,
+		Summary: AuditTaskSummary{
+			InvoiceDraftCount:   len(invoiceDrafts),
+			ArInvoiceDraftCount: len(arInvoices),
+			VoucherDraftCount:   len(vouchers),
+			BlockedCount:       blockedCount,
+		},
+	}
+
+	return c.JSON(result)
 }

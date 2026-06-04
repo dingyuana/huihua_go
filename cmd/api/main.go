@@ -135,7 +135,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Invoice routes
 	invoiceRepo := repository.NewInvoiceRepository(db.GetPool())
-	invoiceSvc := service.NewInvoiceService(invoiceRepo, partyRepo)
+	arInvoiceRepo := repository.NewArInvoiceRepository(db.GetPool())
+	invoiceSvc := service.NewInvoiceService(invoiceRepo, partyRepo, arInvoiceRepo, nil) // autoGenSvc injected below after initialization
 	invoiceHandler := handler.NewInvoiceHandler(invoiceSvc)
 	api.Get("/invoices", invoiceHandler.List)
 	api.Post("/invoices", invoiceHandler.Create)
@@ -152,6 +153,11 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/invoices/sales/import/preview", invoiceHandler.BatchImportPreview)
 	api.Post("/invoices/sales/import/confirm", invoiceHandler.BatchImportConfirm)
 	api.Post("/invoices/sales/confirm", invoiceHandler.ConfirmSalesInvoice)
+	api.Post("/invoices/batch-confirm", invoiceHandler.BatchConfirm)
+
+	// Audit workbench routes
+	auditWorkbenchHandler := handler.NewAuditWorkbenchHandler(invoiceRepo, arInvoiceRepo, journalRepo)
+	api.Get("/audit/tasks", auditWorkbenchHandler.GetAuditTasks)
 
 	// Classification rule routes
 	classificationRuleRepo := repository.NewClassificationRuleRepository(db.GetPool())
@@ -301,6 +307,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	)
 	// Wire auto-gen service into bank transaction handler for post-import voucher auto-generation
 	bankTxnHandler.InjectAutoGenSvc(autoGenSvc)
+	// Also inject into invoice service for ConfirmSalesInvoice
+	invoiceSvc.InjectAutoGenSvc(autoGenSvc)
 
 	autoGenHandler := handler.NewVoucherAutoGenerateHandler(autoGenSvc)
 	api.Post("/bank-transactions/batch-confirm", bankTxnHandler.BatchConfirm)

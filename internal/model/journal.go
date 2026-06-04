@@ -65,6 +65,9 @@ type JournalEntry struct {
 	SourceDocType    *string         `json:"source_doc_type,omitempty" db:"source_doc_type"`
 	SourceDocID      *uuid.UUID      `json:"source_doc_id,omitempty" db:"source_doc_id"`
 	SourceDocNo      *string         `json:"source_doc_no,omitempty" db:"source_doc_no"`
+	SourceType       string          `json:"source_type,omitempty" db:"source_type"`
+	SourceID         uuid.UUID       `json:"source_id,omitempty" db:"source_id"`
+	SourceInvoiceID  uuid.UUID       `json:"source_invoice_id,omitempty" db:"source_invoice_id"`
 	FirstAccountCode *string         `json:"first_account_code,omitempty" db:"first_account_code"`
 	FirstAccountName *string         `json:"first_account_name,omitempty" db:"first_account_name"`
 }
