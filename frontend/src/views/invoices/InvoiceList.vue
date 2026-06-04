@@ -136,7 +136,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="70">
+        <el-table-column label="发票类型" width="70">
           <template #default="{ row }">
             <el-tag v-if="row.is_return" type="danger" size="small">红字</el-tag>
             <el-tag v-else type="success" size="small">正常</el-tag>
@@ -366,24 +366,48 @@
     </el-dialog>
 
     <!-- 详情抽屉 -->
-    <el-drawer v-model="showDetail" :title="`发票 ${showDetail?.invoice_no}`" size="400px">
+    <el-drawer v-model="showDetail" :title="`发票 ${showDetail?.invoice_no}`" size="560px">
       <template v-if="showDetail">
-        <el-descriptions :column="1" border size="small">
+        <el-descriptions :column="2" border size="small">
           <el-descriptions-item label="发票号">{{ showDetail.invoice_no }}</el-descriptions-item>
-          <el-descriptions-item label="类型">{{ showDetail.type === 'sale' ? '销项' : '进项' }}</el-descriptions-item>
-          <el-descriptions-item label="对方单位">{{ showDetail.customer_name }}</el-descriptions-item>
+          <el-descriptions-item label="发票代码">{{ showDetail.invoice_code || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="票种">{{ showDetail.invoice_category || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="发票类型">
+            <el-tag v-if="showDetail.is_return" type="danger" size="small">红字</el-tag>
+            <el-tag v-else type="success" size="small">正常</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="购销类型">{{ showDetail.type === 'sale' ? '销项' : showDetail.type === 'purchase' ? '进项' : showDetail.type === 'credit_note' ? '红字' : '—' }}</el-descriptions-item>
+          <el-descriptions-item label="对应蓝字发票号">{{ showDetail.source_red_invoice_no || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="对方单位" :span="2">{{ showDetail.customer_name || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="税号" :span="2">{{ showDetail.tax_id || '—' }}</el-descriptions-item>
           <el-descriptions-item label="开票日期">{{ showDetail.posting_date }}</el-descriptions-item>
-          <el-descriptions-item label="到期日">{{ showDetail.due_date }}</el-descriptions-item>
-          <el-descriptions-item label="价税合计">{{ showDetail.total_amount }}</el-descriptions-item>
-          <el-descriptions-item label="税额">{{ showDetail.tax_amount }}</el-descriptions-item>
-          <el-descriptions-item label="不含税金额">{{ showDetail.net_amount }}</el-descriptions-item>
-          <el-descriptions-item label="未核销金额">{{ showDetail.outstanding }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
+          <el-descriptions-item label="到期日">{{ showDetail.due_date || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="不含税金额">¥{{ showDetail.net_amount }}</el-descriptions-item>
+          <el-descriptions-item label="税额">¥{{ showDetail.tax_amount }}</el-descriptions-item>
+          <el-descriptions-item label="价税合计">¥{{ showDetail.total_amount }}</el-descriptions-item>
+          <el-descriptions-item label="未核销金额">¥{{ showDetail.outstanding }}</el-descriptions-item>
+          <el-descriptions-item label="状态" :span="2">
             <el-tag :type="statusTag(showDetail.status)" size="small">{{ statusLabel(showDetail.status) }}</el-tag>
           </el-descriptions-item>
+          <el-descriptions-item v-if="showDetail.remark" label="备注" :span="2">{{ showDetail.remark }}</el-descriptions-item>
         </el-descriptions>
+
+        <el-divider v-if="showDetail.line_items && showDetail.line_items.length > 0" content-position="left">行项目（{{ showDetail.line_items.length }}）</el-divider>
+        <el-table v-if="showDetail.line_items && showDetail.line_items.length > 0" :data="showDetail.line_items" border size="small" max-height="320">
+          <el-table-column prop="description" label="货物/服务" min-width="140" show-overflow-tooltip />
+          <el-table-column prop="item_code" label="规格型号" width="100" show-overflow-tooltip />
+          <el-table-column prop="unit" label="单位" width="60" />
+          <el-table-column prop="quantity" label="数量" width="80" align="right" />
+          <el-table-column prop="unit_price" label="单价" width="100" align="right" />
+          <el-table-column prop="tax_rate" label="税率" width="70" align="right" />
+          <el-table-column prop="net_amount" label="金额" width="100" align="right" />
+          <el-table-column prop="tax_amount" label="税额" width="100" align="right" />
+          <el-table-column prop="total_amount" label="价税合计" width="110" align="right" />
+        </el-table>
+
         <div style="margin-top:16px;text-align:center">
-          <el-button type="primary" :loading="genLoading" @click="handleGenerateVoucher(showDetail)">
+          <el-button v-if="showDetail.status === 'draft'" type="primary" :loading="confirmLoading === showDetail.id" @click="handleConfirmInvoice(showDetail)">确认发票</el-button>
+          <el-button v-if="showDetail.status === 'verified'" type="primary" :loading="genLoading === showDetail.id" @click="handleGenerateVoucher(showDetail)">
             生成凭证
           </el-button>
         </div>
@@ -744,30 +768,36 @@ async function handleBatchPreview() {
 function autoMatchColumns() {
   const columns = fileColumns.value.map(c => c.toLowerCase().trim())
 
+  const preferredSynonyms: Record<string, string[]> = {
+    invoice_no: ['数电发票号码', '发票号码', '发票号', 'invoice no', 'invoice_number'],
+    invoice_type: ['发票票种', '发票类型', '票种', '类型', 'type'],
+    customer_name: ['购买方名称', '购方名称', '对方单位', '客户名称', '供应商', '客户', 'customer'],
+  }
+
+  const fallbackSynonyms: Record<string, string[]> = {
+    posting_date: ['开票日期', '日期', '开票日', 'date'],
+    total_amount: ['价税合计', '金额', '合计', 'total', '含税金额'],
+    tax_amount: ['税额', '税金', '税', 'tax'],
+    net_amount: ['不含税金额', '金额', '净额', 'net'],
+    tax_rate: ['税率', 'tax rate', 'rate'],
+    remark: ['备注', '说明', 'remark', 'remarks'],
+  }
+
   fieldMappings.value.forEach(mapping => {
     const fieldLower = mapping.field.toLowerCase()
-    let matchIdx = columns.findIndex(col => col === fieldLower)
+    const preferred = preferredSynonyms[mapping.fieldKey] || []
+    const syns = [...preferred, ...(fallbackSynonyms[mapping.fieldKey] || [])]
 
+    let matchIdx = syns.findIndex(syn => columns.includes(syn.toLowerCase()))
+    if (matchIdx === -1) {
+      matchIdx = columns.findIndex(col => col === fieldLower)
+    }
     if (matchIdx === -1) {
       matchIdx = columns.findIndex(col =>
         col.includes(fieldLower) || fieldLower.includes(col)
       )
     }
-
     if (matchIdx === -1) {
-      const synonyms: Record<string, string[]> = {
-        invoice_no: ['发票号', '发票号码', '数电发票号码', 'invoice no', 'invoice_number'],
-        invoice_type: ['发票类型', '类型', 'type', '发票票种', '票种'],
-        posting_date: ['开票日期', '日期', '开票日', 'date'],
-        customer_name: ['对方单位', '购买方名称', '客户名称', '购方名称', '供应商', '客户', 'customer'],
-        total_amount: ['价税合计', '金额', '合计', 'total', '含税金额'],
-        tax_amount: ['税额', '税金', '税', 'tax'],
-        net_amount: ['不含税金额', '金额', '净额', 'net'],
-        tax_rate: ['税率', 'tax rate', 'rate'],
-        remark: ['备注', '说明', 'remark', 'remarks'],
-      }
-
-      const syns = synonyms[mapping.fieldKey] || []
       matchIdx = columns.findIndex(col =>
         syns.some(syn => col === syn.toLowerCase() || col.includes(syn.toLowerCase()))
       )

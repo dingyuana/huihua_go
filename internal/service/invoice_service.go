@@ -458,7 +458,7 @@ func (s *InvoiceService) parseExcelRows(rows [][]string, headerIdx int, cols *co
 	invTypeIdx, _ := cols.get("发票类型", "发票票种", "类型", "票种", "invoice_type", "type")
 	dateIdx, _ := cols.get("开票日期", "日期", "posting_date", "date", "发票日期")
 	customerNameIdx, _ := cols.get("购买方名称", "购方名称", "对方单位", "客户名称", "购方", "购方识别号")
-	buyerTaxIdIdx, _ := cols.get("购方识别号", "购方税号", "购买方税号")
+	buyerTaxIdIdx, _ := cols.get("对方税号", "对方识别号", "购方识别号", "购方税号", "购买方税号", "购买方识别号", "购方纳税人识别号", "购买方纳税人识别号", "购方统一社会信用代码", "购买方统一社会信用代码", "对方纳税人识别号", "对方统一社会信用代码", "统一社会信用代码", "纳税人识别号", "购方纳税识别号", "购买方纳税识别号")
 	invCodeIdx, _ := cols.get("发票代码", "invoice_code")
 	statusIdx, _ := cols.get("发票状态", "状态", "status")
 	remarkIdx, _ := cols.get("备注", "remark", "说明")
