@@ -11,9 +11,11 @@ import (
 	"huihua/finance/internal/repository"
 )
 
-// BankTxnReviewService handles the atomic review workflow for bank transactions.
-// It coordinates SubmitReview (approve → generate voucher or payment) and
-// RejectManual (send back to manual_pending) operations within a single DB txn.
+// BankTxnReviewService handles the review workflow for bank transactions.
+// Transactions are first classified by classifyType(), then routed:
+//   - 第一类（A）: 直接制证（银行费用/税费/社保/利息/保险）
+//   - 第二类（B）: 生成 PaymentEntry 后制证（收付款往来/内部转账）
+//   - C类: status=manual_pending，待处理工作台
 type BankTxnReviewService struct {
 	repo           *repository.BankTransactionRepository
 	voucherAutoSvc *VoucherAutoGenerateService
@@ -113,6 +115,7 @@ func (s *BankTxnReviewService) SubmitReview(
 		}
 
 		switch classifyType(classification) {
+		// 第一类直接制证：银行费用/税费/社保/利息/保险
 		case "A":
 			voucher, err := s.voucherAutoSvc.GenerateFromBankTxn(ctx, tenantID, txnID, uuid.Nil)
 			if err != nil {
@@ -129,6 +132,7 @@ func (s *BankTxnReviewService) SubmitReview(
 				TxnID: txnIDStr, Outcome: "voucher_generated", VoucherID: &voucher.ID,
 			})
 
+		// 第二类需中转（生成 PaymentEntry）
 		case "B":
 			paymentType := "pay"
 			if txn.Direction != nil && *txn.Direction == "in" {
@@ -235,9 +239,18 @@ func (s *BankTxnReviewService) updateTxnFields(ctx context.Context, tx pgx.Tx, t
 }
 
 // classifyType returns the high-level type ("A", "B", or "C") for a given
-// classification string. The A set are bank/tax/social/interest/insurance
-// categories that map to vouchers; the B set are payment/receipt categories
-// that map to payment entries; everything else is C.
+// classification string.
+//
+// 第一类（可直接制证）：信息完整、无歧义，直接生成记账凭证
+//   - bank_fee, interest_income, tax_payment, social_security,
+//     insurance_fee → A类 → 直接 GenerateFromBankTxn
+//
+// 第二类（需中转）：
+//   - internal_transfer → B类 → 生成 PaymentEntry（内部转账单）→ 直接制证
+//   - business_receipt, business_payment, pay, receive, expense → B类
+//     → 生成 PaymentEntry → 核销发票（如有）→ 生成凭证
+//
+// C类：无法自动分类，status=manual_pending，待人工处理工作台
 func classifyType(classification string) string {
 	switch classification {
 	case
