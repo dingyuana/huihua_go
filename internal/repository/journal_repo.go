@@ -24,8 +24,8 @@ func NewJournalRepository(pool *pgxpool.Pool) *JournalRepository {
 // Create inserts a new journal entry and returns it.
 func (r *JournalRepository) Create(ctx context.Context, tenantID uuid.UUID, je *model.JournalEntry) (*model.JournalEntry, error) {
 	query := `
-		INSERT INTO journal_entries (id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark, docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by, counterparty_name, source_doc_type, source_doc_id, source_doc_no)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		INSERT INTO journal_entries (id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark, docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by, counterparty_name, source_doc_type, source_doc_id, source_doc_no, source_type, source_id, source_invoice_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		RETURNING created_at, updated_at`
 
 	if je.ID == uuid.Nil {
@@ -37,6 +37,7 @@ func (r *JournalRepository) Create(ctx context.Context, tenantID uuid.UUID, je *
 		tenantID, je.Remark, je.DocStatus, je.ReversedID, je.ReversalID,
 		je.SubmittedBy, je.SubmittedAt, je.CreatedBy, je.CounterpartyName,
 		je.SourceDocType, je.SourceDocID, je.SourceDocNo,
+		je.SourceType, je.SourceID, je.SourceInvoiceID,
 	).Scan(&je.CreatedAt, &je.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create journal entry: %w", err)
@@ -145,8 +146,8 @@ func (r *JournalRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
 // CreateTx inserts a new journal entry within an existing transaction and returns it.
 func (r *JournalRepository) CreateTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, je *model.JournalEntry) (*model.JournalEntry, error) {
 	query := `
-		INSERT INTO journal_entries (id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark, docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by, counterparty_name)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		INSERT INTO journal_entries (id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark, docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by, counterparty_name, source_doc_type, source_doc_id, source_doc_no, source_type, source_id, source_invoice_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		RETURNING created_at, updated_at`
 
 	if je.ID == uuid.Nil {
@@ -157,6 +158,8 @@ func (r *JournalRepository) CreateTx(ctx context.Context, tx pgx.Tx, tenantID uu
 		je.ID, je.VoucherNo, je.VoucherType, je.PostingDate, je.CompanyID,
 		tenantID, je.Remark, je.DocStatus, je.ReversedID, je.ReversalID,
 		je.SubmittedBy, je.SubmittedAt, je.CreatedBy, je.CounterpartyName,
+		je.SourceDocType, je.SourceDocID, je.SourceDocNo,
+		je.SourceType, je.SourceID, je.SourceInvoiceID,
 	).Scan(&je.CreatedAt, &je.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create journal entry: %w", err)
