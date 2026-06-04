@@ -79,19 +79,23 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 		}
 
 		result[i] = map[string]interface{}{
-			"id":                 inv.ID,
-			"type":               inv.InvoiceType,
-			"invoice_no":         inv.InvoiceNo,
-			"customer_id":        inv.CustomerID,
-			"posting_date":       inv.PostingDate.Format("2006-01-02"),
-			"total_amount":       inv.TotalAmount.String(),
-			"tax_amount":         inv.TaxAmount.String(),
-			"net_amount":         inv.NetAmount.String(),
-			"outstanding_amount": inv.OutstandingAmount.String(),
-			"status":             mapInvoiceStatus(inv.Status),
-			"remark":             inv.Remark,
-			"created_at":         inv.CreatedAt.Format("2006-01-02 15:04:05"),
-			"line_items":         itemsResult,
+			"id":                    inv.ID,
+			"type":                  inv.InvoiceType,
+			"invoice_no":            inv.InvoiceNo,
+			"invoice_code":          inv.InvoiceCode,
+			"invoice_category":      inv.InvoiceCategory,
+			"customer_id":           inv.CustomerID,
+			"posting_date":          inv.PostingDate.Format("2006-01-02"),
+			"total_amount":          inv.TotalAmount.String(),
+			"tax_amount":            inv.TaxAmount.String(),
+			"net_amount":            inv.NetAmount.String(),
+			"outstanding_amount":    inv.OutstandingAmount.String(),
+			"status":                mapInvoiceStatus(inv.Status),
+			"is_return":             inv.IsReturn,
+			"source_red_invoice_no": inv.SourceRedInvoiceNo,
+			"remark":                inv.Remark,
+			"created_at":            inv.CreatedAt.Format("2006-01-02 15:04:05"),
+			"line_items":            itemsResult,
 		}
 	}
 

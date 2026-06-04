@@ -29,15 +29,15 @@ func (r *InvoiceRepository) Create(ctx context.Context, tenantID uuid.UUID, inv 
 	inv.CreatedAt = time.Now()
 
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO sales_invoices (id, invoice_no, invoice_type, customer_id, tax_id, company_id,
+		INSERT INTO sales_invoices (id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
-			status, tax_template_id, return_against, is_return, remark, source_red_invoice_no,
+			status, tax_template_id, return_against, is_return, invoice_category, remark, source_red_invoice_no,
 			docstatus, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
-		inv.ID, inv.InvoiceNo, inv.InvoiceType, inv.CustomerID, inv.TaxID, inv.CompanyID,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
+		inv.ID, inv.InvoiceNo, inv.InvoiceCode, inv.InvoiceType, inv.CustomerID, inv.TaxID, inv.CompanyID,
 		inv.TenantID, inv.PostingDate, inv.DueDate, inv.TotalAmount, inv.TaxAmount, inv.NetAmount,
 		inv.OutstandingAmount, inv.Status, inv.TaxTemplateID, inv.ReturnAgainst, inv.IsReturn,
-		inv.Remark, inv.SourceRedInvoiceNo,
+		inv.InvoiceCategory, inv.Remark, inv.SourceRedInvoiceNo,
 		inv.DocStatus, inv.CreatedBy, inv.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -48,9 +48,9 @@ func (r *InvoiceRepository) Create(ctx context.Context, tenantID uuid.UUID, inv 
 // ListByTenant retrieves invoices with filters.
 func (r *InvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, filters model.InvoiceFilter) ([]model.SalesInvoice, error) {
 	query := `
-		SELECT id, invoice_no, invoice_type, customer_id, tax_id, company_id,
+		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
-			status, tax_template_id, return_against, is_return, remark, source_red_invoice_no,
+			status, tax_template_id, return_against, is_return, invoice_category, remark, source_red_invoice_no,
 			docstatus, created_by, created_at
 		FROM sales_invoices WHERE tenant_id = $1`
 	args := []interface{}{tenantID}
@@ -100,10 +100,10 @@ func (r *InvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID
 	var invoices []model.SalesInvoice
 	for rows.Next() {
 		var inv model.SalesInvoice
-		if err := rows.Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
+		if err := rows.Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceCode, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
 			&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate, &inv.TotalAmount,
 			&inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount, &inv.Status, &inv.TaxTemplateID,
-			&inv.ReturnAgainst, &inv.IsReturn, &inv.Remark, &inv.SourceRedInvoiceNo,
+			&inv.ReturnAgainst, &inv.IsReturn, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
 			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -116,16 +116,16 @@ func (r *InvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID
 func (r *InvoiceRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.SalesInvoice, error) {
 	var inv model.SalesInvoice
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, invoice_no, invoice_type, customer_id, tax_id, company_id,
+		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
-			status, tax_template_id, return_against, is_return, remark, source_red_invoice_no,
+			status, tax_template_id, return_against, is_return, invoice_category, remark, source_red_invoice_no,
 			docstatus, created_by, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND id = $2`,
 		tenantID, id).
-		Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
+		Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceCode, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
 			&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate, &inv.TotalAmount,
 			&inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount, &inv.Status, &inv.TaxTemplateID,
-			&inv.ReturnAgainst, &inv.IsReturn, &inv.Remark, &inv.SourceRedInvoiceNo,
+			&inv.ReturnAgainst, &inv.IsReturn, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
 			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -138,16 +138,16 @@ func (r *InvoiceRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID)
 func (r *InvoiceRepository) GetByInvoiceNo(ctx context.Context, tenantID uuid.UUID, invoiceNo string) (*model.SalesInvoice, error) {
 	var inv model.SalesInvoice
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, invoice_no, invoice_type, customer_id, tax_id, company_id,
+		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
-			status, tax_template_id, return_against, is_return, remark, source_red_invoice_no,
+			status, tax_template_id, return_against, is_return, invoice_category, remark, source_red_invoice_no,
 			docstatus, created_by, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND invoice_no = $2`,
 		tenantID, invoiceNo).
-		Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
+		Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceCode, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
 			&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate, &inv.TotalAmount,
 			&inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount, &inv.Status, &inv.TaxTemplateID,
-			&inv.ReturnAgainst, &inv.IsReturn, &inv.Remark, &inv.SourceRedInvoiceNo,
+			&inv.ReturnAgainst, &inv.IsReturn, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
 			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -242,15 +242,15 @@ func (r *InvoiceRepository) ImportBatch(ctx context.Context, tenantID uuid.UUID,
 		inv.CreatedAt = time.Now()
 
 		ctid, err := tx.Exec(ctx, `
-			INSERT INTO sales_invoices (id, invoice_no, invoice_type, customer_id, tax_id, company_id,
+			INSERT INTO sales_invoices (id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 				tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
-				status, tax_template_id, return_against, is_return, remark, source_red_invoice_no,
+				status, tax_template_id, return_against, is_return, invoice_category, remark, source_red_invoice_no,
 				docstatus, created_by, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 			ON CONFLICT (invoice_no) DO NOTHING`,
-			inv.ID, inv.InvoiceNo, inv.InvoiceType, inv.CustomerID, inv.TaxID, inv.CompanyID,
+			inv.ID, inv.InvoiceNo, inv.InvoiceCode, inv.InvoiceType, inv.CustomerID, inv.TaxID, inv.CompanyID,
 			inv.TenantID, inv.PostingDate, inv.DueDate, inv.TotalAmount, inv.TaxAmount, inv.NetAmount, inv.OutstandingAmount, inv.Status, inv.TaxTemplateID, inv.ReturnAgainst, inv.IsReturn,
-			inv.Remark, inv.SourceRedInvoiceNo,
+			inv.InvoiceCategory, inv.Remark, inv.SourceRedInvoiceNo,
 			inv.DocStatus, inv.CreatedBy, inv.CreatedAt)
 		if err != nil {
 			return nil, err
@@ -258,6 +258,87 @@ func (r *InvoiceRepository) ImportBatch(ctx context.Context, tenantID uuid.UUID,
 		if ctid.RowsAffected() == 0 {
 			continue
 		}
+		inserted = append(inserted, inv)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return inserted, nil
+}
+
+// ValidateDuplicateBatch checks which invoice_nos from the list already exist in the DB.
+// Returns the list of invoice_nos that conflict (already exist).
+func (r *InvoiceRepository) ValidateDuplicateBatch(ctx context.Context, tenantID uuid.UUID, invoiceNos []string) ([]string, error) {
+	if len(invoiceNos) == 0 {
+		return nil, nil
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT DISTINCT invoice_no FROM sales_invoices
+		WHERE tenant_id = $1 AND invoice_no = ANY($2)`,
+		tenantID, invoiceNos)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var conflicts []string
+	for rows.Next() {
+		var invNo string
+		if err := rows.Scan(&invNo); err != nil {
+			return nil, err
+		}
+		conflicts = append(conflicts, invNo)
+	}
+	return conflicts, rows.Err()
+}
+
+// ImportBatchWithItems inserts invoice headers and their line items in a single transaction.
+// Unlike ImportBatch, this does NOT use ON CONFLICT DO NOTHING — duplicates should be
+// pre-validated via ValidateDuplicateBatch before calling this.
+// items[i] corresponds to invoices[i]; both slices must have the same length.
+func (r *InvoiceRepository) ImportBatchWithItems(ctx context.Context, tenantID uuid.UUID, invoices []model.SalesInvoice, items [][]model.InvoiceLineItem) ([]model.SalesInvoice, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	inserted := make([]model.SalesInvoice, 0, len(invoices))
+	for i, inv := range invoices {
+		inv.ID = uuid.New()
+		inv.TenantID = tenantID
+		inv.CreatedAt = time.Now()
+
+		_, err := tx.Exec(ctx, `
+			INSERT INTO sales_invoices (id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
+				tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
+				status, tax_template_id, return_against, is_return, invoice_category, remark, source_red_invoice_no,
+				docstatus, created_by, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
+			inv.ID, inv.InvoiceNo, inv.InvoiceCode, inv.InvoiceType, inv.CustomerID, inv.TaxID, inv.CompanyID,
+			inv.TenantID, inv.PostingDate, inv.DueDate, inv.TotalAmount, inv.TaxAmount, inv.NetAmount, inv.OutstandingAmount, inv.Status, inv.TaxTemplateID, inv.ReturnAgainst, inv.IsReturn,
+			inv.InvoiceCategory, inv.Remark, inv.SourceRedInvoiceNo,
+			inv.DocStatus, inv.CreatedBy, inv.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		if i < len(items) {
+			for _, item := range items[i] {
+				item.ID = uuid.New()
+				item.InvoiceID = inv.ID
+				item.CreatedAt = time.Now()
+				if _, err := tx.Exec(ctx, `
+					INSERT INTO invoice_line_items (id, invoice_id, item_code, description, quantity, unit_price, tax_rate, tax_amount, net_amount, total_amount, unit, created_at)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+					item.ID, item.InvoiceID, item.ItemCode, item.Description, item.Quantity, item.UnitPrice,
+					item.TaxRate, item.TaxAmount, item.NetAmount, item.TotalAmount, item.Unit, item.CreatedAt); err != nil {
+					return nil, err
+				}
+			}
+		}
+
 		inserted = append(inserted, inv)
 	}
 
@@ -335,9 +416,9 @@ func (r *InvoiceRepository) UpdateOutstandingAmount(ctx context.Context, tenantI
 // ListInvoicesForMatching retrieves invoices that can be matched to a bank transaction.
 func (r *InvoiceRepository) ListInvoicesForMatching(ctx context.Context, tenantID uuid.UUID, customerID *uuid.UUID) ([]model.SalesInvoice, error) {
 	query := `
-		SELECT id, invoice_no, invoice_type, customer_id, tax_id, company_id,
+		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
-			status, tax_template_id, return_against, is_return, remark, source_red_invoice_no,
+			status, tax_template_id, return_against, is_return, invoice_category, remark, source_red_invoice_no,
 			docstatus, created_by, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND outstanding_amount > 0`
 	args := []interface{}{tenantID}
@@ -359,10 +440,10 @@ func (r *InvoiceRepository) ListInvoicesForMatching(ctx context.Context, tenantI
 	var invoices []model.SalesInvoice
 	for rows.Next() {
 		var inv model.SalesInvoice
-		if err := rows.Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
+		if err := rows.Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceCode, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
 			&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate, &inv.TotalAmount,
 			&inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount, &inv.Status, &inv.TaxTemplateID,
-			&inv.ReturnAgainst, &inv.IsReturn, &inv.Remark, &inv.SourceRedInvoiceNo,
+			&inv.ReturnAgainst, &inv.IsReturn, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
 			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt); err != nil {
 			return nil, err
 		}

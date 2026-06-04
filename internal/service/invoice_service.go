@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -243,6 +244,41 @@ func (s *InvoiceService) ImportFromExcel(ctx context.Context, tenantID uuid.UUID
 }
 
 // ImportFromExcelFile parses an Excel/CSV file and imports invoice rows.
+type parsedInvoiceRow struct {
+	RowNum              int
+	InvoiceNo           string
+	PostingDate         time.Time
+	NetAmount           float64
+	TaxAmount           float64
+	TotalAmount         float64
+	CustomerID          uuid.UUID
+	BuyerName           string
+	InvoiceType         string
+	BuyerTaxID          string
+	InvoiceCode         string
+	InvoiceCategory     string
+	Status              string
+	Remark              string
+	IsReturn            bool
+	SourceRedInvoiceNo  string
+	ItemDescription string
+	ItemCode        string
+	Unit            string
+	Quantity        float64
+	UnitPrice       float64
+	TaxRate         float64
+}
+
+type invoiceGroup struct {
+	Rows   []parsedInvoiceRow
+	Header parsedInvoiceRow
+}
+
+type headerWithItems struct {
+	Header model.SalesInvoice
+	Items  []model.InvoiceLineItem
+}
+
 func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.UUID, data []byte) (*model.InvoiceFileImportResult, error) {
 	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
@@ -255,13 +291,82 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 	if err != nil {
 		return nil, fmt.Errorf("get rows: %w", err)
 	}
-
 	if len(rows) < 2 {
 		return nil, errors.New("empty file: no data rows found")
 	}
 
-	// Find header row
-	headerIdx := 0
+	headerIdx := findExcelHeader(rows)
+	cols := newColumnIndex(rows[headerIdx])
+
+	if !cols.has("开票日期", "日期", "posting_date", "date", "发票日期") {
+		return nil, errors.New("未找到日期列，请确保Excel包含'开票日期'或'日期'列")
+	}
+	if !cols.has("数电发票号码", "发票号码", "发票号", "invoice_no", "invoice number") &&
+		!cols.has("价税合计", "合计", "total_amount", "total amount", "total", "总金额") {
+		return nil, errors.New("未找到发票号或金额列，请确保Excel包含'发票号码'和'价税合计'列")
+	}
+
+	var defaultCompanyID uuid.UUID
+	if cid, cerr := s.repo.GetDefaultCompanyID(ctx, tenantID); cerr == nil {
+		defaultCompanyID = cid
+	}
+
+	parsed, failedRows := s.parseExcelRows(rows, headerIdx, cols, ctx, tenantID)
+	if len(parsed) == 0 {
+		return &model.InvoiceFileImportResult{
+			TotalRows:  len(rows) - headerIdx - 1,
+			Imported:   0,
+			Failed:     len(failedRows),
+			FailedRows: failedRows,
+		}, nil
+	}
+
+	groups, groupKeys := groupByInvoiceNo(parsed)
+	validGroups, moreFailed := filterConflicts(ctx, s.repo, tenantID, groups, groupKeys)
+	failedRows = append(failedRows, moreFailed...)
+
+	toInsert := buildInvoicesFromGroups(validGroups, defaultCompanyID, s.repo, ctx, tenantID, &failedRows)
+
+	invoices := make([]model.SalesInvoice, len(toInsert))
+	allItems := make([][]model.InvoiceLineItem, len(toInsert))
+	for i, hwi := range toInsert {
+		invoices[i] = hwi.Header
+		allItems[i] = hwi.Items
+	}
+
+	importedResult, err := s.repo.ImportBatchWithItems(ctx, tenantID, invoices, allItems)
+	if err != nil {
+		return nil, fmt.Errorf("import batch: %w", err)
+	}
+
+	return &model.InvoiceFileImportResult{
+		TotalRows:  len(parsed),
+		Imported:   len(importedResult),
+		Failed:     len(failedRows),
+		FailedRows: failedRows,
+	}, nil
+}
+
+func (s *InvoiceService) resolveCustomer(ctx context.Context, tenantID uuid.UUID, buyerName string) (uuid.UUID, error) {
+	if s.partyRepo == nil {
+		return uuid.Nil, errors.New("party repository not available")
+	}
+	party, err := s.partyRepo.GetByName(ctx, tenantID, buyerName)
+	if err == nil && party != nil {
+		return party.ID, nil
+	}
+	newParty, cerr := s.partyRepo.Create(ctx, tenantID, &model.Party{
+		TenantID:  tenantID,
+		PartyType: "customer",
+		Name:      buyerName,
+	})
+	if cerr != nil || newParty == nil {
+		return uuid.Nil, fmt.Errorf("auto-create failed: %w", cerr)
+	}
+	return newParty.ID, nil
+}
+
+func findExcelHeader(rows [][]string) int {
 	for i, row := range rows {
 		nonEmpty := 0
 		for _, cell := range row {
@@ -270,66 +375,75 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 			}
 		}
 		if nonEmpty >= 3 {
-			headerIdx = i
-			break
+			return i
 		}
 	}
+	return 0
+}
 
-	headerMap := make(map[string]int)
-	for i, col := range rows[headerIdx] {
+type columnIndex struct {
+	idx   map[string]int
+	names []string
+}
+
+func newColumnIndex(header []string) *columnIndex {
+	ci := &columnIndex{idx: make(map[string]int)}
+	for i, col := range header {
 		key := strings.ToLower(strings.TrimSpace(col))
-		headerMap[key] = i
+		ci.idx[key] = i
+		ci.names = append(ci.names, col)
 	}
+	return ci
+}
 
-	findCol := func(names ...string) (int, bool) {
+func (ci *columnIndex) get(names ...string) (int, bool) {
+	for _, name := range names {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if i, ok := ci.idx[key]; ok {
+			return i, true
+		}
+	}
+	for origIdx, col := range ci.names {
+		colLower := strings.ToLower(col)
 		for _, name := range names {
-			key := strings.ToLower(strings.TrimSpace(name))
-			if idx, ok := headerMap[key]; ok {
-				return idx, true
+			if strings.Contains(colLower, strings.ToLower(name)) {
+				return origIdx, true
 			}
 		}
-		// substring fallback
-		for ci, col := range rows[headerIdx] {
-			colLower := strings.ToLower(col)
-			for _, name := range names {
-				if strings.Contains(colLower, strings.ToLower(name)) {
-					return ci, true
-				}
-			}
-		}
-		return 0, false
 	}
+	return 0, false
+}
 
-	// 发票号：兼容纸质发票("发票号码")、数电发票("数电发票号码")、简化("发票号")
-	invNoIdx, _ := findCol("数电发票号码", "发票号码", "发票号", "invoice_no", "invoice number", "发票代码")
-	invTypeIdx, _ := findCol("发票类型", "类型", "invoice_type", "type")
-	dateIdx, dateFound := findCol("开票日期", "日期", "posting_date", "date", "发票日期")
-	netIdx, _ := findCol("不含税金额", "金额", "net_amount", "net amount", "net", "净额")
-	taxIdx, _ := findCol("税额", "tax_amount", "tax amount", "tax", "税金")
-	totalIdx, _ := findCol("价税合计", "合计", "total_amount", "total amount", "total", "总金额")
-	statusIdx, _ := findCol("发票状态", "状态", "status")
-	remarkIdx, _ := findCol("备注", "remark", "说明")
-	sourceRedNoIdx, _ := findCol("对应蓝字发票号", "原蓝字发票号", "红冲发票号", "source_red_invoice_no", "原发票号")
-	isReturnIdx, _ := findCol("是否正数发票", "是否红字", "是否红冲", "is_return", "红字")
-	customerNameIdx, _ := findCol("购方名称", "购买方名称", "客户名称", "购方", "购方识别号")
-	buyerTaxIdIdx, _ := findCol("购方识别号", "购方税号", "购买方税号")
+func (ci *columnIndex) has(names ...string) bool {
+	_, ok := ci.get(names...)
+	return ok
+}
 
-	if !dateFound {
-		return nil, errors.New("未找到日期列，请确保Excel包含'开票日期'或'日期'列")
-	}
+func (s *InvoiceService) parseExcelRows(rows [][]string, headerIdx int, cols *columnIndex, ctx context.Context, tenantID uuid.UUID) ([]parsedInvoiceRow, []model.FailedRowDetail) {
+	invNoIdx, _ := cols.get("数电发票号码", "发票号码", "发票号", "invoice_no", "invoice number")
+	invTypeIdx, _ := cols.get("发票类型", "发票票种", "类型", "票种", "invoice_type", "type")
+	dateIdx, _ := cols.get("开票日期", "日期", "posting_date", "date", "发票日期")
+	customerNameIdx, _ := cols.get("购买方名称", "购方名称", "对方单位", "客户名称", "购方", "购方识别号")
+	buyerTaxIdIdx, _ := cols.get("购方识别号", "购方税号", "购买方税号")
+	invCodeIdx, _ := cols.get("发票代码", "invoice_code")
+	statusIdx, _ := cols.get("发票状态", "状态", "status")
+	remarkIdx, _ := cols.get("备注", "remark", "说明")
+	invoiceCategoryIdx, _ := cols.get("发票票种", "发票种类", "票种", "invoice_category")
+	sourceRedNoIdx, _ := cols.get("对应蓝字发票号", "原蓝字发票号", "红冲发票号", "source_red_invoice_no", "原发票号")
+	isPositiveIdx, isPositiveFound := cols.get("是否正数发票")
+	isReturnIdx, isReturnFound := cols.get("是否红字", "是否红冲", "is_return", "红字")
+	itemDescIdx, _ := cols.get("货物或应税劳务名称", "货物名称", "商品名称", "名称", "description", "摘要")
+	itemCodeIdx, _ := cols.get("规格型号", "规格", "型号", "规格型號")
+	unitIdx, _ := cols.get("单位", "unit")
+	qtyIdx, _ := cols.get("数量", "quantity", "qty")
+	unitPriceIdx, _ := cols.get("单价", "unit_price", "unit price", "price")
+	taxRateIdx, _ := cols.get("税率", "tax_rate", "tax rate")
+	lineNetIdx, _ := cols.get("金额", "net_amount", "net amount", "net")
+	lineTaxIdx, _ := cols.get("税额", "tax_amount", "tax amount", "tax", "税金")
+	lineTotalIdx, _ := cols.get("价税合计", "合计", "total_amount", "total amount", "total", "总金额")
 
-	if invNoIdx == 0 && totalIdx == 0 {
-		return nil, errors.New("未找到发票号或金额列，请确保Excel包含'发票号码'和'价税合计'列")
-	}
-
-	var imported []model.SalesInvoice
+	var parsed []parsedInvoiceRow
 	var failedRows []model.FailedRowDetail
-
-	// Resolve default company_id for the tenant (sales invoices always belong to the current tenant's company).
-	var defaultCompanyID uuid.UUID
-	if cid, cerr := s.repo.GetDefaultCompanyID(ctx, tenantID); cerr == nil {
-		defaultCompanyID = cid
-	}
 
 	for rowIdx, row := range rows[headerIdx+1:] {
 		rowNum := rowIdx + headerIdx + 2
@@ -347,15 +461,17 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 			continue
 		}
 
-		// 发票号：先查主列，主列空则尝试"数电发票号码"列（多候选 fallback）
-		invNo := ""
-		if invNoIdx < len(row) {
-			invNo = strings.TrimSpace(row[invNoIdx])
+		getCell := func(idx int) string {
+			if idx < len(row) {
+				return strings.TrimSpace(row[idx])
+			}
+			return ""
 		}
+
+		invNo := getCell(invNoIdx)
 		if invNo == "" {
-			// 兼容数电发票：尝试"数电发票号码"列
 			for _, altName := range []string{"数电发票号码", "发票号码", "invoice_no"} {
-				if altIdx, ok := findCol(altName); ok && altIdx < len(row) {
+				if altIdx, ok := cols.get(altName); ok && altIdx < len(row) {
 					if v := strings.TrimSpace(row[altIdx]); v != "" {
 						invNo = v
 						break
@@ -369,8 +485,8 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 		}
 
 		postingDate := time.Now()
-		if dateIdx < len(row) {
-			dateStr := strings.TrimSpace(row[dateIdx])
+		dateStr := getCell(dateIdx)
+		if dateStr != "" {
 			if t, err := parseDateInvoice(dateStr); err == nil {
 				postingDate = t
 			} else {
@@ -389,21 +505,9 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 			return 0
 		}
 
-		netAmount := parseFloat(netIdx)
-		taxAmount := parseFloat(taxIdx)
-		totalAmount := parseFloat(totalIdx)
-		if totalAmount == 0 && netAmount > 0 {
-			totalAmount = netAmount + taxAmount
-		}
-		if totalAmount == 0 {
-			failedRows = append(failedRows, model.FailedRowDetail{Row: rowNum, Date: invNo, Reason: "金额为空"})
-			continue
-		}
-
-		// Default invType is "sale" since this is the sales_invoices table
 		invType := "sale"
-		if invTypeIdx < len(row) {
-			t := strings.ToLower(strings.TrimSpace(row[invTypeIdx]))
+		if v := getCell(invTypeIdx); v != "" {
+			t := strings.ToLower(v)
 			if strings.Contains(t, "购入") || strings.Contains(t, "采购") || t == "purchase" {
 				invType = "purchase"
 			} else if strings.Contains(t, "红字") || strings.Contains(t, "红冲") || t == "credit_note" {
@@ -411,100 +515,227 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 			}
 		}
 
-		// Resolve customer by 购方名称 (buyer) for sales invoices
-		var customerID uuid.UUID
-		var buyerName string
-		if customerNameIdx < len(row) {
-			buyerName = strings.TrimSpace(row[customerNameIdx])
-		}
+		buyerName := getCell(customerNameIdx)
 		if buyerName == "" {
 			buyerName = "默认客户"
 		}
-		if s.partyRepo != nil {
-			party, perr := s.partyRepo.GetByName(ctx, tenantID, buyerName)
-			if perr == nil && party != nil {
-				customerID = party.ID
-			} else {
-				// Auto-create the party
-				newParty, cerr := s.partyRepo.Create(ctx, tenantID, &model.Party{
-					TenantID:  tenantID,
-					PartyType: "customer",
-					Name:      buyerName,
-				})
-				if cerr == nil && newParty != nil {
-					customerID = newParty.ID
-				} else {
-					failedRows = append(failedRows, model.FailedRowDetail{Row: rowNum, Date: invNo, Reason: fmt.Sprintf("客户自动创建失败 [%s]: %v", buyerName, cerr)})
-					continue
-				}
-			}
-		}
-		if customerID == uuid.Nil {
-			failedRows = append(failedRows, model.FailedRowDetail{Row: rowNum, Date: invNo, Reason: "客户解析失败: " + buyerName})
+
+		customerID, cerr := s.resolveCustomer(ctx, tenantID, buyerName)
+		if cerr != nil {
+			failedRows = append(failedRows, model.FailedRowDetail{Row: rowNum, Date: invNo, Reason: fmt.Sprintf("客户解析失败 [%s]: %v", buyerName, cerr)})
 			continue
 		}
 
-		inv := &model.SalesInvoice{
-			InvoiceNo:         invNo,
-			InvoiceType:       invType,
-			CustomerID:        customerID,
+		itemNet := parseFloat(lineNetIdx)
+		itemTax := parseFloat(lineTaxIdx)
+		itemTotal := parseFloat(lineTotalIdx)
+		if itemTotal == 0 && itemNet > 0 {
+			itemTotal = itemNet + itemTax
+		}
+
+		r := parsedInvoiceRow{
+			RowNum:      rowNum,
+			InvoiceNo:   invNo,
+			PostingDate: postingDate,
+			NetAmount:   itemNet,
+			TaxAmount:   itemTax,
+			TotalAmount: itemTotal,
+			CustomerID:  customerID,
+			BuyerName:   buyerName,
+			InvoiceType: invType,
+			BuyerTaxID:  getCell(buyerTaxIdIdx),
+			InvoiceCode: getCell(invCodeIdx),
+			InvoiceCategory: getCell(invoiceCategoryIdx),
+			Status:      getCell(statusIdx),
+			Remark:      getCell(remarkIdx),
+			ItemDescription: getCell(itemDescIdx),
+			ItemCode:        getCell(itemCodeIdx),
+			Unit:            getCell(unitIdx),
+			Quantity:        parseFloat(qtyIdx),
+			UnitPrice:       parseFloat(unitPriceIdx),
+			TaxRate:         parseFloat(taxRateIdx),
+		}
+
+		if isPositiveFound {
+			v := getCell(isPositiveIdx)
+			r.IsReturn = (v == "否" || v == "false" || v == "0")
+		} else if isReturnFound {
+			v := strings.ToLower(getCell(isReturnIdx))
+			r.IsReturn = (v == "是" || v == "yes" || v == "true" || v == "1" || v == "红字" || v == "红冲")
+		}
+		if srcNo := getCell(sourceRedNoIdx); srcNo != "" {
+			r.SourceRedInvoiceNo = srcNo
+		}
+
+		parsed = append(parsed, r)
+	}
+	return parsed, failedRows
+}
+
+func groupByInvoiceNo(rows []parsedInvoiceRow) (map[string]*invoiceGroup, []string) {
+	groups := make(map[string]*invoiceGroup)
+	var keys []string
+	for i := range rows {
+		r := &rows[i]
+		if g, ok := groups[r.InvoiceNo]; ok {
+			g.Rows = append(g.Rows, *r)
+		} else {
+			groups[r.InvoiceNo] = &invoiceGroup{
+				Rows:   []parsedInvoiceRow{*r},
+				Header: *r,
+			}
+			keys = append(keys, r.InvoiceNo)
+		}
+	}
+	return groups, keys
+}
+
+func filterConflicts(ctx context.Context, repo *repository.InvoiceRepository, tenantID uuid.UUID, groups map[string]*invoiceGroup, groupKeys []string) ([]struct {
+	Key  string
+	Data *invoiceGroup
+}, []model.FailedRowDetail) {
+	var allInvoiceNos []string
+	for _, k := range groupKeys {
+		allInvoiceNos = append(allInvoiceNos, k)
+	}
+	conflicts, err := repo.ValidateDuplicateBatch(ctx, tenantID, allInvoiceNos)
+	if err != nil {
+		return nil, nil
+	}
+	conflictSet := make(map[string]bool, len(conflicts))
+	for _, c := range conflicts {
+		conflictSet[c] = true
+	}
+
+	var valid []struct {
+		Key  string
+		Data *invoiceGroup
+	}
+	var failedRows []model.FailedRowDetail
+	for _, k := range groupKeys {
+		if conflictSet[k] {
+			for _, r := range groups[k].Rows {
+				failedRows = append(failedRows, model.FailedRowDetail{
+					Row:    r.RowNum,
+					Date:   r.InvoiceNo,
+					Reason: fmt.Sprintf("发票号 %s 已存在，导入被拒绝", r.InvoiceNo),
+				})
+			}
+		} else {
+			valid = append(valid, struct {
+				Key  string
+				Data *invoiceGroup
+			}{k, groups[k]})
+		}
+	}
+	return valid, failedRows
+}
+
+func buildInvoicesFromGroups(validGroups []struct {
+	Key  string
+	Data *invoiceGroup
+}, defaultCompanyID uuid.UUID, repo *repository.InvoiceRepository, ctx context.Context, tenantID uuid.UUID, failedRows *[]model.FailedRowDetail) []headerWithItems {
+	var toInsert []headerWithItems
+
+	for _, g := range validGroups {
+		h := g.Data.Header
+		items := g.Data.Rows
+
+		var sumNet, sumTax, sumTotal float64
+		for i := range items {
+			it := &items[i]
+			sumNet += it.NetAmount
+			sumTax += it.TaxAmount
+			sumTotal += it.TotalAmount
+		}
+		if sumTotal == 0 && len(items) > 0 {
+			sumNet = items[0].NetAmount
+			sumTax = items[0].TaxAmount
+			sumTotal = items[0].TotalAmount
+		}
+		if sumTotal == 0 {
+			for _, it := range items {
+				*failedRows = append(*failedRows, model.FailedRowDetail{Row: it.RowNum, Date: it.InvoiceNo, Reason: "金额为空"})
+			}
+			continue
+		}
+
+		header := model.SalesInvoice{
+			InvoiceNo:         h.InvoiceNo,
+			InvoiceType:       h.InvoiceType,
+			CustomerID:        h.CustomerID,
 			CompanyID:         defaultCompanyID,
-			PostingDate:       postingDate,
-			TotalAmount:       decimal.NewFromFloat(totalAmount),
-			TaxAmount:         decimal.NewFromFloat(taxAmount),
-			NetAmount:         decimal.NewFromFloat(netAmount),
-			OutstandingAmount: decimal.NewFromFloat(totalAmount),
+			PostingDate:       h.PostingDate,
+			TotalAmount:       decimal.NewFromFloat(sumTotal),
+			TaxAmount:         decimal.NewFromFloat(sumTax),
+			NetAmount:         decimal.NewFromFloat(sumNet),
+			OutstandingAmount: decimal.NewFromFloat(sumTotal),
 			Status:            "unpaid",
 		}
+		if h.BuyerTaxID != "" {
+			header.TaxID = &h.BuyerTaxID
+		}
+		if h.InvoiceCode != "" {
+			header.InvoiceCode = &h.InvoiceCode
+		}
+		if h.InvoiceCategory != "" {
+			header.InvoiceCategory = &h.InvoiceCategory
+		}
+		if h.Status != "" {
+			header.Status = h.Status
+		}
+		if h.Remark != "" {
+			header.Remark = &h.Remark
+		}
+		header.IsReturn = h.IsReturn
 
-		// 购方税号
-		if buyerTaxIdIdx < len(row) {
-			if t := strings.TrimSpace(row[buyerTaxIdIdx]); t != "" {
-				inv.TaxID = &t
-			}
+		srcNo := h.SourceRedInvoiceNo
+		if h.IsReturn && srcNo == "" && h.Remark != "" {
+			srcNo = extractBlueInvoiceNo(h.Remark)
 		}
-
-		if statusIdx < len(row) {
-			if s := strings.TrimSpace(row[statusIdx]); s != "" {
-				inv.Status = s
-			}
-		}
-		if remarkIdx < len(row) {
-			if r := strings.TrimSpace(row[remarkIdx]); r != "" {
-				inv.Remark = &r
-			}
-		}
-		if isReturnIdx < len(row) {
-			if v := strings.ToLower(strings.TrimSpace(row[isReturnIdx])); v == "是" || v == "yes" || v == "true" || v == "1" || v == "红字" || v == "红冲" {
-				inv.IsReturn = true
-			}
-		}
-		// If this row is a red-letter invoice and references a source blue invoice,
-		// persist the link and try to resolve the UUID for FK back-ref.
-		if inv.IsReturn && sourceRedNoIdx < len(row) {
-			if srcNo := strings.TrimSpace(row[sourceRedNoIdx]); srcNo != "" {
-				inv.SourceRedInvoiceNo = &srcNo
-				if srcInv, lerr := s.repo.GetByInvoiceNo(ctx, tenantID, srcNo); lerr == nil && srcInv != nil {
-					id := srcInv.ID
-					inv.ReturnAgainst = &id
-				}
+		if srcNo != "" {
+			header.SourceRedInvoiceNo = &srcNo
+			if srcInv, lerr := repo.GetByInvoiceNo(ctx, tenantID, srcNo); lerr == nil && srcInv != nil {
+				id := srcInv.ID
+				header.ReturnAgainst = &id
 			}
 		}
 
-		imported = append(imported, *inv)
+		var lineItems []model.InvoiceLineItem
+		for i := range items {
+			it := &items[i]
+			lineItems = append(lineItems, model.InvoiceLineItem{
+				Description: it.ItemDescription,
+				ItemCode:    it.ItemCode,
+				Unit:        it.Unit,
+				Quantity:    decimal.NewFromFloat(it.Quantity),
+				UnitPrice:   decimal.NewFromFloat(it.UnitPrice),
+				TaxRate:     decimal.NewFromFloat(it.TaxRate),
+				NetAmount:   decimal.NewFromFloat(it.NetAmount),
+				TaxAmount:   decimal.NewFromFloat(it.TaxAmount),
+				TotalAmount: decimal.NewFromFloat(it.TotalAmount),
+			})
+		}
+		toInsert = append(toInsert, headerWithItems{Header: header, Items: lineItems})
 	}
+	return toInsert
+}
 
-	importedResult, err := s.repo.ImportBatch(ctx, tenantID, imported)
-	if err != nil {
-		return nil, fmt.Errorf("import batch: %w", err)
+func extractBlueInvoiceNo(remark string) string {
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`对应蓝字发票号[：:]\s*(\d{8,20})`),
+		regexp.MustCompile(`原发票号[：:]\s*(\d{8,20})`),
+		regexp.MustCompile(`红冲发票[：:号]?\s*(\d{8,20})`),
+		regexp.MustCompile(`对应正数发票号码[：:]\s*(\d{8,20})`),
+		regexp.MustCompile(`原[始]?(?:发票|凭证)号?[：:]\s*(\d{8,20})`),
+		regexp.MustCompile(`蓝字发票[：:号]?\s*(\d{8,20})`),
 	}
-
-	return &model.InvoiceFileImportResult{
-		TotalRows:  len(rows) - headerIdx - 1,
-		Imported:   len(importedResult),
-		Failed:     len(failedRows),
-		FailedRows: failedRows,
-	}, nil
+	for _, p := range patterns {
+		if m := p.FindStringSubmatch(remark); len(m) > 1 {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 // parseDateInvoice tries common date formats for invoice dates.

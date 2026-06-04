@@ -22,6 +22,7 @@ const (
 type SalesInvoice struct {
 	ID                  uuid.UUID       `json:"id" db:"id"`
 	InvoiceNo           string          `json:"invoice_no" db:"invoice_no"`
+	InvoiceCode         *string         `json:"invoice_code,omitempty" db:"invoice_code"`
 	InvoiceType         string          `json:"invoice_type" db:"invoice_type"`
 	CustomerID          uuid.UUID       `json:"customer_id" db:"customer_id"`
 	TaxID               *string         `json:"tax_id,omitempty" db:"tax_id"`

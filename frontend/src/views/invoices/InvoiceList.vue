@@ -81,6 +81,12 @@
     <el-card>
       <el-table :data="invoices" border stripe size="small" :expand-row-keys="expandedRows" @expand-change="handleExpandChange" row-key="id">
         <el-table-column type="expand">
+          <template #expand-icon="{ expanded, row }">
+            <el-icon v-if="row.line_items && row.line_items.length > 1" :size="14">
+              <component :is="expanded ? 'ArrowDown' : 'ArrowRight'" />
+            </el-icon>
+            <span v-else>&nbsp;&nbsp;&nbsp;</span>
+          </template>
           <template #default="{ row }">
             <div v-if="row.line_items && row.line_items.length > 0">
               <el-table :data="row.line_items" border size="mini" style="width: 100%">
@@ -101,7 +107,9 @@
           </template>
         </el-table-column>
         <el-table-column type="selection" width="55" />
-        <el-table-column prop="invoice_no" label="发票号" width="140" />
+        <el-table-column type="index" label="序号" width="60" />
+        <el-table-column prop="invoice_no" label="发票号" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="invoice_category" label="票种" min-width="120" show-overflow-tooltip />
         <el-table-column label="类型" width="70">
           <template #default="{ row }">
             <el-tag :type="row.type === 'sale' ? 'success' : row.type === 'purchase' ? 'warning' : 'info'" size="small">
@@ -109,10 +117,10 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="红字" width="80">
+        <el-table-column label="红字状态" width="90">
           <template #default="{ row }">
-            <el-tag v-if="row.is_return" type="danger" size="small">🔴红字</el-tag>
-            <span v-else>—</span>
+            <el-tag v-if="row.is_return" type="danger" size="small">红字</el-tag>
+            <el-tag v-else type="success" size="small">正常</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="对应蓝字发票" width="150" show-overflow-tooltip>
@@ -365,6 +373,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { ArrowDown, ArrowRight } from '@element-plus/icons-vue'
 import request from '@/api/request'
 import { generateVoucherFromInvoice, uploadInvoice, importInvoicesFile, previewInvoiceExcel, confirmSalesInvoice } from '@/api/modules/invoice'
 
@@ -386,6 +395,8 @@ interface InvoiceLineItem {
 interface InvoiceItem {
   id: string
   invoice_no: string
+  invoice_code?: string
+  invoice_category?: string
   type: string
   customer_name: string
   tax_id: string
@@ -396,6 +407,9 @@ interface InvoiceItem {
   net_amount: string
   outstanding: string
   status: string
+  is_return?: boolean
+  source_red_invoice_no?: string
+  remark?: string
   line_items?: InvoiceLineItem[]
 }
 
@@ -636,12 +650,12 @@ const defaultMappings: FieldMapping[] = [
   { field: '发票号', fieldKey: 'invoice_no', required: true, matched: false, mappedColumn: '', sampleValue: '' },
   { field: '发票类型', fieldKey: 'invoice_type', required: false, matched: false, mappedColumn: '', sampleValue: '' },
   { field: '开票日期', fieldKey: 'posting_date', required: true, matched: false, mappedColumn: '', sampleValue: '' },
-  { field: '到期日', fieldKey: 'due_date', required: false, matched: false, mappedColumn: '', sampleValue: '' },
   { field: '对方单位', fieldKey: 'customer_name', required: false, matched: false, mappedColumn: '', sampleValue: '' },
   { field: '价税合计', fieldKey: 'total_amount', required: true, matched: false, mappedColumn: '', sampleValue: '' },
   { field: '税额', fieldKey: 'tax_amount', required: false, matched: false, mappedColumn: '', sampleValue: '' },
   { field: '不含税金额', fieldKey: 'net_amount', required: false, matched: false, mappedColumn: '', sampleValue: '' },
   { field: '税率', fieldKey: 'tax_rate', required: false, matched: false, mappedColumn: '', sampleValue: '' },
+  { field: '备注', fieldKey: 'remark', required: false, matched: false, mappedColumn: '', sampleValue: '' },
 ]
 
 const fieldMappings = ref<FieldMapping[]>([...defaultMappings])
@@ -710,15 +724,15 @@ function autoMatchColumns() {
 
     if (matchIdx === -1) {
       const synonyms: Record<string, string[]> = {
-        invoice_no: ['发票号', '发票号码', 'invoice no', 'invoice_number'],
-        invoice_type: ['发票类型', '类型', 'type', '发票种类'],
+        invoice_no: ['发票号', '发票号码', '数电发票号码', 'invoice no', 'invoice_number'],
+        invoice_type: ['发票类型', '类型', 'type', '发票票种', '票种'],
         posting_date: ['开票日期', '日期', '开票日', 'date'],
-        due_date: ['到期日', '到期', 'due date'],
-        customer_name: ['对方单位', '客户名称', '供应商', '客户', 'customer'],
+        customer_name: ['对方单位', '购买方名称', '客户名称', '购方名称', '供应商', '客户', 'customer'],
         total_amount: ['价税合计', '金额', '合计', 'total', '含税金额'],
         tax_amount: ['税额', '税金', '税', 'tax'],
-        net_amount: ['不含税金额', '金额（不含税）', '净额', 'net'],
+        net_amount: ['不含税金额', '金额', '净额', 'net'],
         tax_rate: ['税率', 'tax rate', 'rate'],
+        remark: ['备注', '说明', 'remark', 'remarks'],
       }
 
       const syns = synonyms[mapping.fieldKey] || []
