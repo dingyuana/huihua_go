@@ -52,10 +52,16 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
       ],
     },
     { path: '/invoices', title: '发票管理', icon: 'Document' },
-    { path: '/ar-invoices', title: '应收款单', icon: 'MoneyCollect' },
-    { path: '/ap-invoices', title: '应付款单', icon: 'CreditCard' },
-    { path: '/advance-receipts', title: '预收款单', icon: 'WalletFilled' },
-    { path: '/advance-payments', title: '预付款单', icon: 'Coin' },
+    {
+      path: '/receivables-payables', title: '往来管理', icon: 'MoneyCollect',
+      children: [
+        { path: '/receivables-payables', title: '应收应付汇总' },
+        { path: '/ar-invoices', title: '应收款单' },
+        { path: '/ap-invoices', title: '应付款单' },
+        { path: '/advance-receipts', title: '预收款单' },
+        { path: '/advance-payments', title: '预付款单' },
+      ],
+    },
     { path: '/reports/aging', title: '账龄分析', icon: 'Histogram' },
     { path: '/reports/credit', title: '信用管控', icon: 'CreditCardFilled' },
     {

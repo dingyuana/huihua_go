@@ -94,6 +94,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '发票管理', roles: ['accountant_ar', 'admin', 'agent'], keepAlive: true },
       },
       {
+        path: 'receivables-payables',
+        name: 'ReceivablesPayables',
+        component: () => import('@/views/receivables-payables/UnifiedView.vue'),
+        meta: { title: '应收应付汇总', roles: ['admin', 'agent'] },
+      },
+      {
         path: 'ar-invoices',
         name: 'ArInvoiceList',
         component: () => import('@/views/ar-invoices/ArInvoiceList.vue'),
