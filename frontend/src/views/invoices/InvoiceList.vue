@@ -180,7 +180,7 @@
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="showDetail = row">详情</el-button>
             <el-button v-if="row.status === 'draft'" link type="warning" size="small" @click="handleConfirmInvoice(row)">确认</el-button>
-            <el-button v-if="row.status === 'verified'" link type="success" size="small" @click="handleGenerateVoucher(row)">生成凭证</el-button>
+            <el-button v-if="row.status === 'verified' && row.docstatus === 0" link type="success" size="small" @click="handleGenerateVoucher(row)">生成凭证</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -407,7 +407,7 @@
 
         <div style="margin-top:16px;text-align:center">
           <el-button v-if="showDetail.status === 'draft'" type="primary" :loading="confirmLoading === showDetail.id" @click="handleConfirmInvoice(showDetail)">确认发票</el-button>
-          <el-button v-if="showDetail.status === 'verified'" type="primary" :loading="genLoading === showDetail.id" @click="handleGenerateVoucher(showDetail)">
+          <el-button v-if="showDetail.status === 'verified' && showDetail.docstatus === 0" type="primary" :loading="genLoading === showDetail.id" @click="handleGenerateVoucher(showDetail)">
             生成凭证
           </el-button>
         </div>
@@ -454,6 +454,7 @@ interface InvoiceItem {
   net_amount: string
   outstanding: string
   status: string
+  docstatus: number
   is_return?: boolean
   source_red_invoice_no?: string
   remark?: string
@@ -569,7 +570,7 @@ async function handleGenerateVoucher(invoice: InvoiceItem | null) {
   if (!invoice) return
   genLoading.value = true
   try {
-    const res = await generateVoucherFromInvoice(invoice.invoice_no)
+    const res = await generateVoucherFromInvoice(invoice.id)
     ElMessage.success(`凭证已生成: ${res?.data?.voucher_no || ''}`)
     await loadData()
   } catch {

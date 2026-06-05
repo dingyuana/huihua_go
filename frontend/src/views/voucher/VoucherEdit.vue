@@ -1,7 +1,7 @@
 <template>
   <div class="voucher-edit">
     <div class="page-header">
-      <h3>{{ isNew ? '新增凭证' : (readonly ? '查看凭证' : '编辑凭证') }}</h3>
+      <h3>{{ isNew ? '新增凭证' : (readonly ? (docstatus === 3 ? '已作废凭证' : '查看凭证') : '编辑凭证') }}</h3>
       <DocStatusTag v-if="!isNew" :docstatus="docstatus" size="default" />
     </div>
 
@@ -77,12 +77,26 @@
           <el-button type="primary" :disabled="!canSubmit" @click="submit">提交审核</el-button>
         </template>
 
-        <!-- 已审核状态: 可红字冲销 -->
-        <template v-if="docstatus === 1">
-          <el-button type="warning" @click="showReverseDialog = true">🔴 红字冲销</el-button>
+        <!-- 未作废状态: 可退回（作废）/ 红字冲销 -->
+        <template v-if="docstatus !== 3">
+          <el-button v-if="docstatus === 0 || docstatus === 1" type="danger" @click="showRejectDialog = true">退回</el-button>
+          <el-button v-if="docstatus === 1 || docstatus === 2" type="warning" @click="showReverseDialog = true">🔴 红字冲销</el-button>
         </template>
       </div>
     </el-card>
+
+    <!-- 驳回弹窗 -->
+    <el-dialog v-model="showRejectDialog" title="退回凭证" width="420px">
+      <el-form>
+        <el-form-item label="驳回原因" required>
+          <el-input v-model="rejectReason" type="textarea" :rows="3" placeholder="请填写驳回原因" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showRejectDialog = false">取消</el-button>
+        <el-button type="danger" :disabled="!rejectReason" @click="confirmReject">确认退回</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 红字冲销弹窗 -->
     <el-dialog v-model="showReverseDialog" title="红字冲销" width="480px">
@@ -160,7 +174,7 @@ function toNum(val: any): number {
 }
 
 const docstatus = ref(0)
-const readonly = computed(() => docstatus.value === 1)
+const readonly = computed(() => docstatus.value === 1 || docstatus.value === 3)
 const reversalId = ref('')
 
 const form = reactive({ date: '', type: '记', remark: '' })
@@ -217,6 +231,24 @@ const diff = computed(() =>
   (parseFloat(totalDebit.value) - parseFloat(totalCredit.value)).toFixed(2)
 )
 const canSubmit = computed(() => isBalanced.value)
+
+// 驳回
+const showRejectDialog = ref(false)
+const rejectReason = ref('')
+
+async function confirmReject() {
+  if (!rejectReason.value) return
+  try {
+    await request.post(`/vouchers/${route.params.id}/cancel`, { reason: rejectReason.value })
+    ElMessage.success('凭证已退回作废')
+    showRejectDialog.value = false
+    rejectReason.value = ''
+    docstatus.value = 3
+    router.push('/vouchers')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '退回失败')
+  }
+}
 
 // 红字冲销
 const showReverseDialog = ref(false)
@@ -283,7 +315,7 @@ function saveDraft() {
   ElMessage.success('草稿已保存')
 }
 
-function submit() {
+async function submit() {
   // 强制借贷平衡校验
   if (!isBalanced.value) {
     ElMessage.error(`借贷不平衡，无法提交审核（借方 ${totalDebit.value} ≠ 贷方 ${totalCredit.value}）`)
@@ -293,12 +325,18 @@ function submit() {
     ElMessage.warning('至少需要两条分录行')
     return
   }
-  ElMessageBox.confirm('确认提交审核？提交后不可直接修改。', '确认', {
-    confirmButtonText: '提交', cancelButtonText: '取消', type: 'info',
-  }).then(() => {
-    ElMessage.success('凭证已提交审核')
+  try {
+    await ElMessageBox.confirm('确认提交审核？提交后不可直接修改。', '确认', {
+      confirmButtonText: '提交', cancelButtonText: '取消', type: 'info',
+    })
+    const res: any = await request.post(`/vouchers/${route.params.id}/submit`, {})
     docstatus.value = 1
-  }).catch(() => {})
+    ElMessage.success(res?.message || '凭证已提交审核')
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e?.response?.data?.error || '提交失败')
+    }
+  }
 }
 
 function executeReverse() {
@@ -308,7 +346,7 @@ function executeReverse() {
   ).then(() => {
     ElMessage.success(`冲销成功！已生成冲销凭证，原凭证已作废`)
     showReverseDialog.value = false
-    docstatus.value = 2
+    docstatus.value = 3
     router.push('/vouchers')
   }).catch(() => {})
 }

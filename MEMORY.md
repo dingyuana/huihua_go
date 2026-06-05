@@ -231,6 +231,54 @@ CREATE POLICY tenant_isolation ON <table> FOR ALL
 - 存储在 `approval_flows.threshold_amount_level2/level3`
 - 币种：`approval_flows.currency`
 
+## 项目核心规则
+
+### 单据状态管理（单据状态机原则）
+
+所有业务单据（发票、应收单、应付单、凭证、收付款单等）必须拥有 `docstatus` 或 `status` 字段，状态变化遵循以下原则：
+
+1. **正向变化**：单据状态随业务流程推进而变化，每个步骤将状态往前推。例如：
+   - 发票：草稿(draft) → 已确认(verified) → 已核销(paid)
+   - 凭证：草稿(draft, docstatus=0) → 已提交(submitted, docstatus=1) → 已核准(approved, docstatus=2)
+   - 收付款单：草稿(draft) → 已提交(submitted) → 已核准(approved)
+
+2. **反向变化**：当上游单据被删除/取消时，下游关联单据的状态必须同步回退。例如：
+   - 删除凭证 → 发票 `docstatus` 回退为 0（可重新生成凭证）✓
+   - 删除凭证 → 收付款单状态回退，`voucher_id/voucher_no` 置空 ✓
+   - 删除凭证 → 银行流水解绑凭证 ✓
+
+3. **防止重复生成**：任何"生成凭证"操作必须先检查源单据状态：
+   - 源单据 `docstatus != 0` → 拒绝生成，返回错误
+   - 生成成功后必须锁定源单据状态（`docstatus = 1`）
+
+4. **凭证退回 = 作废**：退回意味着凭证作废（docstatus → 3 cancelled），不再显示且不可修改：
+   - 草稿(0) → 作废(3)：调用 Cancel API
+   - 已提交(1) → 作废(3)：调用 Cancel API（状态机已允许 posted 状态下 cancel）
+   - 退回后源发票 `docstatus` 回退为 0，可以重新生成凭证
+   - 收付款单状态与凭证状态互相独立，退回不影响收付款单状态 ✓
+
+5. **发票确认不自动生成凭证**：发票确认（status → verified）与生成凭证是两个独立步骤：
+   - 确认仅设置 `status = verified`，不触发自动生成
+   - 用户手动点击"生成凭证"后调用 `GenerateFromInvoice`
+   - 生成成功后发票 `docstatus = 1` 锁定，防止重复生成
+
+### 会计科目编码规范
+
+- 主营业务收入：**5001**（非 6001）
+- 主营业务成本：**5401**（非 6003）
+- 应收账款：1122
+- 应付账款：2202
+- 库存现金：1001
+- 银行存款：1002
+
+发票生成凭证时通过 `findAccountByCode` 按科目编码查找，必须使用正确的科目编码。
+
+### 凭证平衡规则
+
+- 凭证的借方总额必须严格等于贷方总额
+- 生成分录时必须确保至少有一个借方行和一个贷方行
+- `len(lines) == 0` 的检查不足以保证平衡，需要确保 `total_debit == total_credit`
+
 ## 当前状态（2026-05-30）
 
 - 全栈构建通过：Go 后端 + Vue 前端均正常编译

@@ -30,10 +30,10 @@ func (r *ArInvoiceRepository) Create(ctx context.Context, ar *model.ArInvoice) e
 
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO ar_invoices (id, tenant_id, company_id, customer_id, invoice_id, invoice_no,
-			amount, due_date, status, source_type, created_by, created_at, confirmed_at, confirmed_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+			amount, paid_amount, outstanding_amount, due_date, status, source_type, created_by, created_at, confirmed_at, confirmed_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		ar.ID, ar.TenantID, ar.CompanyID, ar.CustomerID, ar.InvoiceID, ar.InvoiceNo,
-		ar.Amount, ar.DueDate, ar.Status, ar.SourceType, ar.CreatedBy, ar.CreatedAt,
+		ar.Amount, ar.PaidAmount, ar.OutstandingAmount, ar.DueDate, ar.Status, ar.SourceType, ar.CreatedBy, ar.CreatedAt,
 		ar.ConfirmedAt, ar.ConfirmedBy)
 	return err
 }
@@ -231,10 +231,10 @@ func (r *ArInvoiceRepository) BatchCreate(ctx context.Context, ars []*model.ArIn
 		}
 		_, err := r.pool.Exec(ctx, `
 			INSERT INTO ar_invoices (id, tenant_id, company_id, customer_id, invoice_id, invoice_no,
-				amount, due_date, status, source_type, created_by, created_at, confirmed_at, confirmed_by)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+				amount, paid_amount, outstanding_amount, due_date, status, source_type, created_by, created_at, confirmed_at, confirmed_by)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 			ar.ID, ar.TenantID, ar.CompanyID, ar.CustomerID, ar.InvoiceID, ar.InvoiceNo,
-			ar.Amount, ar.DueDate, ar.Status, ar.SourceType, ar.CreatedBy, ar.CreatedAt,
+			ar.Amount, ar.PaidAmount, ar.OutstandingAmount, ar.DueDate, ar.Status, ar.SourceType, ar.CreatedBy, ar.CreatedAt,
 			ar.ConfirmedAt, ar.ConfirmedBy)
 		if err != nil {
 			return err

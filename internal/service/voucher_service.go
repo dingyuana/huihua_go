@@ -22,6 +22,7 @@ type VoucherService struct {
 	accountRepo        *repository.AccountRepository
 	classificationSvc  *ClassificationRuleService
 	paymentStateMachine *PaymentStateMachine
+	invoiceRepo        *repository.InvoiceRepository
 }
 
 // NewVoucherService creates a new VoucherService.
@@ -33,6 +34,7 @@ func NewVoucherService(
 	accountRepo *repository.AccountRepository,
 	classificationSvc *ClassificationRuleService,
 	paymentStateMachine *PaymentStateMachine,
+	invoiceRepo *repository.InvoiceRepository,
 ) *VoucherService {
 	return &VoucherService{
 		journalRepo:        journalRepo,
@@ -42,6 +44,7 @@ func NewVoucherService(
 		accountRepo:        accountRepo,
 		classificationSvc:  classificationSvc,
 		paymentStateMachine: paymentStateMachine,
+		invoiceRepo:        invoiceRepo,
 	}
 }
 
@@ -466,6 +469,36 @@ func (s *VoucherService) DeleteVoucher(ctx context.Context, tenantID, voucherID,
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// Revert invoice docstatus so it can be re-generated
+	if je.SourceType == "invoice" && je.SourceInvoiceID != uuid.Nil {
+		if err := s.invoiceRepo.UpdateFields(ctx, tenantID, je.SourceInvoiceID, map[string]interface{}{
+			"docstatus": 0,
+		}); err != nil {
+			return fmt.Errorf("revert invoice docstatus on voucher delete: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// RevertSourceOnVoucherReject reverts the source document's docstatus when
+// a voucher is rejected/returned, allowing the source to re-generate a voucher.
+// Note: Only invoice source docstatus is reverted on reject. Payment entry status
+// is independent of voucher status and is NOT affected by reject.
+func (s *VoucherService) RevertSourceOnVoucherReject(ctx context.Context, tenantID, voucherID uuid.UUID) error {
+	je, err := s.journalRepo.GetByID(ctx, tenantID, voucherID)
+	if err != nil {
+		return fmt.Errorf("get voucher for revert: %w", err)
+	}
+
+	if je.SourceType == "invoice" && je.SourceInvoiceID != uuid.Nil {
+		if err := s.invoiceRepo.UpdateFields(ctx, tenantID, je.SourceInvoiceID, map[string]interface{}{
+			"docstatus": 0,
+		}); err != nil {
+			return fmt.Errorf("revert invoice docstatus on voucher reject: %w", err)
+		}
 	}
 
 	return nil

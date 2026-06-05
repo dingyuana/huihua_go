@@ -19,6 +19,7 @@ const tagType = computed(() => {
   switch (props.docstatus) {
     case DocStatus.Draft: return 'info'
     case DocStatus.Submitted: return 'primary'
+    case DocStatus.Verified: return 'success'
     case DocStatus.Cancelled: return 'danger'
     default: return 'warning'
   }

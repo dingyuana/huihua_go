@@ -1,15 +1,17 @@
 // 全局枚举
 
-/** 单据状态：0=草稿, 1=已审核, 2=已作废 */
+/** 单据状态：0=草稿, 1=已提交, 2=已审核, 3=已作废 */
 export enum DocStatus {
   Draft = 0,
   Submitted = 1,
-  Cancelled = 2,
+  Verified = 2,
+  Cancelled = 3,
 }
 
 export const DocStatusLabel: Record<DocStatus, string> = {
   [DocStatus.Draft]: '草稿',
-  [DocStatus.Submitted]: '已审核',
+  [DocStatus.Submitted]: '已提交',
+  [DocStatus.Verified]: '已审核',
   [DocStatus.Cancelled]: '已作废',
 }
 

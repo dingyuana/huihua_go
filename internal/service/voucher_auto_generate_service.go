@@ -220,6 +220,10 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 		return nil, err
 	}
 
+	if invoice.DocStatus != 0 {
+		return nil, fmt.Errorf("invoice %s (docstatus=%d) already has a voucher", invoice.InvoiceNo, invoice.DocStatus)
+	}
+
 	voucherResp, _ := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
 	voucherNo := ""
 	if voucherResp != nil {
@@ -243,66 +247,110 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 
 	var lines []model.JournalEntryLine
 	isSales := invoice.InvoiceType == "sales" || invoice.InvoiceType == "output"
-	invoiceType := "sales"
-	if !isSales {
-		invoiceType = "purchase"
-	}
 
-	var counterDr, counterCr uuid.UUID
-	txnDesc := invoice.InvoiceNo + " " + invoiceType
-	counterpartyStr := ""
-	direction := "in"
-	if !isSales {
-		direction = "out"
-	}
-	result, err := s.classificationSvc.MatchTransaction(ctx, tenantID, txnDesc, counterpartyStr, direction)
-	if err == nil && result.Matched && result.RuleID != nil {
-		if r, lookupErr := s.classificationSvc.GetRuleByID(ctx, tenantID, *result.RuleID); lookupErr == nil {
-			if r.DebitAccountID != nil {
-				counterDr = *r.DebitAccountID
-			}
-			if r.CreditAccountID != nil {
-				counterCr = *r.CreditAccountID
-			}
+	counterpartyName := ""
+	if invoice.CustomerID != uuid.Nil {
+		if party, err := s.partyRepo.GetByID(ctx, tenantID, invoice.CustomerID); err == nil && party != nil {
+			counterpartyName = party.Name
 		}
+	}
+	je.CounterpartyName = &counterpartyName
+
+	// For red invoices (is_return=true), swap debit/credit so the entry
+	// reverses the original.  Red amounts are already negative in the DB,
+	// so we use the absolute amount and flip the sides.
+	amount := invoice.TotalAmount
+	isReturn := invoice.IsReturn
+	if isReturn {
+		amount = amount.Abs()
 	}
 
 	if isSales {
-		arAccountID := s.findAccountByCode(ctx, tenantID, "1122")
-		if arAccountID != nil {
-			lines = append(lines, model.JournalEntryLine{
-				ID: uuid.New(), JournalEntryID: je.ID,
-				AccountID: *arAccountID,
-				Debit:     invoice.TotalAmount, Credit: decimal.Zero,
-			})
-		}
-		if counterCr != uuid.Nil {
-			lines = append(lines, model.JournalEntryLine{
-				ID: uuid.New(), JournalEntryID: je.ID,
-				AccountID: counterCr,
-				Debit:     decimal.Zero, Credit: invoice.TotalAmount,
-			})
+		if isReturn {
+			// Red sales: Cr AR, Dr Revenue
+			arAccountID := s.findAccountByCode(ctx, tenantID, "1122")
+			if arAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *arAccountID,
+					Debit: decimal.Zero, Credit: amount,
+				})
+			}
+			if revAccountID := s.findAccountByCode(ctx, tenantID, "5001"); revAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *revAccountID,
+					Debit: amount, Credit: decimal.Zero,
+				})
+			}
+		} else {
+			// Normal sales: Dr AR, Cr Revenue
+			arAccountID := s.findAccountByCode(ctx, tenantID, "1122")
+			if arAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *arAccountID,
+					Debit: amount, Credit: decimal.Zero,
+				})
+			}
+			if revAccountID := s.findAccountByCode(ctx, tenantID, "5001"); revAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *revAccountID,
+					Debit: decimal.Zero, Credit: amount,
+				})
+			}
 		}
 	} else {
-		if counterDr != uuid.Nil {
-			lines = append(lines, model.JournalEntryLine{
-				ID: uuid.New(), JournalEntryID: je.ID,
-				AccountID: counterDr,
-				Debit:     invoice.TotalAmount, Credit: decimal.Zero,
-			})
-		}
-		apAccountID := s.findAccountByCode(ctx, tenantID, "2202")
-		if apAccountID != nil {
-			lines = append(lines, model.JournalEntryLine{
-				ID: uuid.New(), JournalEntryID: je.ID,
-				AccountID: *apAccountID,
-				Debit:     decimal.Zero, Credit: invoice.TotalAmount,
-			})
+		if isReturn {
+			// Red purchase: Dr AP, Cr Cost
+			apAccountID := s.findAccountByCode(ctx, tenantID, "2202")
+			if apAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *apAccountID,
+					Debit: amount, Credit: decimal.Zero,
+				})
+			}
+			if costID := s.findAccountByCode(ctx, tenantID, "5401"); costID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *costID,
+					Debit: decimal.Zero, Credit: amount,
+				})
+			}
+		} else {
+			// Normal purchase: Dr Cost, Cr AP
+			if costID := s.findAccountByCode(ctx, tenantID, "5401"); costID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *costID,
+					Debit: amount, Credit: decimal.Zero,
+				})
+			}
+			apAccountID := s.findAccountByCode(ctx, tenantID, "2202")
+			if apAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *apAccountID,
+					Debit: decimal.Zero, Credit: amount,
+				})
+			}
 		}
 	}
 
 	if len(lines) == 0 {
 		return nil, fmt.Errorf("no valid accounts found for invoice %s", invoice.InvoiceNo)
+	}
+	// Ensure debit == credit (voucher balance rule)
+	var totalDr, totalCr decimal.Decimal
+	for _, l := range lines {
+		totalDr = totalDr.Add(l.Debit)
+		totalCr = totalCr.Add(l.Credit)
+	}
+	if !totalDr.Equals(totalCr) {
+		return nil, fmt.Errorf("voucher unbalanced for invoice %s: debit=%s credit=%s",
+			invoice.InvoiceNo, totalDr.String(), totalCr.String())
 	}
 
 	if _, err := s.journalRepo.Create(ctx, tenantID, je); err != nil {
@@ -310,6 +358,13 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 	}
 	if _, err := s.journalRepo.AddLines(ctx, tenantID, je.ID, lines); err != nil {
 		return nil, err
+	}
+
+	// Mark invoice so it cannot be regenerated
+	if err := s.invoiceRepo.UpdateFields(ctx, tenantID, invoiceID, map[string]interface{}{
+		"docstatus": 1,
+	}); err != nil {
+		return nil, fmt.Errorf("mark invoice docstatus: %w", err)
 	}
 
 	return je, nil

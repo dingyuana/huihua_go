@@ -118,6 +118,7 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 			"net_amount":            inv.NetAmount.String(),
 			"outstanding_amount":    inv.OutstandingAmount.String(),
 			"status":                mapInvoiceStatus(inv.Status),
+			"docstatus":             inv.DocStatus,
 			"is_return":             inv.IsReturn,
 			"source_red_invoice_no": sourceRedInvoiceNoStr,
 			"remark":                remarkStr,

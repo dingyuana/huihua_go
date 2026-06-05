@@ -176,6 +176,11 @@ func (h *VoucherHandler) Reject(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// Cascade: revert source document docstatus so it can re-generate
+	if err := h.voucherSvc.RevertSourceOnVoucherReject(c.Context(), tenantID, id); err != nil {
+		// non-critical, log and continue
+	}
+
 	return c.JSON(fiber.Map{"message": "voucher rejected"})
 }
 
@@ -204,6 +209,11 @@ func (h *VoucherHandler) Cancel(c *fiber.Ctx) error {
 
 	if err := h.stateMachine.ExecuteTransition(c.Context(), tenantID, id, "cancel", userID, req.UserName, req.Reason); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Cascade: revert source document docstatus so it can re-generate
+	if err := h.voucherSvc.RevertSourceOnVoucherReject(c.Context(), tenantID, id); err != nil {
+		// non-critical, log and continue
 	}
 
 	return c.JSON(fiber.Map{"message": "voucher cancelled"})

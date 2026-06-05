@@ -27,11 +27,11 @@ func (r *ApInvoiceRepository) Create(ctx context.Context, ap *model.ApInvoice) e
 
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO ap_invoices (id, tenant_id, company_id, supplier_id, invoice_id, invoice_no,
-			amount, due_date, status, source_type, created_by, created_at, confirmed_at, confirmed_by,
+			amount, paid_amount, outstanding_amount, due_date, status, source_type, created_by, created_at, confirmed_at, confirmed_by,
 			approved_by, approved_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
 		ap.ID, ap.TenantID, ap.CompanyID, ap.SupplierID, ap.InvoiceID, ap.InvoiceNo,
-		ap.Amount, ap.DueDate, ap.Status, ap.SourceType, ap.CreatedBy, ap.CreatedAt,
+		ap.Amount, ap.PaidAmount, ap.OutstandingAmount, ap.DueDate, ap.Status, ap.SourceType, ap.CreatedBy, ap.CreatedAt,
 		ap.ConfirmedAt, ap.ConfirmedBy, ap.ApprovedBy, ap.ApprovedAt)
 	return err
 }

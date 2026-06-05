@@ -55,7 +55,7 @@ func (s *VoucherStateMachine) ValidateTransition(currentStatus int16, action mod
 		}
 	case 1: // posted
 		switch action {
-		case model.VoucherActionApprove, model.VoucherActionReject, model.VoucherActionReverse:
+		case model.VoucherActionApprove, model.VoucherActionReject, model.VoucherActionReverse, model.VoucherActionCancel:
 			return nil
 		default:
 			return fmt.Errorf("invalid action %q for status %d", action, currentStatus)

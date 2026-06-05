@@ -13,10 +13,11 @@
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="filter.status" placeholder="全部" style="width: 100px" clearable>
+          <el-select v-model="filter.status" placeholder="全部" style="width: 120px" clearable>
             <el-option label="草稿" :value="0" />
-            <el-option label="已审核" :value="1" />
-            <el-option label="已作废" :value="2" />
+            <el-option label="已提交" :value="1" />
+            <el-option label="已审核" :value="2" />
+            <el-option label="已作废" :value="3" />
           </el-select>
         </el-form-item>
         <el-form-item label="日期">

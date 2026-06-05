@@ -32,6 +32,7 @@ func newTestVoucherService(t *testing.T) *VoucherService {
 		repository.NewPaymentEntryRepository(pool),
 		repository.NewAccountRepository(pool),
 		NewClassificationRuleService(repository.NewClassificationRuleRepository(pool)),
+		repository.NewInvoiceRepository(pool),
 	)
 }
 

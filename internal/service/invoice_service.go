@@ -1072,28 +1072,23 @@ func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invo
 	// 4. Generate ArInvoice draft
 	if s.arInvoiceRepo != nil {
 		ar := &model.ArInvoice{
-			ID:         uuid.New(),
-			TenantID:   tenantID,
-			CompanyID:  inv.CompanyID,
-			CustomerID: inv.CustomerID,
-			InvoiceID:  invoiceID,
-			InvoiceNo:  inv.InvoiceNo,
-			Amount:     inv.TotalAmount,
-			DueDate:    inv.DueDate,
-			Status:     string(model.ArInvoiceStatusDraft),
-			SourceType: "auto_import",
-			CreatedBy:  &userID,
-			CreatedAt:  time.Now(),
+			ID:                uuid.New(),
+			TenantID:          tenantID,
+			CompanyID:          inv.CompanyID,
+			CustomerID:         inv.CustomerID,
+			InvoiceID:          invoiceID,
+			InvoiceNo:          inv.InvoiceNo,
+			Amount:             inv.TotalAmount,
+			PaidAmount:         decimal.Zero,
+			OutstandingAmount:  inv.TotalAmount,
+			DueDate:            inv.DueDate,
+			Status:             string(model.ArInvoiceStatusDraft),
+			SourceType:         "auto_import",
+			CreatedBy:          &userID,
+			CreatedAt:          time.Now(),
 		}
 		if err := s.arInvoiceRepo.Create(ctx, ar); err != nil {
 			return fmt.Errorf("failed to create ar_invoice: %v", err)
-		}
-	}
-
-	// 5. Trigger voucher auto-generation (non-critical, log on failure)
-	if s.voucherAutoSvc != nil {
-		if _, err := s.voucherAutoSvc.GenerateFromInvoice(ctx, tenantID, invoiceID, userID); err != nil {
-			fmt.Printf("[WARN] failed to generate voucher for invoice %s: %v\n", invoiceID, err)
 		}
 	}
 
@@ -1134,18 +1129,20 @@ func (s *InvoiceService) ConfirmPurchaseInvoice(ctx context.Context, tenantID, i
 
 	if s.apInvoiceRepo != nil {
 		ap := &model.ApInvoice{
-			ID:         uuid.New(),
-			TenantID:   tenantID,
-			CompanyID:  inv.CompanyID,
-			SupplierID: inv.CustomerID,
-			InvoiceID:  invoiceID,
-			InvoiceNo:  inv.InvoiceNo,
-			Amount:     inv.TotalAmount,
-			DueDate:    inv.DueDate,
-			Status:     string(model.ApInvoiceStatusDraft),
-			SourceType: "purchase_invoice",
-			CreatedBy:  &userID,
-			CreatedAt:  time.Now(),
+			ID:                uuid.New(),
+			TenantID:          tenantID,
+			CompanyID:          inv.CompanyID,
+			SupplierID:         inv.CustomerID,
+			InvoiceID:          invoiceID,
+			InvoiceNo:          inv.InvoiceNo,
+			Amount:             inv.TotalAmount,
+			PaidAmount:         decimal.Zero,
+			OutstandingAmount:  inv.TotalAmount,
+			DueDate:            inv.DueDate,
+			Status:             string(model.ApInvoiceStatusDraft),
+			SourceType:         "purchase_invoice",
+			CreatedBy:          &userID,
+			CreatedAt:          time.Now(),
 		}
 		if err := s.apInvoiceRepo.Create(ctx, ap); err != nil {
 			return fmt.Errorf("failed to create ap_invoice: %v", err)
