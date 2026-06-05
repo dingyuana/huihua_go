@@ -228,7 +228,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	auditRepo = repository.NewAuditRepository(db.GetPool())
 	bankJournalRepo := repository.NewBankJournalRepository(db.GetPool())
 	stateMachine := service.NewVoucherStateMachineWithBankJournal(journalRepo, auditRepo, glEntryRepo, bankJournalRepo, bankRepo)
-	stateMachine.InjectLockRepos(arInvoiceRepo, paymentRepo)
+	// InjectLockRepos called after reconRepo is created (see below)
 	paymentStateMachine := service.NewPaymentStateMachine(paymentRepo, invoiceRepo, auditRepo)
 	voucherSvc := service.NewVoucherService(journalRepo, voucherTemplateSvc, bankTransactionRepo, paymentRepo, accountRepo, classificationRuleSvc, paymentStateMachine, invoiceRepo)
 	voucherHandler := handler.NewVoucherHandler(stateMachine, journalRepo, voucherSvc)
@@ -296,6 +296,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Reconciliation (核销) routes
 	reconRepo := repository.NewReconciliationRepository(db.GetPool())
+	stateMachine.InjectLockRepos(arInvoiceRepo, paymentRepo, reconRepo)
 	reconciliationSvc := service.NewReconciliationService(db.GetPool(), bankTransactionRepo, arInvoiceRepo, invoiceRepo, reconRepo, journalRepo)
 	reconciliationHandler := handler.NewReconciliationHandler(reconciliationSvc)
 	api.Post("/reconciliation/run", reconciliationHandler.Run)

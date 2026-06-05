@@ -94,6 +94,27 @@ func (r *ReconciliationRepository) GetByID(ctx context.Context, tenantID, pairID
 	return &p, nil
 }
 
+// ListByPaymentEntry returns all reconciliation pairs where source_id is the given payment_entry.
+func (r *ReconciliationRepository) ListByPaymentEntry(ctx context.Context, tenantID, paymentEntryID uuid.UUID) ([]model.ReconciliationPair, error) {
+	query := `
+		SELECT id, tenant_id, source_type, source_id, target_type, target_id, amount, status, match_level, matched_at, confirmed_at, created_at
+		FROM reconciliation_pairs
+		WHERE source_type = 'payment_entry' AND source_id = $1 AND tenant_id = $2`
+	rows, err := r.pool.Query(ctx, query, paymentEntryID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var pairs []model.ReconciliationPair
+	for rows.Next() {
+		var p model.ReconciliationPair
+		rows.Scan(&p.ID, &p.TenantID, &p.SourceType, &p.SourceID, &p.TargetType, &p.TargetID,
+			&p.Amount, &p.Status, &p.MatchLevel, &p.MatchedAt, &p.ConfirmedAt, &p.CreatedAt)
+		pairs = append(pairs, p)
+	}
+	return pairs, nil
+}
+
 // ConfirmPair confirms a pending reconciliation pair and deducts invoice outstanding amount.
 func (r *ReconciliationRepository) ConfirmPair(ctx context.Context, tenantID, pairID uuid.UUID) error {
 	// 1. Load pair and verify status="pending"

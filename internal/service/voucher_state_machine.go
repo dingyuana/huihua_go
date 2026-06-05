@@ -22,6 +22,7 @@ type VoucherStateMachine struct {
 	bankRepo        *repository.BankRepository
 	arInvoiceRepo   *repository.ArInvoiceRepository
 	paymentRepo     *repository.PaymentEntryRepository
+	reconRepo       *repository.ReconciliationRepository
 }
 
 // NewVoucherStateMachine creates a new VoucherStateMachine.
@@ -44,10 +45,11 @@ func NewVoucherStateMachineWithBankJournal(journalRepo *repository.JournalReposi
 	}
 }
 
-// InjectLockRepos injects the repositories needed for source-document locking (ArInvoice, PaymentEntry).
-func (s *VoucherStateMachine) InjectLockRepos(arInvoiceRepo *repository.ArInvoiceRepository, paymentRepo *repository.PaymentEntryRepository) {
+// InjectLockRepos injects the repositories needed for source-document locking (ArInvoice, PaymentEntry, Reconciliation).
+func (s *VoucherStateMachine) InjectLockRepos(arInvoiceRepo *repository.ArInvoiceRepository, paymentRepo *repository.PaymentEntryRepository, reconRepo *repository.ReconciliationRepository) {
 	s.arInvoiceRepo = arInvoiceRepo
 	s.paymentRepo = paymentRepo
+	s.reconRepo = reconRepo
 }
 
 // ValidateTransition checks if a state transition is legal.
@@ -222,6 +224,7 @@ func (s *VoucherStateMachine) postTransitionAction(ctx context.Context, tenantID
 }
 
 // lockSourceDoc locks the source document (ArInvoice or PaymentEntry) and writes voucher_id.
+// For payment_entry, also resolves linked ArInvoice via reconciliation_pairs and writes voucher_id there too.
 func (s *VoucherStateMachine) lockSourceDoc(ctx context.Context, tenantID uuid.UUID, je *model.JournalEntry, voucherID, userID uuid.UUID) {
 	if je.SourceDocType == nil || je.SourceDocID == nil {
 		return
@@ -235,8 +238,18 @@ func (s *VoucherStateMachine) lockSourceDoc(ctx context.Context, tenantID uuid.U
 	case "payment_entry":
 		if s.paymentRepo != nil {
 			_ = s.paymentRepo.UpdateStatusAndClearVoucherTx(ctx, nil, tenantID, *je.SourceDocID, 2) // docstatus=2 (approved/posted)
-			// SetVoucherID on payment entry via generic update
 			_ = s.paymentRepo.SetVoucherID(ctx, tenantID, *je.SourceDocID, voucherID)
+		}
+		// Also update linked ArInvoice's voucher_id via reconciliation_pairs
+		if s.reconRepo != nil && s.arInvoiceRepo != nil {
+			pairs, err := s.reconRepo.ListByPaymentEntry(ctx, tenantID, *je.SourceDocID)
+			if err == nil {
+				for _, pair := range pairs {
+					if pair.TargetType == "ar_invoice" {
+						_ = s.arInvoiceRepo.SetVoucherID(ctx, tenantID, pair.TargetID, voucherID)
+					}
+				}
+			}
 		}
 	}
 }
