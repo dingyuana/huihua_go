@@ -756,15 +756,12 @@ func buildInvoicesFromGroups(validGroups []struct {
 
 func extractBlueInvoiceNo(remark string) string {
 	patterns := []*regexp.Regexp{
-		// 主要模式：被红冲蓝字数电发票号码：25922000000081399845
+		regexp.MustCompile(`被红冲蓝字数电票号码[：:]\s*(\d{8,20})`),
 		regexp.MustCompile(`被红冲蓝字数电发票号码[：:]\s*(\d{8,20})`),
-		// 其他变体
 		regexp.MustCompile(`对应蓝字发票号[：:]\s*(\d{8,20})`),
-		regexp.MustCompile(`红冲发票[：:号]?\s*(\d{8,20})`),
 		regexp.MustCompile(`对应正数发票号码[：:]\s*(\d{8,20})`),
+		regexp.MustCompile(`红冲发票[：:号]?\s*(\d{8,20})`),
 		regexp.MustCompile(`蓝字发票[：:号]?\s*(\d{8,20})`),
-		// 通用模式：在备注中查找长数字（可能是发票号）
-		regexp.MustCompile(`[：:]\s*(\d{8,20})`),
 	}
 	for _, p := range patterns {
 		if m := p.FindStringSubmatch(remark); len(m) > 1 {

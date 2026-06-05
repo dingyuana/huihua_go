@@ -93,6 +93,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/invoices/InvoiceList.vue'),
         meta: { title: '发票管理', roles: ['accountant_ar', 'admin', 'agent'], keepAlive: true },
       },
+      {
+        path: 'ar-invoices',
+        name: 'ArInvoiceList',
+        component: () => import('@/views/ar-invoices/ArInvoiceList.vue'),
+        meta: { title: '应收款单', roles: ['admin', 'agent'] },
+      },
       // ==== F3 核销 ====
       {
         path: 'reconciliation/precheck',

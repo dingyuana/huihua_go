@@ -161,6 +161,11 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	auditWorkbenchHandler := handler.NewAuditWorkbenchHandler(invoiceRepo, arInvoiceRepo, journalRepo)
 	api.Get("/audit/tasks", auditWorkbenchHandler.GetAuditTasks)
 
+	// AR invoice routes
+	arInvoiceHandler := handler.NewArInvoiceHandler(arInvoiceRepo)
+	api.Get("/ar-invoices", arInvoiceHandler.List)
+	api.Get("/ar-invoices/:id", arInvoiceHandler.GetByID)
+
 	// Classification rule routes
 	classificationRuleRepo := repository.NewClassificationRuleRepository(db.GetPool())
 	classificationRuleSvc := service.NewClassificationRuleService(classificationRuleRepo)
