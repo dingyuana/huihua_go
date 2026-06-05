@@ -126,17 +126,30 @@ func (r *ReconciliationRepository) ConfirmPair(ctx context.Context, tenantID, pa
 		return fmt.Errorf("load payment allocation: %w", err)
 	}
 
-	// 4. Deduct invoice outstanding_amount
-	_, err = r.pool.Exec(ctx, `
-		UPDATE invoices SET outstanding_amount = outstanding_amount - $1 WHERE id = $2 AND tenant_id = $3`,
-		allocAmt, invoiceID, tenantID)
+	// 4. Update outstanding_amount on the correct invoice table based on target_type
+	switch pair.TargetType {
+	case "ar_invoice":
+		// Update ar_invoices: paid_amount += allocAmt, outstanding_amount = amount - paid_amount
+		_, err = r.pool.Exec(ctx, `
+			UPDATE ar_invoices
+			SET paid_amount = paid_amount + $1,
+				outstanding_amount = amount - (paid_amount + $1)
+			WHERE id = $2 AND tenant_id = $3`,
+			allocAmt, invoiceID, tenantID)
+	case "invoice", "sales_invoice":
+		// Update sales_invoices: outstanding_amount -= allocAmt
+		_, err = r.pool.Exec(ctx, `
+			UPDATE invoices SET outstanding_amount = outstanding_amount - $1 WHERE id = $2 AND tenant_id = $3`,
+			allocAmt, invoiceID, tenantID)
+	}
 	if err != nil {
 		return fmt.Errorf("update invoice outstanding: %w", err)
 	}
 
-	// 5. Update payment_allocation status (via confirmed_at timestamp — confirmed if confirmed_at is not null)
+	// 5. Update payment_allocation confirmed_at
 	_, err = r.pool.Exec(ctx, `
-		UPDATE payment_allocations SET confirmed_at = $3 WHERE payment_entry_id = $1 AND invoice_id = $2 AND tenant_id = $3`,
+		UPDATE payment_allocations SET confirmed_at = $3
+		WHERE payment_entry_id = $1 AND invoice_id = $2 AND tenant_id = $3`,
 		pair.SourceID, pair.TargetID, tenantID, now)
 	if err != nil {
 		return fmt.Errorf("update payment allocation: %w", err)
