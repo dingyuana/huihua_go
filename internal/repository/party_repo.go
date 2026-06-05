@@ -46,6 +46,40 @@ func (r *PartyRepository) Create(ctx context.Context, tenantID uuid.UUID, p *mod
 	return p, nil
 }
 
+func (r *PartyRepository) UpdateCreditUsed(ctx context.Context, tenantID, id uuid.UUID, delta float64) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE parties SET credit_used = GREATEST(0, credit_used + $3), last_credit_check_at = NOW()
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, delta)
+	return err
+}
+
+func (r *PartyRepository) ListOverLimit(ctx context.Context, tenantID uuid.UUID) ([]model.Party, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
+			contact_name, contact_phone, credit_limit, credit_used, credit_overdraft_days, last_credit_check_at,
+			payment_days, is_active, ar_account_id, ap_account_id, created_at, updated_at
+		FROM parties
+		WHERE tenant_id = $1 AND is_active = TRUE AND credit_used > credit_limit
+		ORDER BY (credit_used - credit_limit) DESC`,
+		tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var parties []model.Party
+	for rows.Next() {
+		var p model.Party
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.BankName, &p.BankAccount,
+			&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.CreditUsed, &p.CreditOverdraftDays, &p.LastCreditCheckAt,
+			&p.PaymentDays, &p.IsActive, &p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		parties = append(parties, p)
+	}
+	return parties, rows.Err()
+}
+
 // Upsert inserts or updates a party, returning the party ID.
 // On conflict of (tenant_id, tax_number) with non-null tax_number, updates name
 // but preserves existing values for all other fields.
@@ -89,8 +123,8 @@ func (r *PartyRepository) Upsert(ctx context.Context, tenantID uuid.UUID, p *mod
 func (r *PartyRepository) List(ctx context.Context, tenantID uuid.UUID) ([]model.Party, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, tenant_id, party_type, name, tax_number, source, code, bank_name, bank_account,
-			contact_name, contact_phone, credit_limit, payment_days, is_active,
-			ar_account_id, ap_account_id, created_at, updated_at
+			contact_name, contact_phone, credit_limit, credit_used, credit_overdraft_days, last_credit_check_at,
+			payment_days, is_active, ar_account_id, ap_account_id, created_at, updated_at
 		FROM parties WHERE tenant_id = $1 AND is_active = TRUE ORDER BY name`,
 		tenantID)
 	if err != nil {
@@ -102,8 +136,8 @@ func (r *PartyRepository) List(ctx context.Context, tenantID uuid.UUID) ([]model
 	for rows.Next() {
 		var p model.Party
 		if err := rows.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.Source, &p.Code, &p.BankName, &p.BankAccount,
-			&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive,
-			&p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.CreditUsed, &p.CreditOverdraftDays, &p.LastCreditCheckAt,
+			&p.PaymentDays, &p.IsActive, &p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		parties = append(parties, p)
@@ -116,16 +150,16 @@ func (r *PartyRepository) List(ctx context.Context, tenantID uuid.UUID) ([]model
 func (r *PartyRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.Party, error) {
 	row := r.pool.QueryRow(ctx, `
 		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
-		       contact_name, contact_phone, credit_limit, payment_days, is_active,
-		       ar_account_id, ap_account_id, created_at, updated_at
+		       contact_name, contact_phone, credit_limit, credit_used, credit_overdraft_days, last_credit_check_at,
+		       payment_days, is_active, ar_account_id, ap_account_id, created_at, updated_at
 		FROM parties WHERE id = $1 AND tenant_id = $2`,
 		id, tenantID)
 	var p model.Party
 	err := row.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.BankName, &p.BankAccount,
-		&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive,
-		&p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt)
+		&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.CreditUsed, &p.CreditOverdraftDays, &p.LastCreditCheckAt,
+		&p.PaymentDays, &p.IsActive, &p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, nil
 	}
 	return &p, nil
 }
@@ -133,8 +167,8 @@ func (r *PartyRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (
 func (r *PartyRepository) ListByType(ctx context.Context, tenantID uuid.UUID, partyType string) ([]model.Party, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
-			contact_name, contact_phone, credit_limit, payment_days, is_active,
-			ar_account_id, ap_account_id, created_at, updated_at
+			contact_name, contact_phone, credit_limit, credit_used, credit_overdraft_days, last_credit_check_at,
+			payment_days, is_active, ar_account_id, ap_account_id, created_at, updated_at
 		FROM parties WHERE tenant_id = $1 AND party_type = $2 AND is_active = TRUE ORDER BY name`,
 		tenantID, partyType)
 	if err != nil {
@@ -146,8 +180,8 @@ func (r *PartyRepository) ListByType(ctx context.Context, tenantID uuid.UUID, pa
 	for rows.Next() {
 		var p model.Party
 		if err := rows.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.BankName, &p.BankAccount,
-			&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive,
-			&p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.CreditUsed, &p.CreditOverdraftDays, &p.LastCreditCheckAt,
+			&p.PaymentDays, &p.IsActive, &p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		parties = append(parties, p)
@@ -190,15 +224,15 @@ func (r *PartyRepository) ExistsByNameAndType(ctx context.Context, tenantID uuid
 func (r *PartyRepository) GetByName(ctx context.Context, tenantID uuid.UUID, name string) (*model.Party, error) {
 	row := r.pool.QueryRow(ctx, `
 		SELECT id, tenant_id, party_type, name, tax_number, bank_name, bank_account,
-		       contact_name, contact_phone, credit_limit, payment_days, is_active,
-		       ar_account_id, ap_account_id, created_at, updated_at
+		       contact_name, contact_phone, credit_limit, credit_used, credit_overdraft_days, last_credit_check_at,
+		       payment_days, is_active, ar_account_id, ap_account_id, created_at, updated_at
 		FROM parties WHERE tenant_id = $1 AND name = $2 AND is_active = TRUE
 		LIMIT 1`,
 		tenantID, name)
 	var p model.Party
 	err := row.Scan(&p.ID, &p.TenantID, &p.PartyType, &p.Name, &p.TaxNumber, &p.BankName, &p.BankAccount,
-		&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.PaymentDays, &p.IsActive,
-		&p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt)
+		&p.ContactName, &p.ContactPhone, &p.CreditLimit, &p.CreditUsed, &p.CreditOverdraftDays, &p.LastCreditCheckAt,
+		&p.PaymentDays, &p.IsActive, &p.ArAccountID, &p.ApAccountID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, nil // not found
 	}
