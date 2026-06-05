@@ -368,6 +368,9 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 		arInvoiceRepo, apInvoiceRepo, autoGenSvc,
 	)
 
+	creditControlSvc := service.NewCreditControlService(partyRepo)
+	agingSvc := service.NewAgingService(db.GetPool())
+
 	// Advance receipt / payment / allocation routes
 	advanceReceiptHandler := handler.NewAdvanceReceiptHandler(advanceReceiptSvc)
 	advancePaymentHandler := handler.NewAdvancePaymentHandler(advancePaymentSvc)
@@ -385,6 +388,13 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/advance-allocations", advanceAllocationHandler.Allocate)
 	api.Post("/advance-allocations/:id/auto-match", advanceAllocationHandler.AutoMatch)
 	api.Get("/advance-allocations", advanceAllocationHandler.ListByAdvance)
+
+	creditControlHandler := handler.NewCreditControlHandler(creditControlSvc)
+	agingHandler := handler.NewAgingHandler(agingSvc)
+	api.Get("/credit-control", creditControlHandler.GetStatus)
+	api.Get("/credit-control/over-limit", creditControlHandler.ListOverLimit)
+	api.Get("/aging-analysis/ar", agingHandler.AR)
+	api.Get("/aging-analysis/ap", agingHandler.AP)
 
 	autoGenHandler := handler.NewVoucherAutoGenerateHandler(autoGenSvc)
 	api.Post("/bank-transactions/batch-confirm", bankTxnHandler.BatchConfirm)

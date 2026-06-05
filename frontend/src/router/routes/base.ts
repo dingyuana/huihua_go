@@ -117,6 +117,18 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/advance-payments/AdvancePaymentList.vue'),
         meta: { title: '预付款单', roles: ['admin', 'agent'] },
       },
+      {
+        path: 'reports/aging',
+        name: 'AgingAnalysis',
+        component: () => import('@/views/reports/AgingAnalysis.vue'),
+        meta: { title: '账龄分析', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'reports/credit',
+        name: 'CreditControl',
+        component: () => import('@/views/reports/CreditControl.vue'),
+        meta: { title: '信用管控', roles: ['admin', 'agent'] },
+      },
       // ==== F3 核销 ====
       {
         path: 'reconciliation/precheck',

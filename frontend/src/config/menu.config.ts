@@ -56,6 +56,8 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
     { path: '/ap-invoices', title: '应付款单', icon: 'CreditCard' },
     { path: '/advance-receipts', title: '预收款单', icon: 'WalletFilled' },
     { path: '/advance-payments', title: '预付款单', icon: 'Coin' },
+    { path: '/reports/aging', title: '账龄分析', icon: 'Histogram' },
+    { path: '/reports/credit', title: '信用管控', icon: 'CreditCardFilled' },
     {
       path: '/reconciliation', title: '核销中心', icon: 'Link',
       children: [
