@@ -156,6 +156,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/invoices/sales/import/preview", invoiceHandler.BatchImportPreview)
 	api.Post("/invoices/sales/import/confirm", invoiceHandler.BatchImportConfirm)
 	api.Post("/invoices/sales/confirm", invoiceHandler.ConfirmSalesInvoice)
+	api.Post("/invoices/purchase/confirm", invoiceHandler.ConfirmPurchaseInvoice)
 	api.Post("/invoices/batch-confirm", invoiceHandler.BatchConfirm)
 
 	// Audit workbench routes
@@ -168,7 +169,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/ar-invoices/:id", arInvoiceHandler.GetByID)
 
 	// AP invoice routes
-	apInvoiceHandler := handler.NewApInvoiceHandler(apInvoiceRepo)
+	apInvoiceHandler := handler.NewApInvoiceHandler(apInvoiceRepo, partyRepo)
 	api.Get("/ap-invoices", apInvoiceHandler.List)
 	api.Get("/ap-invoices/:id", apInvoiceHandler.GetByID)
 

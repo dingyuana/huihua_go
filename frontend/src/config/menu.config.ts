@@ -53,6 +53,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
     },
     { path: '/invoices', title: '发票管理', icon: 'Document' },
     { path: '/ar-invoices', title: '应收款单', icon: 'MoneyCollect' },
+    { path: '/ap-invoices', title: '应付款单', icon: 'CreditCard' },
     {
       path: '/reconciliation', title: '核销中心', icon: 'Link',
       children: [

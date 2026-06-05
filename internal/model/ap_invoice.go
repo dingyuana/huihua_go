@@ -26,6 +26,7 @@ type ApInvoice struct {
 	DueDate     *time.Time      `db:"due_date"`
 	Status      string          `db:"status"`
 	SourceType  string          `db:"source_type"`
+	Remark      *string         `json:"remark,omitempty" db:"remark"`
 	CreatedBy   *uuid.UUID      `db:"created_by"`
 	CreatedAt   time.Time       `db:"created_at"`
 	ConfirmedAt *time.Time      `db:"confirmed_at"`

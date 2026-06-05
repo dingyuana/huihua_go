@@ -55,18 +55,21 @@ func (r *ApInvoiceRepository) GetByID(ctx context.Context, tenantID, id uuid.UUI
 
 func (r *ApInvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, status *string) ([]*model.ApInvoice, error) {
 	query := `
-		SELECT id, tenant_id, company_id, supplier_id, invoice_id, invoice_no,
-			amount, due_date, status, source_type, created_by, created_at, confirmed_at, confirmed_by,
-			approved_by, approved_at
-		FROM ap_invoices WHERE tenant_id = $1`
+		SELECT a.id, a.tenant_id, a.company_id, a.supplier_id, a.invoice_id, a.invoice_no,
+			a.amount, a.due_date, a.status, a.source_type, a.created_by, a.created_at,
+			a.confirmed_at, a.confirmed_by, a.approved_by, a.approved_at,
+			COALESCE(s.remark, '') AS remark
+		FROM ap_invoices a
+		LEFT JOIN sales_invoices s ON s.id = a.invoice_id
+		WHERE a.tenant_id = $1`
 	args := []interface{}{tenantID}
 
 	if status != nil {
-		query += " AND status = $2"
+		query += " AND a.status = $2"
 		args = append(args, *status)
 	}
 
-	query += " ORDER BY created_at DESC"
+	query += " ORDER BY a.created_at DESC"
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -77,14 +80,32 @@ func (r *ApInvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UU
 	var aps []*model.ApInvoice
 	for rows.Next() {
 		var ap model.ApInvoice
+		var remark string
 		if err := rows.Scan(&ap.ID, &ap.TenantID, &ap.CompanyID, &ap.SupplierID, &ap.InvoiceID, &ap.InvoiceNo,
 			&ap.Amount, &ap.DueDate, &ap.Status, &ap.SourceType, &ap.CreatedBy, &ap.CreatedAt,
-			&ap.ConfirmedAt, &ap.ConfirmedBy, &ap.ApprovedBy, &ap.ApprovedAt); err != nil {
+			&ap.ConfirmedAt, &ap.ConfirmedBy, &ap.ApprovedBy, &ap.ApprovedAt, &remark); err != nil {
 			return nil, err
+		}
+		if remark != "" {
+			ap.Remark = &remark
 		}
 		aps = append(aps, &ap)
 	}
 	return aps, rows.Err()
+}
+
+func (r *ApInvoiceRepository) GetSourceInvoiceRemark(ctx context.Context, tenantID, invoiceID uuid.UUID) (string, error) {
+	var remark *string
+	err := r.pool.QueryRow(ctx, `
+		SELECT remark FROM sales_invoices WHERE tenant_id = $1 AND id = $2`,
+		tenantID, invoiceID).Scan(&remark)
+	if err != nil {
+		return "", err
+	}
+	if remark == nil {
+		return "", nil
+	}
+	return *remark, nil
 }
 
 func (r *ApInvoiceRepository) ListBySupplier(ctx context.Context, tenantID, supplierID uuid.UUID, status *string) ([]*model.ApInvoice, error) {

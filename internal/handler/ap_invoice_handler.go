@@ -9,11 +9,24 @@ import (
 )
 
 type ApInvoiceHandler struct {
-	repo *repository.ApInvoiceRepository
+	repo      *repository.ApInvoiceRepository
+	partyRepo *repository.PartyRepository
 }
 
-func NewApInvoiceHandler(repo *repository.ApInvoiceRepository) *ApInvoiceHandler {
-	return &ApInvoiceHandler{repo: repo}
+func NewApInvoiceHandler(repo *repository.ApInvoiceRepository, partyRepo *repository.PartyRepository) *ApInvoiceHandler {
+	return &ApInvoiceHandler{repo: repo, partyRepo: partyRepo}
+}
+
+func (h *ApInvoiceHandler) partyNameMap(c *fiber.Ctx, tenantID uuid.UUID) (map[uuid.UUID]string, error) {
+	parties, err := h.partyRepo.List(c.Context(), tenantID)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[uuid.UUID]string, len(parties))
+	for _, p := range parties {
+		m[p.ID] = p.Name
+	}
+	return m, nil
 }
 
 func (h *ApInvoiceHandler) List(c *fiber.Ctx) error {
@@ -28,6 +41,8 @@ func (h *ApInvoiceHandler) List(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
+
+	nameMap, _ := h.partyNameMap(c, tenantID)
 
 	result := make([]map[string]interface{}, len(aps))
 	for i, ap := range aps {
@@ -46,10 +61,12 @@ func (h *ApInvoiceHandler) List(c *fiber.Ctx) error {
 			"invoice_id":    ap.InvoiceID,
 			"invoice_no":    ap.InvoiceNo,
 			"supplier_id":   ap.SupplierID,
+			"supplier_name": nameMap[ap.SupplierID],
 			"amount":        ap.Amount.String(),
 			"due_date":      dueDate,
 			"status":        ap.Status,
 			"source_type":   ap.SourceType,
+			"remark":        derefStr(ap.Remark),
 			"created_at":    ap.CreatedAt.Format("2006-01-02 15:04:05"),
 			"confirmed_at":  confirmedAt,
 			"approved_at":   approvedAt,
@@ -74,8 +91,11 @@ func (h *ApInvoiceHandler) GetByID(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	if ap == nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "ap invoice not found"})
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "ap_invoice not found"})
 	}
+
+	nameMap, _ := h.partyNameMap(c, tenantID)
+	remark, _ := h.repo.GetSourceInvoiceRemark(c.Context(), tenantID, ap.InvoiceID)
 
 	var dueDate, confirmedAt, approvedAt *time.Time
 	if ap.DueDate != nil {
@@ -89,16 +109,18 @@ func (h *ApInvoiceHandler) GetByID(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"id":           ap.ID,
-		"invoice_id":   ap.InvoiceID,
-		"invoice_no":   ap.InvoiceNo,
-		"supplier_id":  ap.SupplierID,
-		"amount":       ap.Amount.String(),
-		"due_date":     dueDate,
-		"status":       ap.Status,
-		"source_type":  ap.SourceType,
-		"created_at":   ap.CreatedAt,
-		"confirmed_at": confirmedAt,
-		"approved_at":  approvedAt,
+		"id":            ap.ID,
+		"invoice_id":    ap.InvoiceID,
+		"invoice_no":    ap.InvoiceNo,
+		"supplier_id":   ap.SupplierID,
+		"supplier_name": nameMap[ap.SupplierID],
+		"amount":        ap.Amount.String(),
+		"due_date":      dueDate,
+		"status":        ap.Status,
+		"source_type":   ap.SourceType,
+		"remark":        remark,
+		"created_at":    ap.CreatedAt,
+		"confirmed_at":  confirmedAt,
+		"approved_at":   approvedAt,
 	})
 }
