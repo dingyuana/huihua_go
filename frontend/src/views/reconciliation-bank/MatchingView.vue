@@ -6,9 +6,22 @@
         <el-select v-model="bankAccount" placeholder="选择银行账户" style="width: 240px; margin-right: 8px">
           <el-option v-for="acct in bankAccounts" :key="acct.id" :label="`${acct.bank_name} (${maskAccount(acct.account_number)})`" :value="acct.id" />
         </el-select>
+        <el-select v-model="periodNo" placeholder="会计期间" style="width: 160px; margin-right: 8px">
+          <el-option v-for="p in periods" :key="p.period_no" :label="p.period_label" :value="p.period_no" />
+        </el-select>
         <el-button type="primary" :loading="loading" @click="runMatch">执行对账</el-button>
       </div>
     </div>
+
+    <!-- 锁定状态提示 -->
+    <el-alert
+      v-if="locked"
+      :title="`对账已锁定（锁定人：${lockedBy || '未知'}，锁定时间：${lockedAt || '未知'}）`"
+      type="warning"
+      show-icon
+      closable
+      class="mb-16"
+    />
 
     <!-- 统计概览 -->
     <el-row :gutter="16" class="stat-row">
@@ -88,7 +101,22 @@
 
     <div class="rec-actions">
       <el-button @click="$router.push('/bank-reconciliation/balance')">查看余额调节表</el-button>
-      <el-button type="primary" :loading="locking" @click="handleLock">锁定对账结果</el-button>
+      <el-button @click="$router.push('/bank-reconciliation/pending-confirm')">待确认列表</el-button>
+      <el-button
+        v-if="!locked"
+        type="primary"
+        :loading="locking"
+        @click="handleLock"
+      >
+        锁定对账结果
+      </el-button>
+      <el-button
+        v-else
+        type="info"
+        disabled
+      >
+        已锁定
+      </el-button>
     </div>
   </div>
 </template>
@@ -101,6 +129,8 @@ import {
   runBankReconciliation,
   confirmMatch,
   lockReconciliation,
+  unlockReconciliation,
+  fetchReconciliationStatus,
 } from '@/api/modules/reconciliation'
 import type { MatchItem } from '@/api/modules/reconciliation'
 
@@ -110,12 +140,22 @@ interface BankAccount {
   account_number: string
 }
 
+interface Period {
+  period_no: number
+  period_label: string
+}
+
 const bankAccounts = ref<BankAccount[]>([])
 const bankAccount = ref('')
+const periods = ref<Period[]>([])
+const periodNo = ref<number | undefined>(undefined)
 const activeTab = ref('auto')
 const loading = ref(false)
 const confirmingId = ref('')
 const locking = ref(false)
+const locked = ref(false)
+const lockedBy = ref('')
+const lockedAt = ref('')
 
 async function loadBankAccounts() {
   try {
@@ -128,6 +168,21 @@ async function loadBankAccounts() {
   } catch (e) {
     console.warn('后端资金账户接口不可用', e)
     bankAccounts.value = []
+  }
+}
+
+async function loadPeriods() {
+  try {
+    const res: any = await request.get('/periods')
+    const list = res?.data?.list !== undefined && res?.data?.list !== null ? res.data.list : (res?.data !== undefined && res?.data !== null ? res.data : res)
+    periods.value = Array.isArray(list) ? list : []
+    if (periods.value.length > 0) {
+      const current = periods.value.find((p: any) => p.is_current) || periods.value[0]
+      periodNo.value = current.period_no
+    }
+  } catch (e) {
+    console.warn('后端期间接口不可用', e)
+    periods.value = []
   }
 }
 
@@ -144,6 +199,21 @@ const filteredList = computed(() => {
   if (activeTab.value === 'confirm') return matchList.value.filter(m => m.needConfirm)
   return matchList.value.filter(m => m.score < 60 && !m.needConfirm)
 })
+
+async function loadStatus() {
+  if (!bankAccount.value) return
+  try {
+    const res: any = await fetchReconciliationStatus(bankAccount.value, periodNo.value)
+    const data = res?.data || res
+    if (data) {
+      locked.value = data.locked ?? false
+      lockedBy.value = data.locked_by || ''
+      lockedAt.value = data.locked_at || ''
+    }
+  } catch {
+    locked.value = false
+  }
+}
 
 async function runMatch() {
   if (!bankAccount.value) {
@@ -163,7 +233,6 @@ async function runMatch() {
         autoMatchRate: data.autoMatchRate || 0,
       }
       if (data.matches) matchList.value = data.matches
-      return
     }
   } catch {
     // keep empty state
@@ -193,8 +262,11 @@ async function handleLock() {
   }
   locking.value = true
   try {
-    await lockReconciliation(bankAccount.value)
+    await lockReconciliation(bankAccount.value, periodNo.value)
     ElMessage.success('对账结果已锁定')
+    locked.value = true
+    lockedBy.value = 'current_user'
+    lockedAt.value = new Date().toLocaleString()
   } catch {
     ElMessage.error('锁定失败')
   }
@@ -202,12 +274,15 @@ async function handleLock() {
 }
 
 onMounted(() => {
-  loadBankAccounts()
-  runMatch()
+  loadBankAccounts().then(() => loadPeriods()).then(() => {
+    loadStatus()
+    runMatch()
+  })
 })
 </script>
 
 <style scoped lang="scss">
+.mb-16 { margin-bottom: 16px; }
 .page-header {
   display: flex;
   align-items: center;

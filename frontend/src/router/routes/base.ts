@@ -151,6 +151,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '余额调节表', roles: ['cashier', 'admin'] },
       },
       {
+        path: 'bank-reconciliation/pending-confirm',
+        name: 'BankReconciliationPendingConfirm',
+        component: () => import('@/views/reconciliation-bank/PendingConfirmView.vue'),
+        meta: { title: '银企对账待确认', roles: ['cashier', 'admin'] },
+      },
+      {
         path: 'bank-reconciliation/diff-report',
         name: 'DiffReport',
         component: () => import('@/views/reconciliation-bank/DiffReport.vue'),

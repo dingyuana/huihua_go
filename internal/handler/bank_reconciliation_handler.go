@@ -309,3 +309,151 @@ func sumAmounts(items []service.UnreconciledItem) decimal.Decimal {
 	}
 	return total
 }
+
+// Lock locks a reconciliation record for exclusive access.
+func (h *BankReconciliationHandler) Lock(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	var req struct {
+		BankAccountID string `json:"bank_account_id"`
+		PeriodNo      int    `json:"period_no"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	bankAccountID, err := uuid.Parse(req.BankAccountID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid bank_account_id"})
+	}
+
+	err = h.svc.LockReconciliation(c.Context(), tenantID, bankAccountID, req.PeriodNo, userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "reconciliation locked"})
+}
+
+// Unlock unlocks a reconciliation record.
+func (h *BankReconciliationHandler) Unlock(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	var req struct {
+		BankAccountID string `json:"bank_account_id"`
+		PeriodNo      int    `json:"period_no"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	bankAccountID, err := uuid.Parse(req.BankAccountID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid bank_account_id"})
+	}
+
+	err = h.svc.UnlockReconciliation(c.Context(), tenantID, bankAccountID, req.PeriodNo, userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "reconciliation unlocked"})
+}
+
+// GetPendingConfirm returns items pending manual confirmation.
+func (h *BankReconciliationHandler) GetPendingConfirm(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	bankAccountIDStr := c.Query("bank_account_id")
+	periodNoStr := c.Query("period_no")
+	if bankAccountIDStr == "" || periodNoStr == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "bank_account_id and period_no are required"})
+	}
+
+	bankAccountID, err := uuid.Parse(bankAccountIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid bank_account_id"})
+	}
+
+	periodNo, err := parsePeriodNo(periodNoStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid period_no"})
+	}
+
+	items, err := h.svc.GetPendingConfirmItems(c.Context(), tenantID, bankAccountID, periodNo)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": items})
+}
+
+// ConfirmMatch manually confirms a match between bank txn and GL entry.
+func (h *BankReconciliationHandler) ConfirmMatch(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	var req struct {
+		BankTxnID string `json:"bank_txn_id"`
+		GLEntryID string `json:"gl_entry_id"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	bankTxnID, err := uuid.Parse(req.BankTxnID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid bank_txn_id"})
+	}
+
+	glEntryID, err := uuid.Parse(req.GLEntryID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid gl_entry_id"})
+	}
+
+	err = h.svc.ConfirmMatch(c.Context(), tenantID, bankTxnID, glEntryID, userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "match confirmed"})
+}
+
+// GetReconciliationItems returns unreconciled items for a bank account period.
+func (h *BankReconciliationHandler) GetReconciliationItems(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	bankAccountIDStr := c.Query("bank_account_id")
+	periodNoStr := c.Query("period_no")
+	if bankAccountIDStr == "" || periodNoStr == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "bank_account_id and period_no are required"})
+	}
+
+	bankAccountID, err := uuid.Parse(bankAccountIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid bank_account_id"})
+	}
+
+	periodNo, err := parsePeriodNo(periodNoStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid period_no"})
+	}
+
+	items, err := h.svc.GetReconciliationItems(c.Context(), tenantID, bankAccountID, periodNo)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Group by item_type for balance sheet reconciliation report
+	grouped := make(map[string][]service.UnreconciledItem)
+	for _, item := range items {
+		grouped[item.ItemType] = append(grouped[item.ItemType], item)
+	}
+
+	return c.JSON(fiber.Map{"data": fiber.Map{
+		"items":  items,
+		"grouped": grouped,
+	}})
+}

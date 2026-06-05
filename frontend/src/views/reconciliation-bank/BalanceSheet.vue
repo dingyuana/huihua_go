@@ -11,6 +11,9 @@
       </div>
     </div>
 
+    <!-- 错误提示 -->
+    <el-alert v-if="hasError" title="加载失败" type="error" description="无法加载余额调节表数据，请检查后端服务或重试。" show-icon closable class="mb-16" />
+
     <!-- 余额概要 -->
     <el-row :gutter="16" class="balance-summary" v-loading="loading">
       <el-col :span="6">
@@ -142,6 +145,7 @@ interface BankAccount {
 const bankAccounts = ref<BankAccount[]>([])
 const bankAccount = ref('')
 const loading = ref(false)
+const hasError = ref(false)
 
 async function loadBankAccounts() {
   try {
@@ -180,23 +184,17 @@ interface BalanceData {
   glPaymentNotInBank: DiffItem[]
 }
 
-const defaultBalanceData: BalanceData = {
-  bankBalance: '1,250,000.00',
-  bookBalance: '1,245,000.00',
-  diff: '5,000.00',
-  adjustedBalance: '1,247,000.00',
-  isBalanced: true,
-  bankReceiptNotInGL: [
-    { date: '2026-05-30', desc: '银行利息收入', amount: '5,000.00' },
-  ],
+const balanceData = reactive<BalanceData>({
+  bankBalance: '0.00',
+  bookBalance: '0.00',
+  diff: '0.00',
+  adjustedBalance: '0.00',
+  isBalanced: false,
+  bankReceiptNotInGL: [],
   bankPaymentNotInGL: [],
   glReceiptNotInBank: [],
-  glPaymentNotInBank: [
-    { date: '2026-05-28', desc: '在途付款-供应商', amount: '2,000.00' },
-  ],
-}
-
-const balanceData = reactive<BalanceData>({ ...defaultBalanceData })
+  glPaymentNotInBank: [],
+})
 
 const bankReceiptTotal = computed(() =>
   balanceData.bankReceiptNotInGL.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0).toFixed(2)
@@ -217,28 +215,29 @@ async function loadData() {
     return
   }
   loading.value = true
+  hasError.value = false
   try {
     const res: any = await fetchBalanceSheet(bankAccount.value)
     const data = res?.data || res
     if (data) {
       Object.assign(balanceData, {
-        bankBalance: data.bankBalance || defaultBalanceData.bankBalance,
-        bookBalance: data.bookBalance || defaultBalanceData.bookBalance,
+        bankBalance: data.bankBalance || '0.00',
+        bookBalance: data.bookBalance || '0.00',
         diff: data.diff || '0.00',
         adjustedBalance: data.adjustedBalance || '0.00',
-        isBalanced: data.isBalanced ?? true,
+        isBalanced: data.isBalanced ?? false,
         bankReceiptNotInGL: data.bankReceiptNotInGL || [],
         bankPaymentNotInGL: data.bankPaymentNotInGL || [],
         glReceiptNotInBank: data.glReceiptNotInBank || [],
         glPaymentNotInBank: data.glPaymentNotInBank || [],
       })
-      return
     }
-  } catch {
-    // fallback
+  } catch (e: any) {
+    hasError.value = true
+    ElMessage.error(e?.message || '加载余额调节表失败，请重试')
+  } finally {
+    loading.value = false
   }
-  Object.assign(balanceData, { ...defaultBalanceData })
-  loading.value = false
 }
 
 function exportPdf() {
@@ -268,6 +267,7 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+.mb-16 { margin-bottom: 16px; }
 .page-header {
   display: flex;
   align-items: center;

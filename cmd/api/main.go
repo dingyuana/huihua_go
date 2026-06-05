@@ -303,6 +303,11 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/bank-reconciliation/diff-report", reconHandler.GetDiffReport)
 	api.Post("/bank-reconciliation/mark-done", reconHandler.MarkDone)
 	api.Get("/bank-reconciliation/status", reconHandler.GetStatus)
+	api.Post("/bank-reconciliation/lock", reconHandler.Lock)
+	api.Post("/bank-reconciliation/unlock", reconHandler.Unlock)
+	api.Get("/bank-reconciliation/pending-confirm", reconHandler.GetPendingConfirm)
+	api.Post("/bank-reconciliation/confirm-match", reconHandler.ConfirmMatch)
+	api.Get("/bank-reconciliation/items", reconHandler.GetReconciliationItems)
 
 	// Financial report routes
 	reportSvc := service.NewReportService(glEntryRepo, obRepo, accountRepo, periodRepo)

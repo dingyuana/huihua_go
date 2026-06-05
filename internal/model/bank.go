@@ -176,6 +176,11 @@ type ReconciliationRecord struct {
 	Status          string          `json:"status" db:"status"`
 	ReconciledBy    *uuid.UUID      `json:"reconciled_by,omitempty" db:"reconciled_by"`
 	ReconciledAt    *time.Time      `json:"reconciled_at,omitempty" db:"reconciled_at"`
+	Locked          bool            `json:"locked" db:"locked"`
+	LockedBy        *uuid.UUID      `json:"locked_by,omitempty" db:"locked_by"`
+	LockedAt        *time.Time      `json:"locked_at,omitempty" db:"locked_at"`
+	UnlockApprovedBy *uuid.UUID     `json:"unlock_approved_by,omitempty" db:"unlock_approved_by"`
+	UnlockApprovedAt *time.Time     `json:"unlock_approved_at,omitempty" db:"unlock_approved_at"`
 	CreatedAt       time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at" db:"updated_at"`
 }

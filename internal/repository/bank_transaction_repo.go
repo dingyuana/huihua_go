@@ -435,6 +435,16 @@ func (r *BankTransactionRepository) UpdateMatchedInfo(ctx context.Context, tenan
 	return err
 }
 
+// UpdateMatchedGLEntryID updates matched_gl_entry_id and sets matched=true for a bank transaction.
+func (r *BankTransactionRepository) UpdateMatchedGLEntryID(ctx context.Context, txnID, glEntryID uuid.UUID) error {
+	query := `
+		UPDATE bank_transactions 
+		SET matched = TRUE, matched_gl_entry_id = $2, updated_at = NOW()
+		WHERE id = $1`
+	_, err := r.pool.Exec(ctx, query, txnID, glEntryID)
+	return err
+}
+
 // GetMatchedByPeriod retrieves all matched bank transactions within a date range.
 func (r *BankTransactionRepository) GetMatchedByPeriod(ctx context.Context, tenantID, bankAccountID uuid.UUID, startDate, endDate time.Time) ([]model.BankTransaction, error) {
 	query := `
