@@ -15,7 +15,7 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-input v-model="filter.keyword" placeholder="关联发票号" clearable style="width: 200px" />
+          <el-input v-model="filter.keyword" placeholder="发票号/客户名称" clearable style="width: 200px" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="loadData">查询</el-button>
@@ -54,6 +54,7 @@
     <el-card>
       <el-table :data="filteredList" border stripe size="small" v-loading="loading">
         <el-table-column prop="invoice_no" label="关联发票号" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="customer_name" label="客户名称" min-width="180" show-overflow-tooltip />
         <el-table-column label="金额" width="140" align="right">
           <template #default="{ row }">
             <span class="amount-amount">¥{{ formatAmount(row.amount) }}</span>
@@ -69,9 +70,9 @@
             <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="source_type" label="来源" width="100">
+        <el-table-column prop="source_type" label="来源" width="120">
           <template #default="{ row }">
-            {{ row.source_type || 'sales_invoice' }}
+            {{ sourceTypeLabel(row.source_type) }}
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="生成时间" width="160" />
@@ -93,13 +94,13 @@
         <el-descriptions :column="1" border size="small">
           <el-descriptions-item label="应收单ID">{{ currentItem.id }}</el-descriptions-item>
           <el-descriptions-item label="关联发票号">{{ currentItem.invoice_no }}</el-descriptions-item>
-          <el-descriptions-item label="客户ID">{{ currentItem.customer_id }}</el-descriptions-item>
+          <el-descriptions-item label="客户名称">{{ currentItem.customer_name || '—' }}</el-descriptions-item>
           <el-descriptions-item label="应收金额">¥{{ formatAmount(currentItem.amount) }}</el-descriptions-item>
           <el-descriptions-item label="到期日">{{ currentItem.due_date || '—' }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="statusTag(currentItem.status)" size="small">{{ statusLabel(currentItem.status) }}</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="来源类型">{{ currentItem.source_type }}</el-descriptions-item>
+          <el-descriptions-item label="来源类型">{{ sourceTypeLabel(currentItem.source_type) }}</el-descriptions-item>
           <el-descriptions-item label="生成时间">{{ currentItem.created_at }}</el-descriptions-item>
           <el-descriptions-item label="确认时间">{{ currentItem.confirmed_at || '—' }}</el-descriptions-item>
           <el-descriptions-item label="批准时间">{{ currentItem.approved_at || '—' }}</el-descriptions-item>
@@ -130,7 +131,10 @@ const filteredList = computed(() => {
   }
   if (filter.keyword) {
     const kw = filter.keyword.toLowerCase()
-    result = result.filter(r => (r.invoice_no || '').toLowerCase().includes(kw))
+    result = result.filter(r =>
+      (r.invoice_no || '').toLowerCase().includes(kw) ||
+      (r.customer_name || '').toLowerCase().includes(kw)
+    )
   }
   return result
 })
@@ -191,6 +195,16 @@ function statusTag(s: string): 'success' | 'warning' | 'info' | 'primary' | 'dan
     case 'confirmed': return 'success'
     case 'reversed': return 'info'
     default: return 'info'
+  }
+}
+
+function sourceTypeLabel(s: string): string {
+  switch (s) {
+    case 'auto_import': return '销售发票导入'
+    case 'sales_invoice': return '销售发票'
+    case 'purchase_invoice': return '采购发票'
+    case 'manual': return '手工录入'
+    default: return s || '—'
   }
 }
 

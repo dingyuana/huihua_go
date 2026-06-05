@@ -471,6 +471,30 @@ func (h *InvoiceHandler) ConfirmSalesInvoice(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "invoice confirmed and accounts receivable generated"})
 }
 
+// ConfirmPurchaseInvoice confirms a purchase invoice and generates accounts payable.
+// POST /api/v1/invoices/purchase/confirm
+func (h *InvoiceHandler) ConfirmPurchaseInvoice(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	var req model.InvoiceConfirmRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body: " + err.Error()})
+	}
+
+	invoiceID, err := uuid.Parse(req.InvoiceID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid invoice_id"})
+	}
+
+	err = h.svc.ConfirmPurchaseInvoice(c.Context(), tenantID, invoiceID, userID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "invoice confirmed and accounts payable generated"})
+}
+
 // BatchConfirm handles POST /api/v1/invoices/batch-confirm
 func (h *InvoiceHandler) BatchConfirm(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)

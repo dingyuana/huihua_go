@@ -22,6 +22,7 @@ type InvoiceService struct {
 	repo            *repository.InvoiceRepository
 	partyRepo       *repository.PartyRepository
 	arInvoiceRepo   *repository.ArInvoiceRepository
+	apInvoiceRepo   *repository.ApInvoiceRepository
 	voucherAutoSvc  *VoucherAutoGenerateService
 }
 
@@ -30,12 +31,14 @@ func NewInvoiceService(
 	repo *repository.InvoiceRepository,
 	partyRepo *repository.PartyRepository,
 	arInvoiceRepo *repository.ArInvoiceRepository,
+	apInvoiceRepo *repository.ApInvoiceRepository,
 	voucherAutoSvc *VoucherAutoGenerateService,
 ) *InvoiceService {
 	return &InvoiceService{
 		repo:           repo,
 		partyRepo:      partyRepo,
 		arInvoiceRepo:  arInvoiceRepo,
+		apInvoiceRepo:  apInvoiceRepo,
 		voucherAutoSvc: voucherAutoSvc,
 	}
 }
@@ -1095,6 +1098,66 @@ func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invo
 	}
 
 	// 6. Update invoice status to verified
+	return s.repo.UpdateStatus(ctx, tenantID, invoiceID, string(model.InvoiceStatusVerified))
+}
+
+func (s *InvoiceService) ConfirmPurchaseInvoice(ctx context.Context, tenantID, invoiceID, userID uuid.UUID) error {
+	inv, err := s.repo.GetByID(ctx, tenantID, invoiceID)
+	if err != nil {
+		return err
+	}
+	if inv == nil {
+		return errors.New("invoice not found")
+	}
+
+	normalizedStatus := inv.Status
+	if normalizedStatus == "正常" || normalizedStatus == "unpaid" {
+		normalizedStatus = "draft"
+	} else if normalizedStatus == "已确认" {
+		normalizedStatus = "verified"
+	} else if normalizedStatus == "部分核销" {
+		normalizedStatus = "partially_paid"
+	}
+	if normalizedStatus != "draft" && normalizedStatus != "submitted" && normalizedStatus != "verified" {
+		return errors.New("invalid invoice status for confirmation")
+	}
+
+	if s.apInvoiceRepo != nil {
+		existing, err := s.apInvoiceRepo.ListByInvoiceID(ctx, tenantID, invoiceID)
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			return errors.New("ap_invoice already exists for this invoice")
+		}
+	}
+
+	if s.apInvoiceRepo != nil {
+		ap := &model.ApInvoice{
+			ID:         uuid.New(),
+			TenantID:   tenantID,
+			CompanyID:  inv.CompanyID,
+			SupplierID: inv.CustomerID,
+			InvoiceID:  invoiceID,
+			InvoiceNo:  inv.InvoiceNo,
+			Amount:     inv.TotalAmount,
+			DueDate:    inv.DueDate,
+			Status:     string(model.ApInvoiceStatusDraft),
+			SourceType: "purchase_invoice",
+			CreatedBy:  &userID,
+			CreatedAt:  time.Now(),
+		}
+		if err := s.apInvoiceRepo.Create(ctx, ap); err != nil {
+			return fmt.Errorf("failed to create ap_invoice: %v", err)
+		}
+	}
+
+	if s.voucherAutoSvc != nil {
+		if _, err := s.voucherAutoSvc.GenerateFromInvoice(ctx, tenantID, invoiceID, userID); err != nil {
+			fmt.Printf("[WARN] failed to generate voucher for invoice %s: %v\n", invoiceID, err)
+		}
+	}
+
 	return s.repo.UpdateStatus(ctx, tenantID, invoiceID, string(model.InvoiceStatusVerified))
 }
 

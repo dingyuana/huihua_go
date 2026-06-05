@@ -138,7 +138,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Invoice routes
 	invoiceRepo := repository.NewInvoiceRepository(db.GetPool())
 	arInvoiceRepo := repository.NewArInvoiceRepository(db.GetPool())
-	invoiceSvc := service.NewInvoiceService(invoiceRepo, partyRepo, arInvoiceRepo, nil) // autoGenSvc injected below after initialization
+	apInvoiceRepo := repository.NewApInvoiceRepository(db.GetPool())
+	invoiceSvc := service.NewInvoiceService(invoiceRepo, partyRepo, arInvoiceRepo, apInvoiceRepo, nil) // autoGenSvc injected below after initialization
 	invoiceHandler := handler.NewInvoiceHandler(invoiceSvc)
 	api.Get("/invoices", invoiceHandler.List)
 	api.Post("/invoices", invoiceHandler.Create)
@@ -162,9 +163,14 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/audit/tasks", auditWorkbenchHandler.GetAuditTasks)
 
 	// AR invoice routes
-	arInvoiceHandler := handler.NewArInvoiceHandler(arInvoiceRepo)
+	arInvoiceHandler := handler.NewArInvoiceHandler(arInvoiceRepo, partyRepo)
 	api.Get("/ar-invoices", arInvoiceHandler.List)
 	api.Get("/ar-invoices/:id", arInvoiceHandler.GetByID)
+
+	// AP invoice routes
+	apInvoiceHandler := handler.NewApInvoiceHandler(apInvoiceRepo)
+	api.Get("/ap-invoices", apInvoiceHandler.List)
+	api.Get("/ap-invoices/:id", apInvoiceHandler.GetByID)
 
 	// Classification rule routes
 	classificationRuleRepo := repository.NewClassificationRuleRepository(db.GetPool())

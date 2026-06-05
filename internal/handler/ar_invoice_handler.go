@@ -9,11 +9,24 @@ import (
 )
 
 type ArInvoiceHandler struct {
-	repo *repository.ArInvoiceRepository
+	repo      *repository.ArInvoiceRepository
+	partyRepo *repository.PartyRepository
 }
 
-func NewArInvoiceHandler(repo *repository.ArInvoiceRepository) *ArInvoiceHandler {
-	return &ArInvoiceHandler{repo: repo}
+func NewArInvoiceHandler(repo *repository.ArInvoiceRepository, partyRepo *repository.PartyRepository) *ArInvoiceHandler {
+	return &ArInvoiceHandler{repo: repo, partyRepo: partyRepo}
+}
+
+func (h *ArInvoiceHandler) partyNameMap(c *fiber.Ctx, tenantID uuid.UUID) (map[uuid.UUID]string, error) {
+	parties, err := h.partyRepo.List(c.Context(), tenantID)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[uuid.UUID]string, len(parties))
+	for _, p := range parties {
+		m[p.ID] = p.Name
+	}
+	return m, nil
 }
 
 func (h *ArInvoiceHandler) List(c *fiber.Ctx) error {
@@ -29,6 +42,8 @@ func (h *ArInvoiceHandler) List(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	nameMap, _ := h.partyNameMap(c, tenantID)
+
 	result := make([]map[string]interface{}, len(ars))
 	for i, ar := range ars {
 		var dueDate, confirmedAt, approvedAt string
@@ -42,17 +57,18 @@ func (h *ArInvoiceHandler) List(c *fiber.Ctx) error {
 			approvedAt = ar.ApprovedAt.Format("2006-01-02 15:04:05")
 		}
 		result[i] = map[string]interface{}{
-			"id":                ar.ID,
-			"invoice_id":        ar.InvoiceID,
-			"invoice_no":        ar.InvoiceNo,
-			"customer_id":       ar.CustomerID,
-			"amount":            ar.Amount.String(),
-			"due_date":          dueDate,
-			"status":            ar.Status,
-			"source_type":       ar.SourceType,
-			"created_at":        ar.CreatedAt.Format("2006-01-02 15:04:05"),
-			"confirmed_at":      confirmedAt,
-			"approved_at":       approvedAt,
+			"id":            ar.ID,
+			"invoice_id":    ar.InvoiceID,
+			"invoice_no":    ar.InvoiceNo,
+			"customer_id":   ar.CustomerID,
+			"customer_name": nameMap[ar.CustomerID],
+			"amount":        ar.Amount.String(),
+			"due_date":      dueDate,
+			"status":        ar.Status,
+			"source_type":   ar.SourceType,
+			"created_at":    ar.CreatedAt.Format("2006-01-02 15:04:05"),
+			"confirmed_at":  confirmedAt,
+			"approved_at":   approvedAt,
 		}
 	}
 
@@ -74,8 +90,10 @@ func (h *ArInvoiceHandler) GetByID(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	if ar == nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "ar invoice not found"})
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "ar_invoice not found"})
 	}
+
+	nameMap, _ := h.partyNameMap(c, tenantID)
 
 	var dueDate, confirmedAt, approvedAt *time.Time
 	if ar.DueDate != nil {
@@ -89,16 +107,17 @@ func (h *ArInvoiceHandler) GetByID(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"id":           ar.ID,
-		"invoice_id":   ar.InvoiceID,
-		"invoice_no":   ar.InvoiceNo,
-		"customer_id":  ar.CustomerID,
-		"amount":       ar.Amount.String(),
-		"due_date":     dueDate,
-		"status":       ar.Status,
-		"source_type":  ar.SourceType,
-		"created_at":   ar.CreatedAt,
-		"confirmed_at": confirmedAt,
-		"approved_at":  approvedAt,
+		"id":            ar.ID,
+		"invoice_id":    ar.InvoiceID,
+		"invoice_no":    ar.InvoiceNo,
+		"customer_id":   ar.CustomerID,
+		"customer_name": nameMap[ar.CustomerID],
+		"amount":        ar.Amount.String(),
+		"due_date":      dueDate,
+		"status":        ar.Status,
+		"source_type":   ar.SourceType,
+		"created_at":    ar.CreatedAt,
+		"confirmed_at":  confirmedAt,
+		"approved_at":   approvedAt,
 	})
 }
