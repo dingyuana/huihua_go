@@ -270,7 +270,6 @@ func (h *PaymentEntryHandler) ApprovePaymentEntry(c *fiber.Ctx) error {
 		})
 	}
 
-	// pair may be nil (no match found) — this is not an error
 	return c.JSON(fiber.Map{
 		"data": pair,
 	})

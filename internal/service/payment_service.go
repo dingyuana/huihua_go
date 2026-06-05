@@ -18,6 +18,12 @@ type PaymentEntryService struct {
 	accountRepo *repository.AccountRepository
 	bankTxnRepo *repository.BankTransactionRepository
 	reconSvc    *ReconciliationService
+	voucherGenSvc *VoucherAutoGenerateService
+}
+
+// InjectVoucherAutoGenerateService injects the voucher auto-generate service.
+func (s *PaymentEntryService) InjectVoucherAutoGenerateService(svc *VoucherAutoGenerateService) {
+	s.voucherGenSvc = svc
 }
 
 func NewPaymentEntryService(
@@ -189,8 +195,14 @@ func (s *PaymentEntryService) CreateFromBankTxn(ctx context.Context, tenantID, b
 	return s.CreateFromBankTransaction(ctx, tenantID, userID, req, bankTxn, bankTxn.CompanyID)
 }
 
-// Approve submits and approves a payment entry, triggering automatic invoice reconciliation.
-func (s *PaymentEntryService) Approve(ctx context.Context, tenantID, paymentID, userID uuid.UUID) (*model.ReconciliationPair, error) {
+// ApproveResult is returned after a successful payment entry approval.
+type ApproveResult struct {
+	Voucher            *model.JournalEntry    `json:"voucher,omitempty"`
+	ReconciliationPair *model.ReconciliationPair `json:"reconciliation_pair,omitempty"`
+}
+
+// Approve submits and approves a payment entry, generating a voucher and triggering reconciliation.
+func (s *PaymentEntryService) Approve(ctx context.Context, tenantID, paymentID, userID uuid.UUID) (*ApproveResult, error) {
 	// 1. Load PaymentEntry, verify DocStatus == 1 (submitted)
 	pe, err := s.repo.GetByID(ctx, tenantID, paymentID)
 	if err != nil {
@@ -200,18 +212,31 @@ func (s *PaymentEntryService) Approve(ctx context.Context, tenantID, paymentID, 
 		return nil, fmt.Errorf("payment entry must be in submitted status (docstatus=1), got %d", pe.DocStatus)
 	}
 
-	// 2. Update DocStatus to 2 (approved)
+	// 2. Generate资金记账凭证（草稿，docstatus=0）
+	var result ApproveResult
+	if s.voucherGenSvc != nil {
+		voucher, genErr := s.voucherGenSvc.GenerateFromPaymentEntry(ctx, tenantID, paymentID, userID)
+		if genErr != nil {
+			return nil, fmt.Errorf("generate voucher from payment entry: %w", genErr)
+		}
+		result.Voucher = voucher
+	}
+
+	// 3. Update DocStatus to 2 (approved)
 	if err := s.repo.UpdateStatus(ctx, tenantID, paymentID, 2); err != nil {
 		return nil, fmt.Errorf("update docstatus: %w", err)
 	}
 
-	// 3. Call reconciliation service
-	if s.reconSvc == nil {
-		return nil, nil // reconciliation service not injected — skip
+	// 4. Call reconciliation service (invoice reconciliation)
+	if s.reconSvc != nil {
+		pair, reconErr := s.reconSvc.ReconcilePaymentEntry(ctx, tenantID, paymentID)
+		if reconErr != nil {
+			// 核销失败不阻断核准流程
+			result.ReconciliationPair = nil
+		} else {
+			result.ReconciliationPair = pair
+		}
 	}
-	pair, err := s.reconSvc.ReconcilePaymentEntry(ctx, tenantID, paymentID)
-	if err != nil {
-		return nil, fmt.Errorf("reconcile payment entry: %w", err)
-	}
-	return pair, nil
+
+	return &result, nil
 }

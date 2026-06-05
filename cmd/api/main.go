@@ -408,6 +408,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Payment entry routes (收款/付款单)
 	paymentSvc := service.NewPaymentEntryService(paymentRepo, partyRepo, bankRepo, accountRepo, bankTransactionRepo)
 	paymentSvc.InjectReconciliationService(reconciliationSvc)
+	paymentSvc.InjectVoucherAutoGenerateService(autoGenSvc)
 	paymentHandler := handler.NewPaymentEntryHandler(paymentSvc, bankTransactionRepo, invoiceSvc)
 	api.Get("/payment-entries", paymentHandler.List)
 	api.Post("/payment-entries", paymentHandler.CreateFromBankTransaction)
