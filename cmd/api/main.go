@@ -347,14 +347,44 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Voucher auto-generate routes (from bank transactions & payment entries)
 	// Placed after approvalSvc is initialized so it can be injected
 	busDocMappingRepo := repository.NewBusDocMappingRepository(db.GetPool())
+	advanceReceiptRepo := repository.NewAdvanceReceiptRepository(db.GetPool())
+	advancePaymentRepo := repository.NewAdvancePaymentRepository(db.GetPool())
+	advanceAllocationRepo := repository.NewAdvanceAllocationRepository(db.GetPool())
 	autoGenSvc := service.NewVoucherAutoGenerateService(
 		journalRepo, glEntryRepo, bankTransactionRepo,
-		bankRepo, invoiceRepo, paymentRepo, partyRepo, accountRepo, busDocMappingRepo, classificationRuleSvc, voucherTemplateSvc, approvalSvc,
+		bankRepo, invoiceRepo, arInvoiceRepo, apInvoiceRepo, paymentRepo, partyRepo, accountRepo, busDocMappingRepo,
+		advanceReceiptRepo, advancePaymentRepo,
+		classificationRuleSvc, voucherTemplateSvc, approvalSvc,
 	)
 	// Wire auto-gen service into bank transaction handler for post-import voucher auto-generation
 	bankTxnHandler.InjectAutoGenSvc(autoGenSvc)
 	// Also inject into invoice service for ConfirmSalesInvoice
 	invoiceSvc.InjectAutoGenSvc(autoGenSvc)
+
+	advanceReceiptSvc := service.NewAdvanceReceiptService(advanceReceiptRepo, partyRepo, autoGenSvc)
+	advancePaymentSvc := service.NewAdvancePaymentService(advancePaymentRepo, partyRepo, autoGenSvc)
+	advanceAllocationSvc := service.NewAdvanceAllocationService(
+		advanceReceiptRepo, advancePaymentRepo, advanceAllocationRepo,
+		arInvoiceRepo, apInvoiceRepo, autoGenSvc,
+	)
+
+	// Advance receipt / payment / allocation routes
+	advanceReceiptHandler := handler.NewAdvanceReceiptHandler(advanceReceiptSvc)
+	advancePaymentHandler := handler.NewAdvancePaymentHandler(advancePaymentSvc)
+	advanceAllocationHandler := handler.NewAdvanceAllocationHandler(advanceAllocationSvc)
+	api.Get("/advance-receipts", advanceReceiptHandler.List)
+	api.Get("/advance-receipts/outstanding", advanceReceiptHandler.ListOutstanding)
+	api.Get("/advance-receipts/:id", advanceReceiptHandler.GetByID)
+	api.Post("/advance-receipts", advanceReceiptHandler.Create)
+	api.Post("/advance-receipts/:id/confirm", advanceReceiptHandler.Confirm)
+	api.Get("/advance-payments", advancePaymentHandler.List)
+	api.Get("/advance-payments/outstanding", advancePaymentHandler.ListOutstanding)
+	api.Get("/advance-payments/:id", advancePaymentHandler.GetByID)
+	api.Post("/advance-payments", advancePaymentHandler.Create)
+	api.Post("/advance-payments/:id/confirm", advancePaymentHandler.Confirm)
+	api.Post("/advance-allocations", advanceAllocationHandler.Allocate)
+	api.Post("/advance-allocations/:id/auto-match", advanceAllocationHandler.AutoMatch)
+	api.Get("/advance-allocations", advanceAllocationHandler.ListByAdvance)
 
 	autoGenHandler := handler.NewVoucherAutoGenerateHandler(autoGenSvc)
 	api.Post("/bank-transactions/batch-confirm", bankTxnHandler.BatchConfirm)

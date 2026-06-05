@@ -105,6 +105,18 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/ap-invoices/ApInvoiceList.vue'),
         meta: { title: '应付款单', roles: ['admin', 'agent'] },
       },
+      {
+        path: 'advance-receipts',
+        name: 'AdvanceReceiptList',
+        component: () => import('@/views/advance-receipts/AdvanceReceiptList.vue'),
+        meta: { title: '预收款单', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'advance-payments',
+        name: 'AdvancePaymentList',
+        component: () => import('@/views/advance-payments/AdvancePaymentList.vue'),
+        meta: { title: '预付款单', roles: ['admin', 'agent'] },
+      },
       // ==== F3 核销 ====
       {
         path: 'reconciliation/precheck',
