@@ -220,6 +220,11 @@ func (s *PaymentEntryService) Approve(ctx context.Context, tenantID, paymentID, 
 			return nil, fmt.Errorf("generate voucher from payment entry: %w", genErr)
 		}
 		result.Voucher = voucher
+
+		// 回写 PaymentEntry.voucher_id
+		if err := s.repo.SetVoucherID(ctx, tenantID, paymentID, voucher.ID); err != nil {
+			return nil, fmt.Errorf("set voucher_id on payment entry: %w", err)
+		}
 	}
 
 	// 3. Update DocStatus to 2 (approved)

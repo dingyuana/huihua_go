@@ -242,3 +242,45 @@ func (r *ArInvoiceRepository) BatchCreate(ctx context.Context, ars []*model.ArIn
 	}
 	return nil
 }
+
+// Lock sets locked_at and locked_by on an ArInvoice (called when a voucher is posted).
+func (r *ArInvoiceRepository) Lock(ctx context.Context, tenantID, id, lockedBy uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ar_invoice
+		SET locked_at = $3, locked_by = $4
+		WHERE id = $1 AND tenant_id = $2 AND locked_at IS NULL`,
+		id, tenantID, time.Now(), lockedBy)
+	return err
+}
+
+// Unlock clears locked_at and locked_by on an ArInvoice (called when a voucher is cancelled).
+func (r *ArInvoiceRepository) Unlock(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ar_invoice
+		SET locked_at = NULL, locked_by = NULL
+		WHERE id = $1 AND tenant_id = $2`,
+		id, tenantID)
+	return err
+}
+
+// SetVoucherID writes the voucher_id onto an ArInvoice (called when voucher is posted).
+func (r *ArInvoiceRepository) SetVoucherID(ctx context.Context, tenantID, id, voucherID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ar_invoice
+		SET voucher_id = $3
+		WHERE id = $1 AND tenant_id = $2`,
+		id, tenantID, voucherID)
+	return err
+}
+
+// IsLocked checks whether an ArInvoice is currently locked.
+func (r *ArInvoiceRepository) IsLocked(ctx context.Context, tenantID, id uuid.UUID) (bool, error) {
+	var lockedAt *time.Time
+	err := r.pool.QueryRow(ctx, `
+		SELECT locked_at FROM ar_invoice WHERE id = $1 AND tenant_id = $2`,
+		id, tenantID).Scan(&lockedAt)
+	if err != nil {
+		return false, nil
+	}
+	return lockedAt != nil, nil
+}

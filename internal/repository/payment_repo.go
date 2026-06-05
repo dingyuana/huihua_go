@@ -229,6 +229,15 @@ func (r *PaymentEntryRepository) UpdateStatusAndClearVoucherTx(ctx context.Conte
 	return err
 }
 
+// SetVoucherID updates the voucher_id and voucher_no on a payment entry.
+func (r *PaymentEntryRepository) SetVoucherID(ctx context.Context, tenantID, id, voucherID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE payment_entries 
+		SET voucher_id = $3 
+		WHERE id = $1 AND tenant_id = $2`, id, tenantID, voucherID)
+	return err
+}
+
 func (r *PaymentEntryRepository) GetAllocations(ctx context.Context, tenantID, paymentID uuid.UUID) ([]model.PaymentAllocation, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, payment_entry_id, invoice_id, invoice_type, allocated_amount, tenant_id, created_at

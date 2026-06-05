@@ -18,25 +18,28 @@ const (
 )
 
 type ArInvoice struct {
-	ID               uuid.UUID       `db:"id"`
-	TenantID         uuid.UUID       `db:"tenant_id"`
-	CompanyID        uuid.UUID       `db:"company_id"`
-	CustomerID       uuid.UUID       `db:"customer_id"`
-	InvoiceID        uuid.UUID       `db:"invoice_id"`
-	InvoiceNo        string          `db:"invoice_no"`
-	Amount           decimal.Decimal `db:"amount"`
-	PaidAmount       decimal.Decimal `db:"paid_amount"`
+	ID                uuid.UUID       `db:"id"`
+	TenantID          uuid.UUID       `db:"tenant_id"`
+	CompanyID         uuid.UUID       `db:"company_id"`
+	CustomerID        uuid.UUID       `db:"customer_id"`
+	InvoiceID         uuid.UUID       `db:"invoice_id"`
+	InvoiceNo         string          `db:"invoice_no"`
+	Amount            decimal.Decimal `db:"amount"`
+	PaidAmount        decimal.Decimal `db:"paid_amount"`
 	OutstandingAmount decimal.Decimal `db:"outstanding_amount"`
-	CreditUsed       decimal.Decimal `db:"credit_used"`
-	DueDate          *time.Time      `db:"due_date"`
-	Status           string          `db:"status"`
-	SourceType       string          `db:"source_type"`
-	Remark           *string         `json:"remark,omitempty" db:"remark"`
-	CreatedBy        *uuid.UUID      `db:"created_by"`
-	CreatedAt        time.Time       `db:"created_at"`
-	ConfirmedAt      *time.Time      `db:"confirmed_at"`
-	ConfirmedBy      *uuid.UUID      `db:"confirmed_by"`
-	ApprovedBy       *uuid.UUID      `json:"approved_by,omitempty" db:"approved_by"`
-	ApprovedAt       *time.Time      `json:"approved_at,omitempty" db:"approved_at"`
-	LastAllocationAt *time.Time      `json:"last_allocation_at,omitempty" db:"last_allocation_at"`
+	CreditUsed        decimal.Decimal `db:"credit_used"`
+	DueDate           *time.Time      `db:"due_date"`
+	Status            string          `db:"status"`
+	SourceType        string          `db:"source_type"`
+	VoucherID         *uuid.UUID      `db:"voucher_id"`
+	LockedAt          *time.Time      `db:"locked_at"`
+	LockedBy          *uuid.UUID      `db:"locked_by"`
+	Remark            *string         `json:"remark,omitempty" db:"remark"`
+	CreatedBy         *uuid.UUID      `db:"created_by"`
+	CreatedAt         time.Time       `db:"created_at"`
+	ConfirmedAt       *time.Time      `db:"confirmed_at"`
+	ConfirmedBy       *uuid.UUID      `db:"confirmed_by"`
+	ApprovedBy        *uuid.UUID      `json:"approved_by,omitempty" db:"approved_by"`
+	ApprovedAt        *time.Time      `json:"approved_at,omitempty" db:"approved_at"`
+	LastAllocationAt  *time.Time      `json:"last_allocation_at,omitempty" db:"last_allocation_at"`
 }
