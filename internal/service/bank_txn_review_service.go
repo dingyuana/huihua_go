@@ -113,7 +113,7 @@ func (s *BankTxnReviewService) SubmitReview(
 
 		switch classifyType(classification) {
 		// 第一类直接制证：银行费用/税费/社保/利息/保险
-		case "A":
+		case "第一类":
 			// 凭证草稿已生成，等人审核
 			voucher, err := s.voucherAutoSvc.GenerateFromBankTxn(ctx, tenantID, txnID, uuid.Nil)
 			if err != nil {
@@ -131,7 +131,7 @@ func (s *BankTxnReviewService) SubmitReview(
 			})
 
 		// 第二类需中转（生成 PaymentEntry）
-		case "B":
+		case "第二类":
 			// 付款单草稿已生成，等人审核
 			paymentType := "pay"
 			if txn.Direction != nil && *txn.Direction == "in" {
@@ -210,8 +210,8 @@ func (s *BankTxnReviewService) PreviewDraft(ctx context.Context, tenantID, txnID
 		classification = *txn.Classification
 	}
 	typ := classifyType(classification)
-	if typ != "A" && typ != "B" {
-		return nil, nil // C-class — no preview available
+	if typ != "第一类" && typ != "第二类" {
+		return nil, nil // C类 — 无预览
 	}
 
 	voucher, err := s.voucherAutoSvc.GenerateFromBankTxn(ctx, tenantID, txnID, uuid.Nil)
@@ -254,12 +254,12 @@ func classifyType(classification string) string {
 	switch classification {
 	case
 		"bank_fee", "interest_income", "tax_payment",
-		"social_security", "insurance_fee", "internal_transfer":
-		return "A"
+		"social_security", "insurance_fee":
+		return "第一类"
 	case
 		"business_receipt", "business_payment",
-		"pay", "receive", "expense":
-		return "B"
+		"pay", "receive", "expense", "internal_transfer":
+		return "第二类"
 	default:
 		return "C"
 	}
@@ -273,8 +273,8 @@ func ptrStrVal(s *string) string {
 }
 
 // ProcessManual 处理 C 类流水（manual_pending），由人选择处理方式。
-// action="A": 调用 GenerateFromBankTxn 生成凭证草稿
-// action="B": 调用 CreateFromBankTransaction 生成付款单草稿（payment_type 必填）
+// action="第一类": 调用 GenerateFromBankTxn 生成凭证草稿
+// action="第二类": 调用 CreateFromBankTransaction 生成付款单草稿（payment_type 必填）
 // 人是唯一审核主体，系统不猜测分类。
 func (s *BankTxnReviewService) ProcessManual(
 	ctx context.Context,
@@ -306,7 +306,7 @@ func (s *BankTxnReviewService) ProcessManual(
 	}
 
 	switch action {
-	case "A":
+	case "第一类":
 		voucher, err := s.voucherAutoSvc.GenerateFromBankTxn(ctx, tenantID, id, uuid.Nil)
 		if err != nil {
 			return nil, fmt.Errorf("generate voucher for %s: %w", txnID, err)
@@ -323,9 +323,9 @@ func (s *BankTxnReviewService) ProcessManual(
 		}
 		return &TxnResult{TxnID: txnID, Outcome: "voucher_generated", VoucherID: &voucher.ID}, nil
 
-	case "B":
+	case "第二类":
 		if paymentType == "" {
-			return &TxnResult{TxnID: txnID, Outcome: "skipped", Reason: "payment_type required for action B"}, nil
+			return &TxnResult{TxnID: txnID, Outcome: "skipped", Reason: "payment_type required for action 第二类"}, nil
 		}
 		req := &CreatePaymentFromBankTxnRequest{
 			BankTransactionID: id,
