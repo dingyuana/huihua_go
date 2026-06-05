@@ -14,18 +14,22 @@ import (
 
 // VoucherAutoGenerateService auto-generates vouchers from bank transactions, invoices, and reconciliation pairs.
 type VoucherAutoGenerateService struct {
-	journalRepo       *repository.JournalRepository
-	glRepo            *repository.GLEntryRepository
-	bankTxnRepo       *repository.BankTransactionRepository
-	bankRepo          *repository.BankRepository
-	invoiceRepo       *repository.InvoiceRepository
-	paymentRepo       *repository.PaymentEntryRepository
-	partyRepo         *repository.PartyRepository
-	accountRepo       *repository.AccountRepository
-	busDocMappingRepo *repository.BusDocMappingRepository
-	classificationSvc *ClassificationRuleService
-	templateSvc       *VoucherTemplateService
-	approvalSvc       *ApprovalService
+	journalRepo        *repository.JournalRepository
+	glRepo             *repository.GLEntryRepository
+	bankTxnRepo        *repository.BankTransactionRepository
+	bankRepo           *repository.BankRepository
+	invoiceRepo        *repository.InvoiceRepository
+	arRepo             *repository.ArInvoiceRepository
+	apRepo             *repository.ApInvoiceRepository
+	paymentRepo        *repository.PaymentEntryRepository
+	partyRepo          *repository.PartyRepository
+	accountRepo        *repository.AccountRepository
+	busDocMappingRepo  *repository.BusDocMappingRepository
+	advanceReceiptRepo *repository.AdvanceReceiptRepository
+	advancePaymentRepo *repository.AdvancePaymentRepository
+	classificationSvc  *ClassificationRuleService
+	templateSvc        *VoucherTemplateService
+	approvalSvc        *ApprovalService
 }
 
 func NewVoucherAutoGenerateService(
@@ -34,10 +38,14 @@ func NewVoucherAutoGenerateService(
 	bankTxnRepo *repository.BankTransactionRepository,
 	bankRepo *repository.BankRepository,
 	invoiceRepo *repository.InvoiceRepository,
+	arRepo *repository.ArInvoiceRepository,
+	apRepo *repository.ApInvoiceRepository,
 	paymentRepo *repository.PaymentEntryRepository,
 	partyRepo *repository.PartyRepository,
 	accountRepo *repository.AccountRepository,
 	busDocMappingRepo *repository.BusDocMappingRepository,
+	advanceReceiptRepo *repository.AdvanceReceiptRepository,
+	advancePaymentRepo *repository.AdvancePaymentRepository,
 	classificationSvc *ClassificationRuleService,
 	templateSvc *VoucherTemplateService,
 	approvalSvc *ApprovalService,
@@ -45,12 +53,16 @@ func NewVoucherAutoGenerateService(
 	return &VoucherAutoGenerateService{
 		journalRepo: journalRepo, glRepo: glRepo,
 		bankTxnRepo: bankTxnRepo, bankRepo: bankRepo,
-		invoiceRepo:       invoiceRepo,
-		paymentRepo:       paymentRepo,
-		partyRepo:         partyRepo,
-		accountRepo:       accountRepo,
-		busDocMappingRepo: busDocMappingRepo,
-		classificationSvc: classificationSvc, templateSvc: templateSvc,
+		invoiceRepo:        invoiceRepo,
+		arRepo:             arRepo,
+		apRepo:             apRepo,
+		paymentRepo:        paymentRepo,
+		partyRepo:          partyRepo,
+		accountRepo:        accountRepo,
+		busDocMappingRepo:  busDocMappingRepo,
+		advanceReceiptRepo: advanceReceiptRepo,
+		advancePaymentRepo: advancePaymentRepo,
+		classificationSvc:  classificationSvc, templateSvc: templateSvc,
 		approvalSvc: approvalSvc,
 	}
 }
@@ -796,4 +808,222 @@ func (s *VoucherAutoGenerateService) BatchGenerateFromBank(ctx context.Context, 
 		}
 	}
 	return vouchers, nil
+}
+
+func (s *VoucherAutoGenerateService) GenerateFromAdvanceReceipt(ctx context.Context, tenantID, advanceID, userID uuid.UUID) (string, error) {
+	if s.advanceReceiptRepo == nil {
+		return "", fmt.Errorf("advance receipt repo not wired")
+	}
+	adv, err := s.advanceReceiptRepo.GetByID(ctx, tenantID, advanceID)
+	if err != nil || adv == nil {
+		return "", fmt.Errorf("advance receipt not found")
+	}
+
+	bankAcctID := s.findAccountByCode(ctx, tenantID, "1002")
+	advanceAcctID := s.findAccountByCode(ctx, tenantID, "2203")
+	if bankAcctID == nil || advanceAcctID == nil {
+		return "", fmt.Errorf("required account codes 1002/2203 not configured")
+	}
+
+	voucherResp, _ := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+	voucherNo := ""
+	if voucherResp != nil {
+		voucherNo = voucherResp.VoucherNumber
+	}
+
+	je := &model.JournalEntry{
+		ID:          uuid.New(),
+		TenantID:    tenantID,
+		CompanyID:   adv.CompanyID,
+		VoucherNo:   voucherNo,
+		PostingDate: adv.ReceivedDate,
+		CreatedBy:   userID,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		DocStatus:   0,
+		SourceType:  "advance_receipt",
+		SourceID:    advanceID,
+	}
+	partyType := "customer"
+	partyIDCopy := adv.CustomerID
+	drRemark := fmt.Sprintf("预收 %s", adv.AdvanceNo)
+	crRemark := fmt.Sprintf("预收 %s", adv.AdvanceNo)
+	lines := []model.JournalEntryLine{
+		{ID: uuid.New(), JournalEntryID: je.ID, AccountID: *bankAcctID,
+			Debit: adv.Amount, Credit: decimal.Zero,
+			PartyType: &partyType, PartyID: &partyIDCopy, UserRemark: &drRemark},
+		{ID: uuid.New(), JournalEntryID: je.ID, AccountID: *advanceAcctID,
+			Debit: decimal.Zero, Credit: adv.Amount,
+			PartyType: &partyType, PartyID: &partyIDCopy, UserRemark: &crRemark},
+	}
+
+	if _, err := s.journalRepo.Create(ctx, tenantID, je); err != nil {
+		return "", err
+	}
+	if _, err := s.journalRepo.AddLines(ctx, tenantID, je.ID, lines); err != nil {
+		return "", err
+	}
+	return voucherNo, nil
+}
+
+func (s *VoucherAutoGenerateService) GenerateFromAdvancePayment(ctx context.Context, tenantID, advanceID, userID uuid.UUID) (string, error) {
+	if s.advancePaymentRepo == nil {
+		return "", fmt.Errorf("advance payment repo not wired")
+	}
+	adv, err := s.advancePaymentRepo.GetByID(ctx, tenantID, advanceID)
+	if err != nil || adv == nil {
+		return "", fmt.Errorf("advance payment not found")
+	}
+
+	bankAcctID := s.findAccountByCode(ctx, tenantID, "1002")
+	advanceAcctID := s.findAccountByCode(ctx, tenantID, "1211")
+	if bankAcctID == nil || advanceAcctID == nil {
+		return "", fmt.Errorf("required account codes 1002/1211 not configured")
+	}
+
+	voucherResp, _ := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+	voucherNo := ""
+	if voucherResp != nil {
+		voucherNo = voucherResp.VoucherNumber
+	}
+
+	je := &model.JournalEntry{
+		ID:          uuid.New(),
+		TenantID:    tenantID,
+		CompanyID:   adv.CompanyID,
+		VoucherNo:   voucherNo,
+		PostingDate: adv.PaidDate,
+		CreatedBy:   userID,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		DocStatus:   0,
+		SourceType:  "advance_payment",
+		SourceID:    advanceID,
+	}
+	partyType := "supplier"
+	partyIDCopy := adv.SupplierID
+	drRemark := fmt.Sprintf("预付 %s", adv.AdvanceNo)
+	crRemark := fmt.Sprintf("预付 %s", adv.AdvanceNo)
+	lines := []model.JournalEntryLine{
+		{ID: uuid.New(), JournalEntryID: je.ID, AccountID: *advanceAcctID,
+			Debit: adv.Amount, Credit: decimal.Zero,
+			PartyType: &partyType, PartyID: &partyIDCopy, UserRemark: &drRemark},
+		{ID: uuid.New(), JournalEntryID: je.ID, AccountID: *bankAcctID,
+			Debit: decimal.Zero, Credit: adv.Amount,
+			PartyType: &partyType, PartyID: &partyIDCopy, UserRemark: &crRemark},
+	}
+
+	if _, err := s.journalRepo.Create(ctx, tenantID, je); err != nil {
+		return "", err
+	}
+	if _, err := s.journalRepo.AddLines(ctx, tenantID, je.ID, lines); err != nil {
+		return "", err
+	}
+	return voucherNo, nil
+}
+
+func (s *VoucherAutoGenerateService) GenerateFromAdvanceOffset(
+	ctx context.Context, tenantID, advanceID, targetID uuid.UUID,
+	amount decimal.Decimal, userID uuid.UUID,
+) (string, error) {
+	if amount.LessThanOrEqual(decimal.Zero) {
+		return "", fmt.Errorf("amount must be positive")
+	}
+
+	var (
+		advanceAcctID *uuid.UUID
+		targetAcctID  *uuid.UUID
+		partyType     string
+		partyID       uuid.UUID
+		companyID     uuid.UUID
+		postingDate   time.Time
+		advanceNo     string
+		targetNo      string
+		docType       string
+	)
+
+	advanceAcctCode := "2203"
+	targetAcctCode := "1122"
+	if ar, err := s.arRepo.GetByID(ctx, tenantID, targetID); err == nil && ar != nil {
+		if s.advanceReceiptRepo == nil {
+			return "", fmt.Errorf("advance receipt repo not wired")
+		}
+		adv, aerr := s.advanceReceiptRepo.GetByID(ctx, tenantID, advanceID)
+		if aerr != nil || adv == nil {
+			return "", fmt.Errorf("advance receipt not found")
+		}
+		advanceAcctID = s.findAccountByCode(ctx, tenantID, advanceAcctCode)
+		targetAcctID = s.findAccountByCode(ctx, tenantID, targetAcctCode)
+		partyType = "customer"
+		partyID = adv.CustomerID
+		companyID = adv.CompanyID
+		postingDate = time.Now()
+		advanceNo = adv.AdvanceNo
+		targetNo = ar.InvoiceNo
+		docType = "advance_offset_receipt"
+	} else if ap, err := s.apRepo.GetByID(ctx, tenantID, targetID); err == nil && ap != nil {
+		if s.advancePaymentRepo == nil {
+			return "", fmt.Errorf("advance payment repo not wired")
+		}
+		adv, aerr := s.advancePaymentRepo.GetByID(ctx, tenantID, advanceID)
+		if aerr != nil || adv == nil {
+			return "", fmt.Errorf("advance payment not found")
+		}
+		advanceAcctCode = "1211"
+		targetAcctCode = "2202"
+		advanceAcctID = s.findAccountByCode(ctx, tenantID, advanceAcctCode)
+		targetAcctID = s.findAccountByCode(ctx, tenantID, targetAcctCode)
+		partyType = "supplier"
+		partyID = adv.SupplierID
+		companyID = adv.CompanyID
+		postingDate = time.Now()
+		advanceNo = adv.AdvanceNo
+		targetNo = ap.InvoiceNo
+		docType = "advance_offset_payment"
+	} else {
+		return "", fmt.Errorf("target invoice not found")
+	}
+
+	if advanceAcctID == nil || targetAcctID == nil {
+		return "", fmt.Errorf("required account codes %s/%s not configured", advanceAcctCode, targetAcctCode)
+	}
+
+	voucherResp, _ := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+	voucherNo := ""
+	if voucherResp != nil {
+		voucherNo = voucherResp.VoucherNumber
+	}
+
+	je := &model.JournalEntry{
+		ID:          uuid.New(),
+		TenantID:    tenantID,
+		CompanyID:   companyID,
+		VoucherNo:   voucherNo,
+		PostingDate: postingDate,
+		CreatedBy:   userID,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		DocStatus:   0,
+		SourceType:  docType,
+		SourceID:    advanceID,
+	}
+	partyIDCopy := partyID
+	drRemark := fmt.Sprintf("冲抵 %s", advanceNo)
+	crRemark := fmt.Sprintf("冲抵 %s", targetNo)
+	lines := []model.JournalEntryLine{
+		{ID: uuid.New(), JournalEntryID: je.ID, AccountID: *advanceAcctID,
+			Debit: amount, Credit: decimal.Zero,
+			PartyType: &partyType, PartyID: &partyIDCopy, UserRemark: &drRemark},
+		{ID: uuid.New(), JournalEntryID: je.ID, AccountID: *targetAcctID,
+			Debit: decimal.Zero, Credit: amount,
+			PartyType: &partyType, PartyID: &partyIDCopy, UserRemark: &crRemark},
+	}
+
+	if _, err := s.journalRepo.Create(ctx, tenantID, je); err != nil {
+		return "", err
+	}
+	if _, err := s.journalRepo.AddLines(ctx, tenantID, je.ID, lines); err != nil {
+		return "", err
+	}
+	return voucherNo, nil
 }

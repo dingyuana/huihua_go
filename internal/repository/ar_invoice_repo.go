@@ -157,6 +157,45 @@ func (r *ArInvoiceRepository) UpdateStatus(ctx context.Context, tenantID, id uui
 	return err
 }
 
+func (r *ArInvoiceRepository) IncrementPaid(ctx context.Context, tenantID, id uuid.UUID, delta float64, newStatus string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ar_invoices
+		SET paid_amount = paid_amount + $3,
+			outstanding_amount = amount - (paid_amount + $3),
+			status = $4,
+			last_allocation_at = NOW()
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, delta, newStatus)
+	return err
+}
+
+func (r *ArInvoiceRepository) ListUnpaidByCustomer(ctx context.Context, tenantID, customerID uuid.UUID) ([]*model.ArInvoice, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, tenant_id, company_id, customer_id, invoice_id, invoice_no, amount,
+			paid_amount, outstanding_amount, due_date, status, source_type, created_by, created_at,
+			confirmed_at, confirmed_by, approved_by, approved_at
+		FROM ar_invoices
+		WHERE tenant_id = $1 AND customer_id = $2 AND outstanding_amount > 0
+			AND status IN ('confirmed','partially_paid')
+		ORDER BY due_date ASC NULLS LAST, created_at ASC`,
+		tenantID, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.ArInvoice
+	for rows.Next() {
+		var ar model.ArInvoice
+		if err := rows.Scan(&ar.ID, &ar.TenantID, &ar.CompanyID, &ar.CustomerID, &ar.InvoiceID, &ar.InvoiceNo,
+			&ar.Amount, &ar.PaidAmount, &ar.OutstandingAmount, &ar.DueDate, &ar.Status, &ar.SourceType,
+			&ar.CreatedBy, &ar.CreatedAt, &ar.ConfirmedAt, &ar.ConfirmedBy, &ar.ApprovedBy, &ar.ApprovedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, &ar)
+	}
+	return list, rows.Err()
+}
+
 // Confirm confirms an AR invoice, setting confirmed_at, confirmed_by, approved_at, approved_by, and status = 'confirmed'.
 func (r *ArInvoiceRepository) Confirm(ctx context.Context, tenantID, id, confirmedBy uuid.UUID) error {
 	now := time.Now()

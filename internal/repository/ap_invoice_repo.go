@@ -158,3 +158,42 @@ func (r *ApInvoiceRepository) ListByInvoiceID(ctx context.Context, tenantID, inv
 	}
 	return &ap, nil
 }
+
+func (r *ApInvoiceRepository) IncrementPaid(ctx context.Context, tenantID, id uuid.UUID, delta float64, newStatus string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ap_invoices
+		SET paid_amount = paid_amount + $3,
+			outstanding_amount = amount - (paid_amount + $3),
+			status = $4,
+			last_allocation_at = NOW()
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, delta, newStatus)
+	return err
+}
+
+func (r *ApInvoiceRepository) ListUnpaidBySupplier(ctx context.Context, tenantID, supplierID uuid.UUID) ([]*model.ApInvoice, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, tenant_id, company_id, supplier_id, invoice_id, invoice_no, amount,
+			paid_amount, outstanding_amount, due_date, status, source_type, created_by, created_at,
+			confirmed_at, confirmed_by, approved_by, approved_at
+		FROM ap_invoices
+		WHERE tenant_id = $1 AND supplier_id = $2 AND outstanding_amount > 0
+			AND status IN ('confirmed','partially_paid')
+		ORDER BY due_date ASC NULLS LAST, created_at ASC`,
+		tenantID, supplierID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.ApInvoice
+	for rows.Next() {
+		var ap model.ApInvoice
+		if err := rows.Scan(&ap.ID, &ap.TenantID, &ap.CompanyID, &ap.SupplierID, &ap.InvoiceID, &ap.InvoiceNo,
+			&ap.Amount, &ap.PaidAmount, &ap.OutstandingAmount, &ap.DueDate, &ap.Status, &ap.SourceType,
+			&ap.CreatedBy, &ap.CreatedAt, &ap.ConfirmedAt, &ap.ConfirmedBy, &ap.ApprovedBy, &ap.ApprovedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, &ap)
+	}
+	return list, rows.Err()
+}

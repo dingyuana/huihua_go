@@ -160,6 +160,14 @@ func (r *AdvanceReceiptRepository) UpdateStatus(ctx context.Context, tenantID, i
 	return err
 }
 
+func (r *AdvanceReceiptRepository) MarkConfirmed(ctx context.Context, tenantID, id, userID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE advance_receipts SET confirmed_by = $3, confirmed_at = NOW()
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, userID)
+	return err
+}
+
 func (r *AdvanceReceiptRepository) SetVoucher(ctx context.Context, tenantID, id, voucherID uuid.UUID, voucherNo string) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE advance_receipts SET voucher_id = $3, voucher_no = $4

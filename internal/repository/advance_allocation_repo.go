@@ -17,6 +17,14 @@ func NewAdvanceAllocationRepository(pool *pgxpool.Pool) *AdvanceAllocationReposi
 	return &AdvanceAllocationRepository{pool: pool}
 }
 
+func (r *AdvanceAllocationRepository) SetVoucher(ctx context.Context, id uuid.UUID, voucherNo string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE advance_allocations SET voucher_id = $2, voucher_no = $3
+		WHERE id = $1`,
+		id, uuid.Nil, voucherNo)
+	return err
+}
+
 func (r *AdvanceAllocationRepository) Create(ctx context.Context, a *model.AdvanceAllocation) error {
 	if a.ID == uuid.Nil {
 		a.ID = uuid.New()
