@@ -129,11 +129,21 @@ func (r *ReconciliationRepository) ConfirmPair(ctx context.Context, tenantID, pa
 	// 4. Update outstanding_amount on the correct invoice table based on target_type
 	switch pair.TargetType {
 	case "ar_invoice":
-		// Update ar_invoices: paid_amount += allocAmt, outstanding_amount = amount - paid_amount
+		// First update paid_amount and outstanding_amount
 		_, err = r.pool.Exec(ctx, `
 			UPDATE ar_invoices
 			SET paid_amount = paid_amount + $1,
 				outstanding_amount = amount - (paid_amount + $1)
+			WHERE id = $2 AND tenant_id = $3`,
+			allocAmt, invoiceID, tenantID)
+		if err != nil {
+			return fmt.Errorf("update ar_invoice paid/outstanding: %w", err)
+		}
+		// Then update status: paid if outstanding=0, otherwise partially_paid
+		_, err = r.pool.Exec(ctx, `
+			UPDATE ar_invoices SET status =
+				CASE WHEN amount - (paid_amount + $1) <= 0 THEN 'paid'
+				ELSE 'partially_paid' END
 			WHERE id = $2 AND tenant_id = $3`,
 			allocAmt, invoiceID, tenantID)
 	case "invoice", "sales_invoice":
@@ -148,7 +158,7 @@ func (r *ReconciliationRepository) ConfirmPair(ctx context.Context, tenantID, pa
 
 	// 5. Update payment_allocation confirmed_at
 	_, err = r.pool.Exec(ctx, `
-		UPDATE payment_allocations SET confirmed_at = $3
+		UPDATE payment_allocations SET confirmed_at = $4
 		WHERE payment_entry_id = $1 AND invoice_id = $2 AND tenant_id = $3`,
 		pair.SourceID, pair.TargetID, tenantID, now)
 	if err != nil {
