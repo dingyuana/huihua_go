@@ -78,15 +78,40 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 			}
 		}
 
+		var remarkStr string
+		if inv.Remark != nil {
+			remarkStr = *inv.Remark
+		}
+
+		var sourceRedInvoiceNoStr string
+		if inv.SourceRedInvoiceNo != nil {
+			sourceRedInvoiceNoStr = *inv.SourceRedInvoiceNo
+		}
+
+		var invoiceCodeStr string
+		if inv.InvoiceCode != nil {
+			invoiceCodeStr = *inv.InvoiceCode
+		}
+
+		var invoiceCategoryStr string
+		if inv.InvoiceCategory != nil {
+			invoiceCategoryStr = *inv.InvoiceCategory
+		}
+
+		var taxIdStr string
+		if inv.TaxID != nil {
+			taxIdStr = *inv.TaxID
+		}
+
 		result[i] = map[string]interface{}{
 			"id":                    inv.ID,
 			"type":                  inv.InvoiceType,
 			"invoice_no":            inv.InvoiceNo,
-			"invoice_code":          inv.InvoiceCode,
-			"invoice_category":      inv.InvoiceCategory,
+			"invoice_code":          invoiceCodeStr,
+			"invoice_category":      invoiceCategoryStr,
 			"customer_id":           inv.CustomerID,
 			"customer_name":         inv.CustomerName,
-			"tax_id":                inv.TaxID,
+			"tax_id":                taxIdStr,
 			"posting_date":          inv.PostingDate.Format("2006-01-02"),
 			"total_amount":          inv.TotalAmount.String(),
 			"tax_amount":            inv.TaxAmount.String(),
@@ -94,8 +119,8 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 			"outstanding_amount":    inv.OutstandingAmount.String(),
 			"status":                mapInvoiceStatus(inv.Status),
 			"is_return":             inv.IsReturn,
-			"source_red_invoice_no": inv.SourceRedInvoiceNo,
-			"remark":                inv.Remark,
+			"source_red_invoice_no": sourceRedInvoiceNoStr,
+			"remark":                remarkStr,
 			"created_at":            inv.CreatedAt.Format("2006-01-02 15:04:05"),
 			"line_items":            itemsResult,
 		}

@@ -455,7 +455,7 @@ func (ci *columnIndex) has(names ...string) bool {
 
 func (s *InvoiceService) parseExcelRows(rows [][]string, headerIdx int, cols *columnIndex, ctx context.Context, tenantID uuid.UUID) ([]parsedInvoiceRow, []model.FailedRowDetail) {
 	invNoIdx, _ := cols.get("数电发票号码", "发票号码", "发票号", "invoice_no", "invoice number")
-	invTypeIdx, _ := cols.get("发票类型", "发票票种", "类型", "票种", "invoice_type", "type")
+	invTypeIdx, _ := cols.get("发票票种", "发票类型", "类型", "票种", "invoice_type", "type")
 	dateIdx, _ := cols.get("开票日期", "日期", "posting_date", "date", "发票日期")
 	customerNameIdx, _ := cols.get("购买方名称", "购方名称", "对方单位", "客户名称", "购方", "购方识别号")
 	buyerTaxIdIdx, _ := cols.get("对方税号", "对方识别号", "购方识别号", "购方税号", "购买方税号", "购买方识别号", "购方纳税人识别号", "购买方纳税人识别号", "购方统一社会信用代码", "购买方统一社会信用代码", "对方纳税人识别号", "对方统一社会信用代码", "统一社会信用代码", "纳税人识别号", "购方纳税识别号", "购买方纳税识别号")
@@ -756,11 +756,15 @@ func buildInvoicesFromGroups(validGroups []struct {
 
 func extractBlueInvoiceNo(remark string) string {
 	patterns := []*regexp.Regexp{
+		// 主要模式：被红冲蓝字数电发票号码：25922000000081399845
 		regexp.MustCompile(`被红冲蓝字数电发票号码[：:]\s*(\d{8,20})`),
+		// 其他变体
 		regexp.MustCompile(`对应蓝字发票号[：:]\s*(\d{8,20})`),
 		regexp.MustCompile(`红冲发票[：:号]?\s*(\d{8,20})`),
 		regexp.MustCompile(`对应正数发票号码[：:]\s*(\d{8,20})`),
 		regexp.MustCompile(`蓝字发票[：:号]?\s*(\d{8,20})`),
+		// 通用模式：在备注中查找长数字（可能是发票号）
+		regexp.MustCompile(`[：:]\s*(\d{8,20})`),
 	}
 	for _, p := range patterns {
 		if m := p.FindStringSubmatch(remark); len(m) > 1 {

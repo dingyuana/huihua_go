@@ -770,30 +770,35 @@ function autoMatchColumns() {
 
   fieldMappings.value.forEach(mapping => {
     const fieldLower = mapping.field.toLowerCase()
-    let matchIdx = columns.findIndex(col => col === fieldLower)
+    let matchIdx = -1
 
+    // 第一步：优先尝试同义词精确匹配（最高优先级）
+    const synonyms: Record<string, string[]> = {
+      invoice_no: ['数电发票号码', '发票号码', 'invoice no', 'invoice_number'],
+      invoice_type: ['发票票种', '类型', 'type', '票种'],
+      posting_date: ['日期', '开票日', 'date', '发票日期'],
+      customer_name: ['购买方名称', '购方名称', '供应商', '客户', 'customer'],
+      total_amount: ['金额', '合计', 'total', '含税金额'],
+      tax_amount: ['税金', '税', 'tax'],
+      net_amount: ['金额', '净额', 'net'],
+      tax_rate: ['tax rate', 'rate'],
+      remark: ['说明', 'remark', 'remarks'],
+    }
+
+    const syns = synonyms[mapping.fieldKey] || []
+    matchIdx = columns.findIndex(col =>
+      syns.some(syn => col === syn.toLowerCase())
+    )
+
+    // 第二步：尝试字段名本身精确匹配
+    if (matchIdx === -1) {
+      matchIdx = columns.findIndex(col => col === fieldLower)
+    }
+
+    // 第三步：包含匹配（最后）
     if (matchIdx === -1) {
       matchIdx = columns.findIndex(col =>
         col.includes(fieldLower) || fieldLower.includes(col)
-      )
-    }
-
-    if (matchIdx === -1) {
-      const synonyms: Record<string, string[]> = {
-        invoice_no: ['发票号', '发票号码', '数电发票号码', 'invoice no', 'invoice_number'],
-        invoice_type: ['发票类型', '类型', 'type', '发票票种', '票种'],
-        posting_date: ['开票日期', '日期', '开票日', 'date'],
-        customer_name: ['对方单位', '购买方名称', '客户名称', '购方名称', '供应商', '客户', 'customer'],
-        total_amount: ['价税合计', '金额', '合计', 'total', '含税金额'],
-        tax_amount: ['税额', '税金', '税', 'tax'],
-        net_amount: ['不含税金额', '金额', '净额', 'net'],
-        tax_rate: ['税率', 'tax rate', 'rate'],
-        remark: ['备注', '说明', 'remark', 'remarks'],
-      }
-
-      const syns = synonyms[mapping.fieldKey] || []
-      matchIdx = columns.findIndex(col =>
-        syns.some(syn => col === syn.toLowerCase() || col.includes(syn.toLowerCase()))
       )
     }
 
