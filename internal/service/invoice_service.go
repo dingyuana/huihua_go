@@ -499,10 +499,10 @@ func (s *InvoiceService) parseExcelRows(rows [][]string, headerIdx int, cols *co
 		}
 
 		getCell := func(idx int) string {
-			if idx < len(row) {
-				return strings.TrimSpace(row[idx])
+			if idx < 0 || idx >= len(row) {
+				return ""
 			}
-			return ""
+			return strings.TrimSpace(row[idx])
 		}
 
 		invNo := getCell(invNoIdx)
@@ -533,11 +533,12 @@ func (s *InvoiceService) parseExcelRows(rows [][]string, headerIdx int, cols *co
 		}
 
 		parseFloat := func(idx int) float64 {
-			if idx < len(row) {
-				v, err := strconv.ParseFloat(strings.ReplaceAll(row[idx], ",", ""), 64)
-				if err == nil {
-					return v
-				}
+			if idx < 0 || idx >= len(row) {
+				return 0
+			}
+			v, err := strconv.ParseFloat(strings.ReplaceAll(row[idx], ",", ""), 64)
+			if err == nil {
+				return v
 			}
 			return 0
 		}
@@ -886,13 +887,13 @@ func (s *InvoiceService) BatchImportPreview(ctx context.Context, tenantID uuid.U
 
 		detail := model.InvoicePreviewDetail{RowIndex: rowNum}
 
-		if invNoIdx < len(row) {
+		if invNoIdx >= 0 && invNoIdx < len(row) {
 			detail.InvoiceNo = strings.TrimSpace(row[invNoIdx])
 		}
-		if nameIdx < len(row) {
+		if nameIdx >= 0 && nameIdx < len(row) {
 			detail.CustomerName = strings.TrimSpace(row[nameIdx])
 		}
-		if dateIdx < len(row) {
+		if dateIdx >= 0 && dateIdx < len(row) {
 			detail.PostingDate = strings.TrimSpace(row[dateIdx])
 		}
 
@@ -911,11 +912,12 @@ func (s *InvoiceService) BatchImportPreview(ctx context.Context, tenantID uuid.U
 		}
 
 		parseFloat := func(idx int) float64 {
-			if idx < len(row) {
-				v, err := strconv.ParseFloat(strings.ReplaceAll(row[idx], ",", ""), 64)
-				if err == nil {
-					return v
-				}
+			if idx < 0 || idx >= len(row) {
+				return 0
+			}
+			v, err := strconv.ParseFloat(strings.ReplaceAll(row[idx], ",", ""), 64)
+			if err == nil {
+				return v
 			}
 			return 0
 		}

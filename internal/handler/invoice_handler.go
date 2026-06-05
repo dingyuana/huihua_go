@@ -103,6 +103,11 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 			taxIdStr = *inv.TaxID
 		}
 
+		var returnAgainstStr string
+		if inv.ReturnAgainst != nil {
+			returnAgainstStr = inv.ReturnAgainst.String()
+		}
+
 		result[i] = map[string]interface{}{
 			"id":                    inv.ID,
 			"type":                  inv.InvoiceType,
@@ -120,6 +125,7 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 			"status":                mapInvoiceStatus(inv.Status),
 			"docstatus":             inv.DocStatus,
 			"is_return":             inv.IsReturn,
+			"return_against":        returnAgainstStr,
 			"source_red_invoice_no": sourceRedInvoiceNoStr,
 			"remark":                remarkStr,
 			"created_at":            inv.CreatedAt.Format("2006-01-02 15:04:05"),
