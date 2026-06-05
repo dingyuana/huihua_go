@@ -31,11 +31,11 @@
 //
 // 第一类（可直接制证）：信息完整、无歧义，直接生成记账凭证
 //   - bank_fee, interest_income, tax_payment, social_security,
-//     insurance_fee → A类 → 直接 GenerateFromBankTxn
+//     insurance_fee → 第一类 → 直接 GenerateFromBankTxn
 //
 // 第二类（需中转）：
-//   - internal_transfer → B类 → 生成 PaymentEntry（内部转账单）→ 直接制证
-//   - business_receipt, business_payment, pay, receive, expense → B类
+//   - internal_transfer → 第二类 → 生成 PaymentEntry（内部转账单）→ 直接制证
+//   - business_receipt, business_payment, pay, receive, expense → 第二类
 //     → 生成 PaymentEntry → 核销发票（如有）→ 生成凭证
 //
 // C类：无法自动分类，status=manual_pending，待人工处理工作台

@@ -145,9 +145,9 @@ CREATE TABLE ai_feedback_logs (
 pending → classified     （AI分析或规则引擎分析后）
 classified → approved    （人工提交审核，通过 submit-review）
 classified → manual_pending （人工驳回）
-approved → voucher_generated （A类自动制证，在 submit-review 中完成）
-approved → payment_created  （B类生成收付款单，在 submit-review 中完成）
-approved → manual_pending   （B类无法生成收付款单时降级）
+approved → voucher_generated （第一类自动制证，在 submit-review 中完成）
+approved → payment_created  （第二类生成收付款单，在 submit-review 中完成）
+approved → manual_pending   （第二类无法生成收付款单时降级）
 ```
 
 ---
@@ -270,17 +270,17 @@ func (s *BankTxnReviewService) SubmitReview(ctx, tenantID, txnIDs) {
             txn.status = BankTxnReviewStatusApproved
         }
 
-        // 2. 草稿转正 + 生成下游单据
+        // 2. 草稿生成 + 下游单据（按第一类/第二类分流）
         switch classify(txn.classification) {
-        case "A":
-            // A类：生成凭证（docstatus=1）
-            voucher := s.voucherAutoSvc.GenerateFromBankTxn(tx, tenantID, txnID, docstatus=1)
+        case "第一类":
+            // 第一类：生成凭证草稿（docstatus=0），人审后正式生效
+            voucher := s.voucherAutoSvc.GenerateFromBankTxn(tx, tenantID, txnID, docstatus=0)
             txn.draft_voucher_id = voucher.ID
             txn.matched_journal_entry_id = voucher.ID
             txn.status = BankTxnReviewStatusVoucherGenerated
-        case "B":
-            // B类：生成收款单/付款单（confirmed）
-            payment := s.paymentSvc.GenerateFromBankTxn(tx, tenantID, txnID, status=confirmed)
+        case "第二类":
+            // 第二类：生成收款单/付款单草稿（status=draft），人确认后核销发票再生成凭证
+            payment := s.paymentSvc.GenerateFromBankTxn(tx, tenantID, txnID, status=draft)
             txn.draft_payment_id = payment.ID
             txn.matched_document_id = payment.ID
             txn.status = BankTxnReviewStatusPaymentCreated
