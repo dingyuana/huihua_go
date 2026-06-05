@@ -53,8 +53,17 @@
 
     <el-card>
       <el-table :data="filteredList" border stripe size="small" v-loading="loading">
-        <el-table-column prop="invoice_no" label="关联发票号" min-width="180" show-overflow-tooltip />
+        <el-table-column label="关联发票号" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-link type="primary" :underline="false" @click="openInvoice(row)">{{ row.invoice_no }}</el-link>
+          </template>
+        </el-table-column>
         <el-table-column prop="customer_name" label="客户名称" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="remark" label="备注" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.remark || '—' }}
+          </template>
+        </el-table-column>
         <el-table-column label="金额" width="140" align="right">
           <template #default="{ row }">
             <span class="amount-amount">¥{{ formatAmount(row.amount) }}</span>
@@ -112,8 +121,15 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fetchArInvoices, type ArInvoice } from '@/api/modules/ar_invoice'
+
+const router = useRouter()
+
+function openInvoice(row: ArInvoice) {
+  router.push({ path: '/invoices', query: { invoice_no: row.invoice_no } })
+}
 
 const loading = ref(false)
 const list = ref<ArInvoice[]>([])

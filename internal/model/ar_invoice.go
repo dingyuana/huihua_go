@@ -23,13 +23,14 @@ type ArInvoice struct {
 	InvoiceID   uuid.UUID       `db:"invoice_id"`
 	InvoiceNo   string          `db:"invoice_no"`
 	Amount      decimal.Decimal `db:"amount"`
-	DueDate     *time.Time     `db:"due_date"`
+	DueDate     *time.Time      `db:"due_date"`
 	Status      string          `db:"status"`
 	SourceType  string          `db:"source_type"`
-	CreatedBy   *uuid.UUID     `db:"created_by"`
-	CreatedAt   time.Time      `db:"created_at"`
-	ConfirmedAt *time.Time     `db:"confirmed_at"`
-	ConfirmedBy *uuid.UUID     `db:"confirmed_by"`
-	ApprovedBy  *uuid.UUID     `json:"approved_by,omitempty" db:"approved_by"`
-	ApprovedAt  *time.Time     `json:"approved_at,omitempty" db:"approved_at"`
+	Remark      *string         `json:"remark,omitempty" db:"remark"`
+	CreatedBy   *uuid.UUID      `db:"created_by"`
+	CreatedAt   time.Time       `db:"created_at"`
+	ConfirmedAt *time.Time      `db:"confirmed_at"`
+	ConfirmedBy *uuid.UUID      `db:"confirmed_by"`
+	ApprovedBy  *uuid.UUID      `json:"approved_by,omitempty" db:"approved_by"`
+	ApprovedAt  *time.Time      `json:"approved_at,omitempty" db:"approved_at"`
 }

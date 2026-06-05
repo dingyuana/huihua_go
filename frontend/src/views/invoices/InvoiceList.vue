@@ -417,7 +417,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, ArrowRight } from '@element-plus/icons-vue'
 import request from '@/api/request'
@@ -499,8 +500,29 @@ const vatInvoiceCount = computed(() => invoices.value.filter(i =>
 ).length)
 const redInvoiceCount = computed(() => invoices.value.filter(i => i.is_return).length)
 
+const route = useRoute()
+
+function openInvoiceByNo(invoiceNo: string) {
+  const target = invoices.value.find(i => i.invoice_no === invoiceNo)
+  if (target) {
+    showDetail.value = target
+  } else {
+    ElMessage.warning(`未找到发票 ${invoiceNo}`)
+  }
+}
+
 onMounted(async () => {
   await loadData()
+  const no = route.query.invoice_no
+  if (typeof no === 'string' && no) {
+    openInvoiceByNo(no)
+  }
+})
+
+watch(() => route.query.invoice_no, (no) => {
+  if (typeof no === 'string' && no && invoices.value.length > 0) {
+    openInvoiceByNo(no)
+  }
 })
 
 async function loadData() {

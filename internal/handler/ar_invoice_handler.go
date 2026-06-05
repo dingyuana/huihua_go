@@ -66,6 +66,7 @@ func (h *ArInvoiceHandler) List(c *fiber.Ctx) error {
 			"due_date":      dueDate,
 			"status":        ar.Status,
 			"source_type":   ar.SourceType,
+			"remark":        derefStr(ar.Remark),
 			"created_at":    ar.CreatedAt.Format("2006-01-02 15:04:05"),
 			"confirmed_at":  confirmedAt,
 			"approved_at":   approvedAt,
@@ -94,6 +95,7 @@ func (h *ArInvoiceHandler) GetByID(c *fiber.Ctx) error {
 	}
 
 	nameMap, _ := h.partyNameMap(c, tenantID)
+	remark, _ := h.repo.GetSourceInvoiceRemark(c.Context(), tenantID, ar.InvoiceID)
 
 	var dueDate, confirmedAt, approvedAt *time.Time
 	if ar.DueDate != nil {
@@ -116,6 +118,7 @@ func (h *ArInvoiceHandler) GetByID(c *fiber.Ctx) error {
 		"due_date":      dueDate,
 		"status":        ar.Status,
 		"source_type":   ar.SourceType,
+		"remark":        remark,
 		"created_at":    ar.CreatedAt,
 		"confirmed_at":  confirmedAt,
 		"approved_at":   approvedAt,

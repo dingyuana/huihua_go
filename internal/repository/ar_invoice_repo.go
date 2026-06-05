@@ -58,17 +58,20 @@ func (r *ArInvoiceRepository) GetByID(ctx context.Context, tenantID, id uuid.UUI
 // ListByTenant retrieves AR invoices by tenant, optionally filtering by status.
 func (r *ArInvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, status *string) ([]*model.ArInvoice, error) {
 	query := `
-		SELECT id, tenant_id, company_id, customer_id, invoice_id, invoice_no,
-			amount, due_date, status, source_type, created_by, created_at, confirmed_at, confirmed_by
-		FROM ar_invoices WHERE tenant_id = $1`
+		SELECT a.id, a.tenant_id, a.company_id, a.customer_id, a.invoice_id, a.invoice_no,
+			a.amount, a.due_date, a.status, a.source_type, a.created_by, a.created_at,
+			a.confirmed_at, a.confirmed_by, COALESCE(s.remark, '') AS remark
+		FROM ar_invoices a
+		LEFT JOIN sales_invoices s ON s.id = a.invoice_id
+		WHERE a.tenant_id = $1`
 	args := []interface{}{tenantID}
 
 	if status != nil {
-		query += " AND status = $2"
+		query += " AND a.status = $2"
 		args = append(args, *status)
 	}
 
-	query += " ORDER BY created_at DESC"
+	query += " ORDER BY a.created_at DESC"
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -79,10 +82,14 @@ func (r *ArInvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UU
 	var ars []*model.ArInvoice
 	for rows.Next() {
 		var ar model.ArInvoice
+		var remark string
 		if err := rows.Scan(&ar.ID, &ar.TenantID, &ar.CompanyID, &ar.CustomerID, &ar.InvoiceID, &ar.InvoiceNo,
 			&ar.Amount, &ar.DueDate, &ar.Status, &ar.SourceType, &ar.CreatedBy, &ar.CreatedAt,
-			&ar.ConfirmedAt, &ar.ConfirmedBy); err != nil {
+			&ar.ConfirmedAt, &ar.ConfirmedBy, &remark); err != nil {
 			return nil, err
+		}
+		if remark != "" {
+			ar.Remark = &remark
 		}
 		ars = append(ars, &ar)
 	}
@@ -158,6 +165,20 @@ func (r *ArInvoiceRepository) Confirm(ctx context.Context, tenantID, id, confirm
 		WHERE tenant_id = $1 AND id = $2`,
 		tenantID, id, now, confirmedBy, now, confirmedBy, model.ArInvoiceStatusConfirmed)
 	return err
+}
+
+func (r *ArInvoiceRepository) GetSourceInvoiceRemark(ctx context.Context, tenantID, invoiceID uuid.UUID) (string, error) {
+	var remark *string
+	err := r.pool.QueryRow(ctx, `
+		SELECT remark FROM sales_invoices WHERE tenant_id = $1 AND id = $2`,
+		tenantID, invoiceID).Scan(&remark)
+	if err != nil {
+		return "", err
+	}
+	if remark == nil {
+		return "", nil
+	}
+	return *remark, nil
 }
 
 // BatchCreate inserts multiple AR invoices in a loop.
