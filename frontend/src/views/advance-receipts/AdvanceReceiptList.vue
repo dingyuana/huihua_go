@@ -81,24 +81,42 @@
       </el-table>
     </el-card>
 
-    <el-drawer v-model="showDrawer" :title="`预收单 ${currentItem?.advance_no || ''}`" size="500px">
+    <el-drawer v-model="showDrawer" :title="`预收单 ${currentItem?.advance_no || ''}`" size="560px">
       <template v-if="currentItem">
-        <el-descriptions :column="1" border size="small">
-          <el-descriptions-item label="预收单号">{{ currentItem.advance_no }}</el-descriptions-item>
-          <el-descriptions-item label="客户ID">{{ currentItem.customer_id }}</el-descriptions-item>
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="预收单号" :span="2">{{ currentItem.advance_no }}</el-descriptions-item>
+          <el-descriptions-item label="客户ID" :span="2">{{ currentItem.customer_id }}</el-descriptions-item>
           <el-descriptions-item label="金额">¥{{ formatAmount(currentItem.amount) }}</el-descriptions-item>
-          <el-descriptions-item label="已分配">¥{{ formatAmount(currentItem.allocated_amount) }}</el-descriptions-item>
-          <el-descriptions-item label="未分配">¥{{ formatAmount(currentItem.outstanding_amount) }}</el-descriptions-item>
+          <el-descriptions-item label="已分配"><span class="amount-paid">¥{{ formatAmount(currentItem.allocated_amount) }}</span></el-descriptions-item>
+          <el-descriptions-item label="未分配" :span="2">
+            <span :class="Number(currentItem.outstanding_amount) > 0 ? 'amount-outstanding' : 'amount-cleared'">
+              ¥{{ formatAmount(currentItem.outstanding_amount) }}
+            </span>
+          </el-descriptions-item>
           <el-descriptions-item label="收款日期">{{ currentItem.received_date }}</el-descriptions-item>
           <el-descriptions-item label="到期日">{{ currentItem.due_date || '—' }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="statusTag(currentItem.status)" size="small">{{ statusLabel(currentItem.status) }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="凭证号">{{ currentItem.voucher_no || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="备注">{{ currentItem.remark || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="备注" :span="2">{{ currentItem.remark || '—' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ currentItem.created_at }}</el-descriptions-item>
           <el-descriptions-item label="确认时间">{{ currentItem.confirmed_at || '—' }}</el-descriptions-item>
         </el-descriptions>
+
+        <el-divider v-if="currentItem.outstanding_amount !== '0.00'" content-position="left">分配（预收冲应收）</el-divider>
+        <div v-if="currentItem.outstanding_amount !== '0.00'" class="allocate-section">
+          <el-button type="warning" size="small" @click="openAllocateDialog(currentItem)">分配到应收单</el-button>
+          <el-button size="small" @click="loadAllocations(currentItem)">查看已分配明细</el-button>
+        </div>
+        <el-table v-if="allocations.length > 0" :data="allocations" size="small" border max-height="280" style="margin-top: 8px">
+          <el-table-column prop="allocation_date" label="日期" width="110" />
+          <el-table-column prop="target_no" label="关联发票" width="160" show-overflow-tooltip />
+          <el-table-column label="金额" align="right" width="120">
+            <template #default="{ row }">¥{{ formatAmount(row.allocated_amount) }}</template>
+          </el-table-column>
+          <el-table-column prop="voucher_no" label="凭证号" width="120" show-overflow-tooltip />
+        </el-table>
       </template>
     </el-drawer>
 
@@ -133,13 +151,16 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   fetchAdvanceReceipts, createAdvanceReceipt, confirmAdvanceReceipt,
   type AdvanceReceipt,
 } from '@/api/modules/advance_receipt'
+import { listAdvanceAllocations, allocateAdvance } from '@/api/modules/advance_allocation'
 
 const loading = ref(false)
+const router = useRouter()
 const list = ref<AdvanceReceipt[]>([])
 const filter = reactive({ status: '' })
 
@@ -163,6 +184,7 @@ const stats = computed(() => {
 
 const showDrawer = ref(false)
 const currentItem = ref<AdvanceReceipt | null>(null)
+const allocations = ref<any[]>([])
 
 const createDialogVisible = ref(false)
 const creating = ref(false)
@@ -190,6 +212,21 @@ function resetFilter() { filter.status = '' }
 function showDetail(row: AdvanceReceipt) {
   currentItem.value = row
   showDrawer.value = true
+  allocations.value = []
+}
+
+async function loadAllocations(row: AdvanceReceipt) {
+  try {
+    const res: any = await listAdvanceAllocations(row.id)
+    allocations.value = res?.list || res?.data?.list || []
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '加载分配明细失败')
+  }
+}
+
+function openAllocateDialog(row: AdvanceReceipt) {
+  ElMessage.info(`分配到应收单：进入应收款单页面，手动用预收 ${row.advance_no} (¥${row.outstanding_amount}) 冲抵`)
+  router.push({ path: '/ar-invoices' })
 }
 
 function openCreateDialog() {

@@ -57,19 +57,21 @@ func (h *ApInvoiceHandler) List(c *fiber.Ctx) error {
 			approvedAt = ap.ApprovedAt.Format("2006-01-02 15:04:05")
 		}
 		result[i] = map[string]interface{}{
-			"id":            ap.ID,
-			"invoice_id":    ap.InvoiceID,
-			"invoice_no":    ap.InvoiceNo,
-			"supplier_id":   ap.SupplierID,
-			"supplier_name": nameMap[ap.SupplierID],
-			"amount":        ap.Amount.String(),
-			"due_date":      dueDate,
-			"status":        ap.Status,
-			"source_type":   ap.SourceType,
-			"remark":        derefStr(ap.Remark),
-			"created_at":    ap.CreatedAt.Format("2006-01-02 15:04:05"),
-			"confirmed_at":  confirmedAt,
-			"approved_at":   approvedAt,
+			"id":               ap.ID,
+			"invoice_id":       ap.InvoiceID,
+			"invoice_no":       ap.InvoiceNo,
+			"supplier_id":      ap.SupplierID,
+			"supplier_name":    nameMap[ap.SupplierID],
+			"amount":           ap.Amount.String(),
+			"paid_amount":      ap.PaidAmount.String(),
+			"outstanding_amount": ap.OutstandingAmount.String(),
+			"due_date":         dueDate,
+			"status":           ap.Status,
+			"source_type":      ap.SourceType,
+			"remark":           derefStr(ap.Remark),
+			"created_at":       ap.CreatedAt.Format("2006-01-02 15:04:05"),
+			"confirmed_at":     confirmedAt,
+			"approved_at":      approvedAt,
 		}
 	}
 
@@ -109,18 +111,20 @@ func (h *ApInvoiceHandler) GetByID(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"id":            ap.ID,
-		"invoice_id":    ap.InvoiceID,
-		"invoice_no":    ap.InvoiceNo,
-		"supplier_id":   ap.SupplierID,
-		"supplier_name": nameMap[ap.SupplierID],
-		"amount":        ap.Amount.String(),
-		"due_date":      dueDate,
-		"status":        ap.Status,
-		"source_type":   ap.SourceType,
-		"remark":        remark,
-		"created_at":    ap.CreatedAt,
-		"confirmed_at":  confirmedAt,
-		"approved_at":   approvedAt,
+		"id":               ap.ID,
+		"invoice_id":       ap.InvoiceID,
+		"invoice_no":       ap.InvoiceNo,
+		"supplier_id":      ap.SupplierID,
+		"supplier_name":    nameMap[ap.SupplierID],
+		"amount":           ap.Amount.String(),
+		"paid_amount":      ap.PaidAmount.String(),
+		"outstanding_amount": ap.OutstandingAmount.String(),
+		"due_date":         dueDate,
+		"status":           ap.Status,
+		"source_type":      ap.SourceType,
+		"remark":           remark,
+		"created_at":       ap.CreatedAt,
+		"confirmed_at":     confirmedAt,
+		"approved_at":      approvedAt,
 	})
 }

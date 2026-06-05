@@ -10,9 +10,11 @@ import (
 type ApInvoiceStatus string
 
 const (
-	ApInvoiceStatusDraft     ApInvoiceStatus = "draft"
-	ApInvoiceStatusConfirmed ApInvoiceStatus = "confirmed"
-	ApInvoiceStatusReversed  ApInvoiceStatus = "reversed"
+	ApInvoiceStatusDraft         ApInvoiceStatus = "draft"
+	ApInvoiceStatusConfirmed     ApInvoiceStatus = "confirmed"
+	ApInvoiceStatusPartiallyPaid ApInvoiceStatus = "partially_paid"
+	ApInvoiceStatusPaid          ApInvoiceStatus = "paid"
+	ApInvoiceStatusReversed      ApInvoiceStatus = "reversed"
 )
 
 type ApInvoice struct {

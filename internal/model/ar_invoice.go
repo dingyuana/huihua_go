@@ -10,9 +10,11 @@ import (
 type ArInvoiceStatus string
 
 const (
-	ArInvoiceStatusDraft     ArInvoiceStatus = "draft"
-	ArInvoiceStatusConfirmed ArInvoiceStatus = "confirmed"
-	ArInvoiceStatusReversed  ArInvoiceStatus = "reversed"
+	ArInvoiceStatusDraft         ArInvoiceStatus = "draft"
+	ArInvoiceStatusConfirmed     ArInvoiceStatus = "confirmed"
+	ArInvoiceStatusPartiallyPaid ArInvoiceStatus = "partially_paid"
+	ArInvoiceStatusPaid          ArInvoiceStatus = "paid"
+	ArInvoiceStatusReversed      ArInvoiceStatus = "reversed"
 )
 
 type ArInvoice struct {

@@ -388,6 +388,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/advance-allocations", advanceAllocationHandler.Allocate)
 	api.Post("/advance-allocations/:id/auto-match", advanceAllocationHandler.AutoMatch)
 	api.Get("/advance-allocations", advanceAllocationHandler.ListByAdvance)
+	api.Get("/advance-allocations/by-target", advanceAllocationHandler.ListByTarget)
 
 	creditControlHandler := handler.NewCreditControlHandler(creditControlSvc)
 	agingHandler := handler.NewAgingHandler(agingSvc)

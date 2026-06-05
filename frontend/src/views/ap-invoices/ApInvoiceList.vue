@@ -69,6 +69,16 @@
             <span class="amount-amount">¥{{ formatAmount(row.amount) }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="已付" width="120" align="right">
+          <template #default="{ row }">
+            <span class="amount-paid">¥{{ formatAmount(row.paid_amount) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="未付" width="130" align="right">
+          <template #default="{ row }">
+            <span :class="outstandingCls(row.outstanding_amount)">¥{{ formatAmount(row.outstanding_amount) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="due_date" label="到期日" width="110">
           <template #default="{ row }">
             {{ row.due_date || '—' }}
@@ -98,13 +108,21 @@
       </el-table>
     </el-card>
 
-    <el-drawer v-model="showDrawer" :title="`应付款单 ${currentItem?.invoice_no || ''}`" size="480px">
+    <el-drawer v-model="showDrawer" :title="`应付款单 ${currentItem?.invoice_no || ''}`" size="560px">
       <template v-if="currentItem">
-        <el-descriptions :column="1" border size="small">
-          <el-descriptions-item label="应付单ID">{{ currentItem.id }}</el-descriptions-item>
-          <el-descriptions-item label="关联发票号">{{ currentItem.invoice_no }}</el-descriptions-item>
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="应付单ID" :span="2">{{ currentItem.id }}</el-descriptions-item>
+          <el-descriptions-item label="关联发票号">
+            <el-link type="primary" :underline="false" @click="openInvoice(currentItem)">{{ currentItem.invoice_no }}</el-link>
+          </el-descriptions-item>
           <el-descriptions-item label="供应商名称">{{ currentItem.supplier_name || '—' }}</el-descriptions-item>
           <el-descriptions-item label="应付金额">¥{{ formatAmount(currentItem.amount) }}</el-descriptions-item>
+          <el-descriptions-item label="已付金额"><span class="amount-paid">¥{{ formatAmount(currentItem.paid_amount) }}</span></el-descriptions-item>
+          <el-descriptions-item label="未付金额" :span="2">
+            <span :class="Number(currentItem.outstanding_amount) > 0 ? 'amount-outstanding' : 'amount-cleared'">
+              ¥{{ formatAmount(currentItem.outstanding_amount) }}
+            </span>
+          </el-descriptions-item>
           <el-descriptions-item label="到期日">{{ currentItem.due_date || '—' }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="statusTag(currentItem.status)" size="small">{{ statusLabel(currentItem.status) }}</el-tag>
@@ -113,8 +131,29 @@
           <el-descriptions-item label="备注">{{ currentItem.remark || '—' }}</el-descriptions-item>
           <el-descriptions-item label="生成时间">{{ currentItem.created_at }}</el-descriptions-item>
           <el-descriptions-item label="确认时间">{{ currentItem.confirmed_at || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="批准时间">{{ currentItem.approved_at || '—' }}</el-descriptions-item>
         </el-descriptions>
+
+        <el-divider content-position="left">联查</el-divider>
+        <div class="trace-section">
+          <el-button size="small" @click="loadAllocations(currentItem)">查看核销记录</el-button>
+          <el-divider direction="vertical" />
+          <el-link type="primary" :underline="false" @click="openInvoice(currentItem)">查看源发票（只读）</el-link>
+        </div>
+
+        <el-table v-if="allocations.length > 0" :data="allocations" size="small" border max-height="280" style="margin-top: 8px">
+          <el-table-column prop="allocation_date" label="日期" width="110" />
+          <el-table-column label="类型" width="100">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.advance_type === 'payment' ? 'warning' : 'info'">
+                {{ row.advance_type === 'payment' ? '预付冲抵' : '其他核销' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="金额" align="right" width="120">
+            <template #default="{ row }">¥{{ formatAmount(row.allocated_amount) }}</template>
+          </el-table-column>
+          <el-table-column prop="voucher_no" label="凭证号" width="120" show-overflow-tooltip />
+        </el-table>
       </template>
     </el-drawer>
   </div>
@@ -125,6 +164,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fetchApInvoices, type ApInvoice } from '@/api/modules/ap_invoice'
+import { listAdvanceAllocationsByTarget } from '@/api/modules/advance_allocation'
 
 const router = useRouter()
 
@@ -167,6 +207,7 @@ const stats = computed(() => {
 
 const showDrawer = ref(false)
 const currentItem = ref<ApInvoice | null>(null)
+const allocations = ref<any[]>([])
 
 async function loadData() {
   loading.value = true
@@ -191,6 +232,17 @@ function resetFilter() {
 function showDetail(row: ApInvoice) {
   currentItem.value = row
   showDrawer.value = true
+  allocations.value = []
+}
+
+async function loadAllocations(row: ApInvoice) {
+  try {
+    const res: any = await listAdvanceAllocationsByTarget(row.invoice_id)
+    allocations.value = res?.list || res?.data?.list || []
+    if (allocations.value.length === 0) ElMessage.info('该应付单暂无核销记录')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '加载核销记录失败')
+  }
 }
 
 function openInvoice(row: ApInvoice) {
@@ -201,6 +253,8 @@ function statusLabel(s: string): string {
   switch (s) {
     case 'draft': return '草稿'
     case 'confirmed': return '已确认'
+    case 'partially_paid': return '部分核销'
+    case 'paid': return '已核销'
     case 'reversed': return '已冲销'
     default: return s || '—'
   }
@@ -210,9 +264,17 @@ function statusTag(s: string): 'success' | 'warning' | 'info' | 'primary' | 'dan
   switch (s) {
     case 'draft': return 'warning'
     case 'confirmed': return 'success'
+    case 'partially_paid': return 'warning'
+    case 'paid': return 'success'
     case 'reversed': return 'info'
     default: return 'info'
   }
+}
+
+function outstandingCls(val: any): string {
+  const n = Number(val) || 0
+  if (n <= 0) return 'amount-cleared'
+  return 'amount-outstanding'
 }
 
 function sourceTypeLabel(s: string): string {
@@ -249,5 +311,8 @@ onMounted(loadData)
     &.confirmed .stat-num { color: #389e0d; }
   }
   .amount-amount { color: #d4380d; font-weight: 600; }
+  .amount-paid { color: #389e0d; }
+  .amount-outstanding { color: #d4380d; font-weight: 600; }
+  .amount-cleared { color: #52c41a; }
 }
 </style>

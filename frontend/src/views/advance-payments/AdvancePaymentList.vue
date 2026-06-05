@@ -61,24 +61,39 @@
       </el-table>
     </el-card>
 
-    <el-drawer v-model="showDrawer" :title="`预付单 ${currentItem?.advance_no || ''}`" size="500px">
+    <el-drawer v-model="showDrawer" :title="`预付单 ${currentItem?.advance_no || ''}`" size="560px">
       <template v-if="currentItem">
-        <el-descriptions :column="1" border size="small">
-          <el-descriptions-item label="预付单号">{{ currentItem.advance_no }}</el-descriptions-item>
-          <el-descriptions-item label="供应商ID">{{ currentItem.supplier_id }}</el-descriptions-item>
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="预付单号" :span="2">{{ currentItem.advance_no }}</el-descriptions-item>
+          <el-descriptions-item label="供应商ID" :span="2">{{ currentItem.supplier_id }}</el-descriptions-item>
           <el-descriptions-item label="金额">¥{{ formatAmount(currentItem.amount) }}</el-descriptions-item>
-          <el-descriptions-item label="已分配">¥{{ formatAmount(currentItem.allocated_amount) }}</el-descriptions-item>
-          <el-descriptions-item label="未分配">¥{{ formatAmount(currentItem.outstanding_amount) }}</el-descriptions-item>
+          <el-descriptions-item label="已分配"><span class="amount-paid">¥{{ formatAmount(currentItem.allocated_amount) }}</span></el-descriptions-item>
+          <el-descriptions-item label="未分配" :span="2">
+            <span :class="Number(currentItem.outstanding_amount) > 0 ? 'amount-outstanding' : 'amount-cleared'">
+              ¥{{ formatAmount(currentItem.outstanding_amount) }}
+            </span>
+          </el-descriptions-item>
           <el-descriptions-item label="付款日期">{{ currentItem.paid_date }}</el-descriptions-item>
           <el-descriptions-item label="到期日">{{ currentItem.due_date || '—' }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="statusTag(currentItem.status)" size="small">{{ statusLabel(currentItem.status) }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="凭证号">{{ currentItem.voucher_no || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="备注">{{ currentItem.remark || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="备注" :span="2">{{ currentItem.remark || '—' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ currentItem.created_at }}</el-descriptions-item>
           <el-descriptions-item label="确认时间">{{ currentItem.confirmed_at || '—' }}</el-descriptions-item>
         </el-descriptions>
+
+        <el-divider content-position="left">已分配明细</el-divider>
+        <el-button size="small" @click="loadAllocations(currentItem)">查看已分配明细</el-button>
+        <el-table v-if="allocations.length > 0" :data="allocations" size="small" border max-height="280" style="margin-top: 8px">
+          <el-table-column prop="allocation_date" label="日期" width="110" />
+          <el-table-column prop="target_no" label="关联发票" width="160" show-overflow-tooltip />
+          <el-table-column label="金额" align="right" width="120">
+            <template #default="{ row }">¥{{ formatAmount(row.allocated_amount) }}</template>
+          </el-table-column>
+          <el-table-column prop="voucher_no" label="凭证号" width="120" show-overflow-tooltip />
+        </el-table>
       </template>
     </el-drawer>
 
@@ -118,6 +133,7 @@ import {
   fetchAdvancePayments, createAdvancePayment, confirmAdvancePayment,
   type AdvancePayment,
 } from '@/api/modules/advance_payment'
+import { listAdvanceAllocations } from '@/api/modules/advance_allocation'
 
 const loading = ref(false)
 const list = ref<AdvancePayment[]>([])
@@ -143,6 +159,7 @@ const stats = computed(() => {
 
 const showDrawer = ref(false)
 const currentItem = ref<AdvancePayment | null>(null)
+const allocations = ref<any[]>([])
 
 const createDialogVisible = ref(false)
 const creating = ref(false)
@@ -170,6 +187,16 @@ function resetFilter() { filter.status = '' }
 function showDetail(row: AdvancePayment) {
   currentItem.value = row
   showDrawer.value = true
+  allocations.value = []
+}
+
+async function loadAllocations(row: AdvancePayment) {
+  try {
+    const res: any = await listAdvanceAllocations(row.id)
+    allocations.value = res?.list || res?.data?.list || []
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '加载分配明细失败')
+  }
 }
 
 function openCreateDialog() {
