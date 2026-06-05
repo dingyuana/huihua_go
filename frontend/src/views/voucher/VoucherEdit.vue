@@ -19,6 +19,9 @@
         <el-form-item label="编号">
           <el-input :model-value="voucherNo" disabled style="width: 160px" />
         </el-form-item>
+        <el-form-item v-if="!isNew && sourceDocNo" label="来源单据">
+          <el-tag type="success" size="small">{{ sourceType === 'invoice' ? '发票' : sourceType }}: {{ sourceDocNo }}</el-tag>
+        </el-form-item>
         <el-form-item v-if="!isNew && reversalId" label="关联冲销">
           <el-tag type="warning" size="small">冲销凭证: {{ reversalId }}</el-tag>
         </el-form-item>
@@ -188,6 +191,8 @@ const voucherNo = computed(() => {
   return voucherNoRef.value || '记-2026-05-XXXX'
 })
 const voucherNoRef = ref('')
+const sourceDocNo = ref('')
+const sourceType = ref('')
 
 onMounted(async () => {
   if (isNew.value) {
@@ -205,6 +210,8 @@ onMounted(async () => {
       docstatus.value = data.docstatus ?? 0
       reversalId.value = data.reversal_id || ''
       voucherNoRef.value = data.voucher_no || ''
+      sourceDocNo.value = data.source_doc_no || ''
+      sourceType.value = data.source_type || ''
     }
     if (linesData.length) {
       lines.value = linesData.map((l: any) => ({

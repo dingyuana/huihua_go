@@ -243,6 +243,7 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 		SourceType:      "invoice",
 		SourceID:        invoiceID,
 		SourceInvoiceID: invoiceID,
+		SourceDocNo:     &invoice.InvoiceNo,
 	}
 
 	var lines []model.JournalEntryLine
