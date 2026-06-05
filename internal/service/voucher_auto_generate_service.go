@@ -268,7 +268,7 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 
 	if isSales {
 		if isReturn {
-			// Red sales: Cr AR, Dr Revenue
+			// Red sales: Cr AR, Dr Revenue, Dr Tax
 			arAccountID := s.findAccountByCode(ctx, tenantID, "1122")
 			if arAccountID != nil {
 				lines = append(lines, model.JournalEntryLine{
@@ -277,15 +277,25 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 					Debit: decimal.Zero, Credit: amount,
 				})
 			}
+			// Revenue line uses net amount (excluding tax)
+			revAmount := amount.Sub(invoice.TaxAmount.Abs())
 			if revAccountID := s.findAccountByCode(ctx, tenantID, "5001"); revAccountID != nil {
 				lines = append(lines, model.JournalEntryLine{
 					ID: uuid.New(), JournalEntryID: je.ID,
 					AccountID: *revAccountID,
-					Debit: amount, Credit: decimal.Zero,
+					Debit: revAmount, Credit: decimal.Zero,
+				})
+			}
+			// Tax line
+			if taxAccountID := s.findAccountByCode(ctx, tenantID, "2221"); taxAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *taxAccountID,
+					Debit: invoice.TaxAmount.Abs(), Credit: decimal.Zero,
 				})
 			}
 		} else {
-			// Normal sales: Dr AR, Cr Revenue
+			// Normal sales: Dr AR, Cr Revenue, Cr Tax
 			arAccountID := s.findAccountByCode(ctx, tenantID, "1122")
 			if arAccountID != nil {
 				lines = append(lines, model.JournalEntryLine{
@@ -294,11 +304,21 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 					Debit: amount, Credit: decimal.Zero,
 				})
 			}
+			// Revenue line uses net amount (excluding tax)
+			revAmount := amount.Sub(invoice.TaxAmount)
 			if revAccountID := s.findAccountByCode(ctx, tenantID, "5001"); revAccountID != nil {
 				lines = append(lines, model.JournalEntryLine{
 					ID: uuid.New(), JournalEntryID: je.ID,
 					AccountID: *revAccountID,
-					Debit: decimal.Zero, Credit: amount,
+					Debit: decimal.Zero, Credit: revAmount,
+				})
+			}
+			// Tax line
+			if taxAccountID := s.findAccountByCode(ctx, tenantID, "2221"); taxAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *taxAccountID,
+					Debit: decimal.Zero, Credit: invoice.TaxAmount,
 				})
 			}
 		}
