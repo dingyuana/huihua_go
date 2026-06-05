@@ -213,7 +213,7 @@ func (s *InvoiceStateMachine) RollbackAllocation(
 		})
 		metadata, _ := json.Marshal(map[string]string{
 			"reason":         "payment cancelled",
-			"allocated_amount": fmt.Sprintf("%f", amount),
+			"allocated_amount": amount.String(),
 		})
 		auditLog := &model.AuditLog{
 			ID:            uuid.New(),

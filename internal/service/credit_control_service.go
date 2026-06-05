@@ -69,7 +69,7 @@ func (s *CreditControlService) CheckOnConfirm(ctx context.Context, tenantID, par
 		return nil
 	}
 	if p.CreditOverdraftDays <= 0 {
-		return fmt.Errorf("客户 %s 信用额度不足：可用 %.2f，需要 %.2f", p.Name, available, amount)
+		return fmt.Errorf("客户 %s 信用额度不足：可用 %s，需要 %s", p.Name, available.String(), amount.String())
 	}
 	return nil
 }
