@@ -227,6 +227,10 @@ func newBankTxnReviewService(pool *pgxpool.Pool) *BankTxnReviewService {
 	accountRepo := repository.NewAccountRepository(pool)
 	busDocMappingRepo := repository.NewBusDocMappingRepository(pool)
 	voucherTemplateRepo := repository.NewVoucherTemplateRepository(pool)
+	arRepo := repository.NewArInvoiceRepository(pool)
+	apRepo := repository.NewApInvoiceRepository(pool)
+	advanceReceiptRepo := repository.NewAdvanceReceiptRepository(pool)
+	advancePaymentRepo := repository.NewAdvancePaymentRepository(pool)
 	approvalRepo := repository.NewApprovalRepository(pool)
 
 	classificationSvc := NewClassificationRuleService(repository.NewClassificationRuleRepository(pool))
@@ -235,8 +239,9 @@ func newBankTxnReviewService(pool *pgxpool.Pool) *BankTxnReviewService {
 
 	voucherSvc := NewVoucherAutoGenerateService(
 		journalRepo, glRepo, repo, bankRepo,
-		invoiceRepo, paymentRepo, partyRepo, accountRepo,
-		busDocMappingRepo, classificationSvc, templateSvc, approvalSvc,
+		invoiceRepo, arRepo, apRepo, paymentRepo, partyRepo, accountRepo,
+		busDocMappingRepo, advanceReceiptRepo, advancePaymentRepo,
+		classificationSvc, templateSvc, approvalSvc,
 	)
 
 	paymentSvc := NewPaymentEntryService(paymentRepo, partyRepo, bankRepo, accountRepo, repo)

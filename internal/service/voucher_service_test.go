@@ -22,6 +22,11 @@ func newTestVoucherService(t *testing.T) *VoucherService {
 	}
 	t.Cleanup(func() { pool.Close() })
 
+	paymentStateMachine := NewPaymentStateMachine(
+		repository.NewPaymentEntryRepository(pool),
+		repository.NewInvoiceRepository(pool),
+		repository.NewAuditRepository(pool),
+	)
 	return NewVoucherService(
 		repository.NewJournalRepository(pool),
 		NewVoucherTemplateService(
@@ -32,6 +37,7 @@ func newTestVoucherService(t *testing.T) *VoucherService {
 		repository.NewPaymentEntryRepository(pool),
 		repository.NewAccountRepository(pool),
 		NewClassificationRuleService(repository.NewClassificationRuleRepository(pool)),
+		paymentStateMachine,
 		repository.NewInvoiceRepository(pool),
 	)
 }
