@@ -16,27 +16,30 @@ import (
 
 // ReconciliationService implements five-level matching between bank transactions and invoices.
 type ReconciliationService struct {
-	pool        *pgxpool.Pool
-	bankTxnRepo *repository.BankTransactionRepository
-	invoiceRepo *repository.InvoiceRepository
-	reconRepo   *repository.ReconciliationRepository
-	journalRepo *repository.JournalRepository
+	pool           *pgxpool.Pool
+	bankTxnRepo    *repository.BankTransactionRepository
+	arInvoiceRepo  *repository.ArInvoiceRepository
+	invoiceRepo    *repository.InvoiceRepository
+	reconRepo      *repository.ReconciliationRepository
+	journalRepo    *repository.JournalRepository
 }
 
 // NewReconciliationService creates a new ReconciliationService.
 func NewReconciliationService(
 	pool *pgxpool.Pool,
 	bankTxnRepo *repository.BankTransactionRepository,
+	arInvoiceRepo *repository.ArInvoiceRepository,
 	invoiceRepo *repository.InvoiceRepository,
 	reconRepo *repository.ReconciliationRepository,
 	journalRepo *repository.JournalRepository,
 ) *ReconciliationService {
 	return &ReconciliationService{
-		pool:        pool,
-		bankTxnRepo: bankTxnRepo,
-		invoiceRepo: invoiceRepo,
-		reconRepo:   reconRepo,
-		journalRepo: journalRepo,
+		pool:          pool,
+		bankTxnRepo:   bankTxnRepo,
+		arInvoiceRepo: arInvoiceRepo,
+		invoiceRepo:   invoiceRepo,
+		reconRepo:     reconRepo,
+		journalRepo:   journalRepo,
 	}
 }
 
@@ -376,14 +379,14 @@ func withinDays(a, b time.Time, days int) bool {
 	return diff.Hours() < float64(days)*24
 }
 
-// ReconcilePaymentEntry reconciles a single PaymentEntry with invoices.
+// ReconcilePaymentEntry reconciles a single PaymentEntry with outstanding ArInvoices.
 // Returns a pending reconciliation pair for human confirmation.
 // Returns nil,nil if no match found (not an error — e.g. pure payment with no invoice).
 func (s *ReconciliationService) ReconcilePaymentEntry(
 	ctx context.Context,
 	tenantID, paymentEntryID uuid.UUID,
 ) (*model.ReconciliationPair, error) {
-	// 1. Load PaymentEntry via raw SQL
+	// 1. Load PaymentEntry
 	var pe model.PaymentEntry
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
@@ -402,17 +405,17 @@ func (s *ReconciliationService) ReconcilePaymentEntry(
 		return nil, fmt.Errorf("load payment entry: %w", err)
 	}
 
-	// 2. Query outstanding invoices (outstanding_amount > 0, status = verified)
-	invoices, err := s.invoiceRepo.ListByTenant(ctx, tenantID, model.InvoiceFilter{Status: "verified"})
-	if err != nil {
-		return nil, fmt.Errorf("list invoices: %w", err)
-	}
-
-	// Filter to outstanding only
-	var outstandingInvoices []model.SalesInvoice
-	for _, inv := range invoices {
-		if inv.OutstandingAmount.GreaterThan(decimal.Zero) {
-			outstandingInvoices = append(outstandingInvoices, inv)
+	// 2. Query outstanding ArInvoices (outstanding_amount > 0)
+	var outstandingInvoices []*model.ArInvoice
+	if s.arInvoiceRepo != nil {
+		// status nil = all; filter in memory for outstanding > 0
+		invoices, err := s.arInvoiceRepo.ListByTenant(ctx, tenantID, nil)
+		if err == nil {
+			for _, inv := range invoices {
+				if inv.OutstandingAmount.GreaterThan(decimal.Zero) {
+					outstandingInvoices = append(outstandingInvoices, inv)
+				}
+			}
 		}
 	}
 	if len(outstandingInvoices) == 0 {
@@ -439,11 +442,10 @@ func (s *ReconciliationService) ReconcilePaymentEntry(
 		peParty = *pe.CounterpartyName
 	}
 
-	var matchedInv *model.SalesInvoice
+	var matchedInv *model.ArInvoice
 
-	// L1: payment entry description/reference contains invoice ID
-	for i := range outstandingInvoices {
-		inv := &outstandingInvoices[i]
+	// L1: payment entry description/reference contains ArInvoice ID
+	for _, inv := range outstandingInvoices {
 		if strings.Contains(peRef, inv.ID.String()) || strings.Contains(peDesc, inv.ID.String()) {
 			matchedInv = inv
 			break
@@ -452,8 +454,7 @@ func (s *ReconciliationService) ReconcilePaymentEntry(
 
 	// L2: invoice_no appears in PaymentEntry description
 	if matchedInv == nil {
-		for i := range outstandingInvoices {
-			inv := &outstandingInvoices[i]
+		for _, inv := range outstandingInvoices {
 			if peDesc != "" && inv.InvoiceNo != "" && strings.Contains(peDesc, inv.InvoiceNo) {
 				matchedInv = inv
 				break
@@ -463,11 +464,11 @@ func (s *ReconciliationService) ReconcilePaymentEntry(
 
 	// L3: counterparty + amount + date (±3 days)
 	if matchedInv == nil {
-		for i := range outstandingInvoices {
-			inv := &outstandingInvoices[i]
-			if paymentAmt.Equal(inv.TotalAmount) &&
+		for _, inv := range outstandingInvoices {
+			if paymentAmt.Equal(inv.Amount) &&
 				peParty != "" &&
-				withinDays(pe.PostingDate, inv.PostingDate, 3) {
+				inv.DueDate != nil &&
+				withinDays(pe.PostingDate, *inv.DueDate, 3) {
 				matchedInv = inv
 				break
 			}
@@ -478,40 +479,40 @@ func (s *ReconciliationService) ReconcilePaymentEntry(
 		return nil, nil // no match found — not an error
 	}
 
-	// 4. Determine allocation amount (min of payment and outstanding)
+	// 3. Determine allocation amount (min of payment and outstanding)
 	allocAmt := paymentAmt
 	if allocAmt.GreaterThan(matchedInv.OutstandingAmount) {
 		allocAmt = matchedInv.OutstandingAmount
 	}
 
-	// 4a. Create payment_allocations record (status = pending)
+	// 4. Create payment_allocations record (status = pending, invoice_type = 'ar_invoice')
 	allocID := uuid.New()
 	now := time.Now()
 	_, err = s.pool.Exec(ctx, `
 		INSERT INTO payment_allocations (id, payment_entry_id, invoice_id, invoice_type, allocated_amount, tenant_id, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		allocID, paymentEntryID, matchedInv.ID, nil, allocAmt, tenantID, now,
+		VALUES ($1, $2, $3, 'ar_invoice', $4, $5, $6)`,
+		allocID, paymentEntryID, matchedInv.ID, allocAmt, tenantID, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create payment allocation: %w", err)
 	}
 
-	// 4b. Return ReconciliationPair (status = pending)
-	// Note: invoice outstanding_amount is NOT deducted here — deferred until ConfirmPair
-
-	// 5. Return ReconciliationPair (status = pending)
+	// 5. Save ReconciliationPair to database
 	pair := model.ReconciliationPair{
 		ID:         uuid.New(),
 		TenantID:   tenantID,
 		SourceType: "payment_entry",
 		SourceID:   paymentEntryID,
-		TargetType: "invoice",
+		TargetType: "ar_invoice",
 		TargetID:   matchedInv.ID,
 		Amount:     allocAmt,
 		Status:     "pending",
 		MatchLevel: "auto",
 		MatchedAt:  &now,
-		CreatedAt:   now,
+		CreatedAt:  now,
+	}
+	if err := s.reconRepo.Create(ctx, &pair); err != nil {
+		return nil, fmt.Errorf("create reconciliation pair: %w", err)
 	}
 
 	return &pair, nil
