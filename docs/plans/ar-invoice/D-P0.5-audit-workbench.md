@@ -1,23 +1,27 @@
-# SPEC Patch: D-P0.5 — 审核工作台（补充阻断统计 + 过账动作）
+# SPEC: D-P0.5 — 审核工作台 API
 
 ## 基本信息
-- **任务 ID**: D-P0.5-v2
-- **类型**: spec-patch
-- **优先级**: P1
-- **依赖**: D-P0.5（原有逻辑）
-- **补丁目标**: `docs/plans/D-P0.5-audit-workbench-spec.md`
+- **任务 ID**: D-P0.5
+- **类型**: feature
+- **优先级**: P0
+- **依赖**: D-P0.3（需要 ArInvoice 已可查询）
+- **负责 Profile**: dev
 
----
+## 背景
+人工审核需要"待审任务池"视图，汇总展示所有草稿单据，供财务人员逐级审核。
 
-## 变更 1：BlockedCount 分层统计（新增）
+## 目标
+在 `internal/handler/audit_handler.go` 新增审核工作台 handler，注册路由 `GET /api/v1/audit/tasks`
 
-### 背景
-原 SPEC 的 `BlockedCount` 只统计"凭证因 ArInvoice draft 被阻断"，但新文档 §5 明确了两类阻断：
-1. **应收单草稿阻断**：凭证草稿已生成，但关联的 ArInvoice 仍为 draft 状态
-2. **客户草稿阻断**：若有客户草稿状态，客户草稿会阻断其下级单据（我们当前不做客户草稿，此条仅供参考）
-
-### 修正后的汇总统计
+## 响应结构
 ```go
+type AuditTasksResult struct {
+    InvoiceDrafts []InvoiceDraftSummary  `json:"invoice_drafts"`
+    ArInvoices    []ArInvoiceSummary     `json:"ar_invoices"`
+    Vouchers      []VoucherDraftSummary  `json:"vouchers"`
+    Summary       AuditTaskSummary       `json:"summary"`
+}
+
 type AuditTaskSummary struct {
     InvoiceDraftCount   int `json:"invoice_draft_count"`
     ArInvoiceDraftCount int `json:"ar_invoice_draft_count"`
@@ -28,6 +32,12 @@ type AuditTaskSummary struct {
     InvoiceBlockedCount    int `json:"invoice_blocked_count"`    // 应收单因发票草稿无法确认（本系统已设为自动审核发票草稿，实际应为 0）
 }
 ```
+
+**汇总逻辑**：
+- `InvoiceDrafts`：查询 `sales_invoices WHERE status = 'draft'`，取前50条
+- `ArInvoices`：查询 `ar_invoices WHERE status = 'draft'`，取前50条
+- `Vouchers`：查询 `journal_entries WHERE docstatus = 0`（草稿），取前50条
+- `BlockedCount`：草稿凭证中，关联的 ArInvoice 仍为 draft 的数量（需 JOIN）
 
 ### 阻断逻辑说明
 | 层级 | 阻断关系 | 说明 |
@@ -47,9 +57,17 @@ WHERE je.docstatus = 0
   AND je.tenant_id = $1;
 ```
 
-### 验收标准（补充）
+## 验收标准
+- [ ] `go build ./...` 编译通过
+- [ ] 路由 `GET /api/v1/audit/tasks` 返回上述结构
+- [ ] 各分类列表条数正确（过滤条件正确）
 - [ ] `ar_invoice_blocked_count` 正确反映因 ArInvoice draft 无法过账的凭证数量
 - [ ] `invoice_blocked_count` 应为 0（发票草稿在当前设计中被视为自动审核）
+
+## 技术约束
+- 新建 `internal/handler/audit_handler.go`（参照 invoice_handler.go 风格）
+- 在 `main.go` 注册路由：`api.Get("/audit/tasks", handler.GetAuditTasks)`
+- handler 中注入：`arInvoiceRepo`、`invoiceRepo`、`journalRepo`（或通过 service 封装）
 
 ---
 
@@ -79,13 +97,28 @@ WHERE je.docstatus = 0
 - [ ] 过账后查询 `journal_entries.approved_by` 和 `approved_at` 有值
 - [ ] 审核人 ID 为执行过账操作的用户 ID（从 JWT claim 获取）
 
+## OpenCode 指令模板
+**目标**：创建审核工作台 API
+
+**约束**：
+- 新建文件：`internal/handler/audit_handler.go`
+- 注册路由到 main.go
+- 只查不改数据（只读方法）
+
+**上下文**：
+- 项目：`/root/data/disk/huihua-finance`
+- 参照：`internal/handler/invoice_handler.go`
+
+**验收**：
+- `go build ./...` 无报错
+- `curl` 调用返回正确 JSON 结构
+
 ---
 
-## 影响文件
+## 影响文件汇总
 
 | 文件 | 变更 |
 |------|------|
-| `docs/plans/D-P0.5-audit-workbench-spec.md` | 本补丁合并到原 SPEC |
 | 新建 `migrations/047_audit_fields.sql` | `ar_invoices` + `journal_entries` 新增 approved_by/approved_at |
 | `internal/model/ar_invoice.go` | 新增 ApprovedBy / ApprovedAt 字段 |
 | `internal/model/journal.go` | 新增 ApprovedBy / ApprovedAt 字段 |

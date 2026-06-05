@@ -1,11 +1,34 @@
-# SPEC Patch: D-P1.1 — 自动创建客户（补充模糊匹配 + 并发保护）
+# SPEC: D-P1.1 — 导入时自动创建正式客户
 
 ## 基本信息
-- **任务 ID**: D-P1.1-v2
-- **类型**: spec-patch
+- **任务 ID**: D-P1.1
+- **类型**: feature
 - **优先级**: P1
-- **依赖**: D-P1.1（原有逻辑）
-- **补丁目标**: `docs/plans/D-P1.1-auto-customer-spec.md`
+- **依赖**: 无（独立于 P0 链路）
+- **负责 Profile**: dev
+
+## 背景
+当前 `resolveCustomer` 在税号查不到时返回 error，中断导入流程。新需求：查不到时直接创建正式客户档案（不做草稿）。
+
+## 目标
+修改 `internal/service/invoice_service.go` 的 `resolveCustomer` 相关逻辑：
+
+```
+resolveCustomer(taxID, customerName):
+  1. 精确查 Party WHERE tax_id = $taxID → 找到 → return
+  2. 未找到 → 自动创建 Party：
+     - name = customerName
+     - tax_id = taxID
+     - party_type = "customer"
+     - code = "AUTO" + 年月日流水号（如 AUTO20260604001）
+     - source = "auto_import"  ← 新增字段
+  3. return newCustomer
+```
+
+**Party 新增字段**（migration 046）：
+```sql
+ALTER TABLE parties ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'manual';
+```
 
 ---
 
@@ -13,12 +36,6 @@
 
 ### 背景
 税号查不到时，如果"购方名称"与现有客户高度相似，系统应弹出提示让用户选择"关联已有客户"或"仍自动创建"。
-
-### 现有逻辑（仅精确匹配）
-```
-精确查 Party WHERE tax_id = $taxID → 找到 → return
-未找到 → 自动创建 Party
-```
 
 ### 补充逻辑（新增 Step 1.5）
 ```
@@ -86,12 +103,6 @@ type CustomerMappingOption struct {
 ### 背景
 原 SPEC 说"DB 报错后重查"——但 `ON CONFLICT DO NOTHING` 会静默跳过，导致同一税号发票关联到不同的自动创建客户（数据不一致）。
 
-### 现有语义（问题代码）
-```go
-// party_repo.go Create — 当前 INSERT 无 ON CONFLICT
-INSERT INTO parties (...) VALUES (...)
-```
-
 ### 修正为 Upsert 语义
 ```sql
 -- 改用 ON CONFLICT DO UPDATE（唯一索引在 tax_number 上已存在）
@@ -124,26 +135,42 @@ RETURNING id
 ### 解决方案
 改由 DB `UNIQUE` 约束 + `ON CONFLICT DO UPDATE` 兜底，或使用 `SELECT FOR UPDATE` 锁。
 
-**推荐方案**（简单有效）：
-```go
-// 在 upsert 返回后检查 code 是否以 AUTO 开头且唯一
-// 若新创建（ON CONFLICT 未触发 UPDATE），code 已由 INSERT 填充
-// 若并发冲突，ON CONFLICT DO UPDATE 保留原 code
-```
+---
+
+## 验收标准
+- [ ] `go build ./...` 编译通过
+- [ ] 税号不存在时，导入流程继续（不报错）
+- [ ] 自动创建的客户，`source='auto_import'`，`code` 以 `AUTO` 开头
+- [ ] 模糊匹配功能正常（相似度 ≥ 0.85 时标记）
+- [ ] 并发导入同税号发票，只创建一个客户
+
+## 技术约束
+- 客户编码规则：`AUTO` + `YYYYMMDD` + 4位序号（如 `AUTO202606040001`）
+- 序号在当天的客户数基础上 +1（需要 count 查询）
+- 并发保护：`tax_id` 有 unique index，若并发创建同税号客户，DB 报错后重查即可
+
+## OpenCode 指令模板
+**目标**：实现导入时自动创建客户
+
+**约束**：
+- 修改 `resolveCustomer` 方法（找同名方法确认当前实现）
+- 新增 migration `046_parties_source.sql`
+
+**上下文**：
+- 项目：`/root/data/disk/huihua-finance`
+- 参照：`party_repo.go` 的 `Create` / `BatchCreate` 方法
+
+**验收**：
+- `go build ./...` 无报错
+- 测试：tax_id 不存在时，自动创建客户并继续
 
 ---
 
-## 影响文件
+## 影响文件汇总
 
 | 文件 | 变更 |
 |------|------|
 | `docs/plans/D-P1.1-auto-customer-spec.md` | 本补丁合并到原 SPEC |
 | `internal/service/invoice_service.go` | `resolveCustomer` 新增 Step 1.5 模糊匹配 |
-| `internal/model/invoice.go` | `CustomerMatchInfo` 结构体（已在 D-P1.2 定义部分字段，本 SPEC 补充 fuzzy 字段） |
+| `internal/model/invoice.go` | `CustomerMatchInfo` 结构体 |
 | `internal/repository/party_repo.go` | Create 改为 upsert 语义 |
-
----
-
-## 优先级建议
-- **模糊匹配**：P2（用户体验增强，不阻塞核心流程）
-- **并发保护**：P0（数据一致性保证，必须实现）
