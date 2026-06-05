@@ -20,6 +20,8 @@ type VoucherStateMachine struct {
 	glRepo          *repository.GLEntryRepository
 	bankJournalRepo *repository.BankJournalRepository
 	bankRepo        *repository.BankRepository
+	arInvoiceRepo   *repository.ArInvoiceRepository
+	paymentRepo     *repository.PaymentEntryRepository
 }
 
 // NewVoucherStateMachine creates a new VoucherStateMachine.
@@ -40,6 +42,12 @@ func NewVoucherStateMachineWithBankJournal(journalRepo *repository.JournalReposi
 		bankJournalRepo: bankJournalRepo,
 		bankRepo:        bankRepo,
 	}
+}
+
+// InjectLockRepos injects the repositories needed for source-document locking (ArInvoice, PaymentEntry).
+func (s *VoucherStateMachine) InjectLockRepos(arInvoiceRepo *repository.ArInvoiceRepository, paymentRepo *repository.PaymentEntryRepository) {
+	s.arInvoiceRepo = arInvoiceRepo
+	s.paymentRepo = paymentRepo
 }
 
 // ValidateTransition checks if a state transition is legal.
@@ -182,7 +190,72 @@ func (s *VoucherStateMachine) ExecuteTransition(ctx context.Context, tenantID uu
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	// Post-commit: lock/unlock source document based on action
+	s.postTransitionAction(ctx, tenantID, journalID, action, userID)
+
 	return nil
+}
+
+// postTransitionAction handles source-document lock/unlock after the transaction commits.
+// Must be called outside the transaction to avoid holding a transaction across I/O.
+func (s *VoucherStateMachine) postTransitionAction(ctx context.Context, tenantID, journalID uuid.UUID, action model.VoucherAction, userID uuid.UUID) {
+	if s.arInvoiceRepo == nil && s.paymentRepo == nil {
+		return
+	}
+
+	je, err := s.journalRepo.GetByID(ctx, tenantID, journalID)
+	if err != nil {
+		return
+	}
+
+	switch action {
+	case model.VoucherActionSubmit:
+		// Lock source doc and set voucher_id
+		s.lockSourceDoc(ctx, tenantID, je, journalID, userID)
+	case model.VoucherActionCancel:
+		// Unlock source doc (voucher was in draft, no voucher_id set yet)
+		s.unlockSourceDoc(ctx, tenantID, je)
+	case model.VoucherActionReverse:
+		// Unlock original source doc
+		s.unlockSourceDoc(ctx, tenantID, je)
+	}
+}
+
+// lockSourceDoc locks the source document (ArInvoice or PaymentEntry) and writes voucher_id.
+func (s *VoucherStateMachine) lockSourceDoc(ctx context.Context, tenantID uuid.UUID, je *model.JournalEntry, voucherID, userID uuid.UUID) {
+	if je.SourceDocType == nil || je.SourceDocID == nil {
+		return
+	}
+	switch *je.SourceDocType {
+	case "ar_invoice":
+		if s.arInvoiceRepo != nil {
+			_ = s.arInvoiceRepo.Lock(ctx, tenantID, *je.SourceDocID, userID)
+			_ = s.arInvoiceRepo.SetVoucherID(ctx, tenantID, *je.SourceDocID, voucherID)
+		}
+	case "payment_entry":
+		if s.paymentRepo != nil {
+			_ = s.paymentRepo.UpdateStatusAndClearVoucherTx(ctx, nil, tenantID, *je.SourceDocID, 2) // docstatus=2 (approved/posted)
+			// SetVoucherID on payment entry via generic update
+			_ = s.paymentRepo.SetVoucherID(ctx, tenantID, *je.SourceDocID, voucherID)
+		}
+	}
+}
+
+// unlockSourceDoc unlocks the source document (ArInvoice or PaymentEntry).
+func (s *VoucherStateMachine) unlockSourceDoc(ctx context.Context, tenantID uuid.UUID, je *model.JournalEntry) {
+	if je.SourceDocType == nil || je.SourceDocID == nil {
+		return
+	}
+	switch *je.SourceDocType {
+	case "ar_invoice":
+		if s.arInvoiceRepo != nil {
+			_ = s.arInvoiceRepo.Unlock(ctx, tenantID, *je.SourceDocID)
+		}
+	case "payment_entry":
+		if s.paymentRepo != nil {
+			_ = s.paymentRepo.UpdateStatusAndClearVoucherTx(ctx, nil, tenantID, *je.SourceDocID, 1) // revert to docstatus=1 (submitted)
+		}
+	}
 }
 
 // ReverseVoucher creates a reversal voucher (red letter) for the given voucher within a single transaction.
@@ -301,6 +374,10 @@ func (s *VoucherStateMachine) ReverseVoucher(ctx context.Context, tenantID uuid.
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
+
+	// Post-commit: lock new reversal voucher, unlock original
+	s.postTransitionAction(ctx, tenantID, reversal.ID, model.VoucherActionSubmit, userID)
+	s.postTransitionAction(ctx, tenantID, original.ID, model.VoucherActionReverse, userID)
 
 	return reversal, nil
 }
