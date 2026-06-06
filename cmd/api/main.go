@@ -121,6 +121,13 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/account-setup/status", setupHandler.GetStatus)
 	api.Post("/account-setup/wizard", setupHandler.CreateCompany)
 
+	// Clear-data routes (dev/test only — gated by cfg.App.Mode).
+	// Wipes tenant-scoped business data or master data, in that order.
+	clearDataSvc := service.NewClearDataService(db.GetPool())
+	clearDataHandler := handler.NewClearDataHandler(clearDataSvc, cfg)
+	api.Post("/setup/clear-business-data", clearDataHandler.ClearBusinessData)
+	api.Post("/setup/clear-basic-info", clearDataHandler.ClearBasicInfo)
+
 	// Asset Depreciation routes
 	depreciationRepo := repository.NewAssetDepreciationRepository(db.GetPool())
 	journalRepo := repository.NewJournalRepository(db.GetPool())
@@ -164,9 +171,15 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/audit/tasks", auditWorkbenchHandler.GetAuditTasks)
 
 	// AR invoice routes
-	arInvoiceHandler := handler.NewArInvoiceHandler(arInvoiceRepo, partyRepo)
+	arInvoiceSvc := service.NewArInvoiceService(arInvoiceRepo, invoiceRepo)
+	arInvoiceHandler := handler.NewArInvoiceHandler(arInvoiceRepo, partyRepo, arInvoiceSvc)
 	api.Get("/ar-invoices", arInvoiceHandler.List)
 	api.Get("/ar-invoices/:id", arInvoiceHandler.GetByID)
+	api.Post("/ar-invoices/:id/confirm", arInvoiceHandler.Confirm)
+	api.Delete("/ar-invoices/:id", arInvoiceHandler.Delete)
+	api.Get("/ar-invoices/customer/:customerId", arInvoiceHandler.ListByCustomer)
+	api.Get("/ar-invoices/customer/:customerId/unpaid", arInvoiceHandler.ListUnpaidByCustomer)
+	api.Get("/ar-invoices/customer/:customerId/summary", arInvoiceHandler.CustomerSummary)
 
 	// AP invoice routes
 	apInvoiceHandler := handler.NewApInvoiceHandler(apInvoiceRepo, partyRepo)

@@ -59,6 +59,52 @@
       </div>
     </div>
 
+    <!-- Danger zone: 清空数据 (dev/test only — backend gates via cfg.App.Mode) -->
+    <el-card class="danger-zone-card" shadow="never">
+      <div class="danger-collapse-bar" @click="dangerExpanded = !dangerExpanded">
+        <div class="danger-collapse-left">
+          <el-icon class="danger-icon"><Warning /></el-icon>
+          <span class="danger-title">数据管理 — 危险操作</span>
+          <el-tag size="small" type="info">仅开发/测试环境</el-tag>
+          <span class="danger-hint-short">点击展开销毁性操作</span>
+        </div>
+        <el-button text size="small">
+          <el-icon>
+            <component :is="dangerExpanded ? 'ArrowDown' : 'ArrowRight'" />
+          </el-icon>
+          {{ dangerExpanded ? '收起' : '展开' }}
+        </el-button>
+      </div>
+
+      <div v-show="dangerExpanded" class="danger-expanded-body">
+        <p class="danger-desc">
+          以下操作不可恢复，会永久删除当前账套的数据。请确认后再执行。
+        </p>
+        <div class="danger-actions">
+          <el-button
+            type="warning"
+            :loading="clearingBusiness"
+            @click="handleClearBusiness"
+          >
+            <el-icon><Delete /></el-icon>
+            清空业务数据
+          </el-button>
+          <el-button
+            type="danger"
+            :loading="clearingBasic"
+            @click="handleClearBasic"
+          >
+            <el-icon><Delete /></el-icon>
+            清空基本信息
+          </el-button>
+        </div>
+        <p class="danger-hint">
+          <strong>清空业务数据</strong>：删除发票、银行流水、收付款单、凭证、银行余额等业务流水（保留科目/客商/模板等基础设置）。<br>
+          <strong>清空基本信息</strong>：删除公司信息、银行账户、科目表、客商档案、期间、模板、规则等（请先清空业务数据）。
+        </p>
+      </div>
+    </el-card>
+
     <!-- 向导步骤 -->
     <el-card v-if="!alreadyInitialized" class="wizard-card" shadow="never">
       <el-steps :active="activeStep" finish-status="success" align-center class="wizard-steps">
@@ -179,15 +225,19 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Setting, Upload, ArrowRight, Refresh } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Setting, Upload, ArrowRight, ArrowDown, Refresh, Delete, Warning } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import request from '@/api/request'
+import { clearBusinessData, clearBasicInfo } from '@/api/modules/clearData'
 
 const formRef1 = ref<FormInstance>()
 const activeStep = ref(0)
 const submitting = ref(false)
 const seeding = ref(false)
+const clearingBusiness = ref(false)
+const clearingBasic = ref(false)
+const dangerExpanded = ref(false)
 const alreadyInitialized = ref(false)
 const savedCompany = reactive({
   id: '',
@@ -245,6 +295,62 @@ async function handleSeedAccounts() {
     ElMessage.error(msg)
   } finally {
     seeding.value = false
+  }
+}
+
+function summarizeResult(r: Record<string, number>): string {
+  const top = Object.entries(r)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([t, n]) => `${t}=${n}`)
+    .join(', ')
+  const total = Object.values(r).reduce((s, n) => s + n, 0)
+  return `共 ${total} 行${top ? ` (主要: ${top})` : ''}`
+}
+
+async function handleClearBusiness() {
+  try {
+    await ElMessageBox.confirm(
+      '此操作将清空当前账套的所有业务数据（发票/银行流水/收付款单/凭证/银行余额等），且不可恢复。确认执行？',
+      '清空业务数据',
+      { type: 'warning', confirmButtonText: '确认清空', cancelButtonText: '取消', confirmButtonClass: 'el-button--warning' }
+    )
+  } catch { return }
+  clearingBusiness.value = true
+  try {
+    const res = await clearBusinessData()
+    const data = (res as any).data || res
+    ElMessage.success(`业务数据已清空 — ${summarizeResult(data.result)}`)
+    await loadStatus()
+  } catch (err: any) {
+    const msg = err?.response?.data?.error || err?.message || '清空失败'
+    ElMessage.error(msg)
+  } finally {
+    clearingBusiness.value = false
+  }
+}
+
+async function handleClearBasic() {
+  try {
+    await ElMessageBox.confirm(
+      '此操作将清空当前账套的所有基本信息（公司信息/银行账户/科目表/客商档案/期间/模板/规则等），且不可恢复。\n\n请确认已先清空业务数据（否则会因外键约束失败）。\n\n确认执行？',
+      '清空基本信息',
+      { type: 'error', confirmButtonText: '我已确认，清空', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' }
+    )
+  } catch { return }
+  clearingBasic.value = true
+  try {
+    const res = await clearBasicInfo()
+    const data = (res as any).data || res
+    ElMessage.success(`基本信息已清空 — ${summarizeResult(data.result)}`)
+    alreadyInitialized.value = false
+    await loadStatus()
+  } catch (err: any) {
+    const msg = err?.response?.data?.error || err?.message || '清空失败'
+    ElMessage.error(msg)
+  } finally {
+    clearingBasic.value = false
   }
 }
 

@@ -10,10 +10,17 @@ import (
 )
 
 type Config struct {
+	App      AppConfig
 	Server   ServerConfig
 	Database DatabaseConfig
 	Redis    RedisConfig
 	JWT      JWTConfig
+}
+
+type AppConfig struct {
+	// Mode gates destructive operations (e.g. clear-data APIs).
+	// "production" blocks them; "development" (default) allows.
+	Mode string
 }
 
 type ServerConfig struct {
@@ -51,12 +58,13 @@ func Load() *Config {
 	viper.AutomaticEnv()
 	// Map HF_DATABASE_* → database.*
 	// HF_DATABASE_HOST → database.host, HF_DATABASE_PORT → database.port, etc.
-	viper.SetEnvKeyReplacer(strings.NewReplacer("DATABASE_", "database.", "REDIS_", "redis.", "JWT_", "jwt.", "SERVER_", "server."))
+	viper.SetEnvKeyReplacer(strings.NewReplacer("DATABASE_", "database.", "REDIS_", "redis.", "JWT_", "jwt.", "SERVER_", "server.", "APP_", "app."))
 
 	viper.SetDefault("server.host", "0.0.0.0")
 	viper.SetDefault("server.port", "8080")
 	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("jwt.expiry", "30m")
+	viper.SetDefault("app.mode", "development")
 
 	// Try executable dir first, then current working directory
 	exeDir := filepath.Dir(os.Args[0])
