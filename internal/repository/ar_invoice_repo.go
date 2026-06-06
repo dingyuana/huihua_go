@@ -2,10 +2,12 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 )
 
@@ -157,7 +159,8 @@ func (r *ArInvoiceRepository) UpdateStatus(ctx context.Context, tenantID, id uui
 	return err
 }
 
-func (r *ArInvoiceRepository) IncrementPaid(ctx context.Context, tenantID, id uuid.UUID, delta float64, newStatus string) error {
+// IncrementPaid increments paid_amount and recalculates outstanding_amount, updates status.
+func (r *ArInvoiceRepository) IncrementPaid(ctx context.Context, tenantID, id uuid.UUID, delta decimal.Decimal, newStatus string) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE ar_invoices
 		SET paid_amount = paid_amount + $3,
@@ -165,7 +168,37 @@ func (r *ArInvoiceRepository) IncrementPaid(ctx context.Context, tenantID, id uu
 			status = $4,
 			last_allocation_at = NOW()
 		WHERE tenant_id = $1 AND id = $2`,
-		tenantID, id, delta, newStatus)
+		tenantID, id, delta.String(), newStatus)
+	return err
+}
+
+// Delete removes an ArInvoice by ID within a tenant.
+func (r *ArInvoiceRepository) Delete(ctx context.Context, tenantID, id uuid.UUID) error {
+	result, err := r.pool.Exec(ctx, `
+		DELETE FROM ar_invoices WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("ar_invoice not found")
+	}
+	return nil
+}
+
+// UpdateOutstandingAmount directly updates the outstanding amount on an ArInvoice.
+func (r *ArInvoiceRepository) UpdateOutstandingAmount(ctx context.Context, tenantID, id uuid.UUID, outstanding decimal.Decimal) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ar_invoices
+		SET outstanding_amount = $3,
+			last_allocation_at = NOW(),
+			status = CASE
+				WHEN $3 <= 0 THEN 'paid'
+				WHEN $3 < amount THEN 'partially_paid'
+				ELSE status
+			END
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, outstanding.String())
 	return err
 }
 
@@ -246,7 +279,7 @@ func (r *ArInvoiceRepository) BatchCreate(ctx context.Context, ars []*model.ArIn
 // Lock sets locked_at and locked_by on an ArInvoice (called when a voucher is posted).
 func (r *ArInvoiceRepository) Lock(ctx context.Context, tenantID, id, lockedBy uuid.UUID) error {
 	_, err := r.pool.Exec(ctx, `
-		UPDATE ar_invoice
+		UPDATE ar_invoices
 		SET locked_at = $3, locked_by = $4
 		WHERE id = $1 AND tenant_id = $2 AND locked_at IS NULL`,
 		id, tenantID, time.Now(), lockedBy)
@@ -256,28 +289,28 @@ func (r *ArInvoiceRepository) Lock(ctx context.Context, tenantID, id, lockedBy u
 // Unlock clears locked_at and locked_by on an ArInvoice (called when a voucher is cancelled).
 func (r *ArInvoiceRepository) Unlock(ctx context.Context, tenantID, id uuid.UUID) error {
 	_, err := r.pool.Exec(ctx, `
-		UPDATE ar_invoice
+		UPDATE ar_invoices
 		SET locked_at = NULL, locked_by = NULL
 		WHERE id = $1 AND tenant_id = $2`,
 		id, tenantID)
 	return err
 }
 
-// SetVoucherID writes the voucher_id onto an ArInvoice (called when voucher is posted).
+// SetVoucherID writes the voucher_id onto an ArInvoice (called when voucher is generated).
 func (r *ArInvoiceRepository) SetVoucherID(ctx context.Context, tenantID, id, voucherID uuid.UUID) error {
 	_, err := r.pool.Exec(ctx, `
-		UPDATE ar_invoice
+		UPDATE ar_invoices
 		SET voucher_id = $3
 		WHERE id = $1 AND tenant_id = $2`,
 		id, tenantID, voucherID)
 	return err
 }
 
-// IsLocked checks whether an ArInvoice is currently locked.
+// IsLocked checks whether an ArInvoice is currently locked (has a posted voucher).
 func (r *ArInvoiceRepository) IsLocked(ctx context.Context, tenantID, id uuid.UUID) (bool, error) {
 	var lockedAt *time.Time
 	err := r.pool.QueryRow(ctx, `
-		SELECT locked_at FROM ar_invoice WHERE id = $1 AND tenant_id = $2`,
+		SELECT locked_at FROM ar_invoices WHERE id = $1 AND tenant_id = $2`,
 		id, tenantID).Scan(&lockedAt)
 	if err != nil {
 		return false, nil

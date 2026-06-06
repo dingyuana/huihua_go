@@ -175,6 +175,115 @@ func (s *InvoiceService) ValidateLineItems(items []model.InvoiceLineItem) error 
 	return nil
 }
 
+// markBlueReversed is the inverse of the red→blue link: when a red invoice
+// is created against an existing blue invoice, mark the blue as
+// is_reversed=true. Idempotent — silently skips when the blue invoice is
+// not present locally (e.g. imported across companies or periods).
+func (s *InvoiceService) markBlueReversed(ctx context.Context, tenantID uuid.UUID, blueNo string) {
+	if blueNo == "" {
+		return
+	}
+	blue, err := s.repo.GetByInvoiceNo(ctx, tenantID, blueNo)
+	if err != nil || blue == nil {
+		return
+	}
+	// Idempotent: skip if already marked. Either signal counts.
+	if blue.IsReversed || blue.Status == string(model.InvoiceStatusReversed) {
+		return
+	}
+	if err := s.repo.UpdateFields(ctx, tenantID, blue.ID, map[string]interface{}{
+		"is_reversed": true,
+		"status":      string(model.InvoiceStatusReversed),
+	}); err != nil {
+		fmt.Printf("[WARN] failed to mark blue invoice %s as reversed: %v\n", blueNo, err)
+	}
+}
+
+// markBlueReversedForInvoices walks a slice of newly-inserted invoices and
+// marks each referenced blue as is_reversed. Safe to call with mixed
+// (red + blue) input — only red rows with a SourceRedInvoiceNo are acted on.
+//
+// Enhancement: For each red invoice, we ALWAYS try to extract the blue invoice
+// number from the Remark field (using extractBlueInvoiceNo) in addition to
+// the SourceRedInvoiceNo column. This handles cases where the Excel has the
+// blue invoice number only in the remark text (e.g. "对应蓝字发票号：xxx")
+// rather than in a dedicated column.
+func (s *InvoiceService) markBlueReversedForInvoices(ctx context.Context, tenantID uuid.UUID, inserted []model.SalesInvoice) {
+	for i := range inserted {
+		inv := &inserted[i]
+		if !inv.IsReturn {
+			continue
+		}
+		blueNo := ""
+		// Priority 1: SourceRedInvoiceNo column value (explicit column in Excel)
+		if inv.SourceRedInvoiceNo != nil && *inv.SourceRedInvoiceNo != "" {
+			blueNo = *inv.SourceRedInvoiceNo
+		}
+		// Priority 2: Extract from Remark field (蓝字发票号 in remark text)
+		if blueNo == "" && inv.Remark != nil && *inv.Remark != "" {
+			blueNo = extractBlueInvoiceNo(*inv.Remark)
+		}
+		if blueNo == "" {
+			// Fallback: re-fetch from DB to get the full record (remark may have been truncated or not loaded)
+			dbInv, err := s.repo.GetByID(ctx, tenantID, inv.ID)
+			if err == nil && dbInv != nil && dbInv.Remark != nil {
+				blueNo = extractBlueInvoiceNo(*dbInv.Remark)
+			}
+		}
+		if blueNo != "" {
+			s.markBlueReversed(ctx, tenantID, blueNo)
+		}
+	}
+}
+
+// PostImportFixRedBlueLinks scans all red invoices in the database for the
+// given tenant and attempts to mark their corresponding blue invoices as
+// is_reversed=true. This serves as a safety-net for data imported before
+// the enhanced markBlueReversedForInvoices was in place, or when the
+// blue invoice number was only present in the remark text.
+//
+// It is safe to call repeatedly — updates are idempotent.
+func (s *InvoiceService) PostImportFixRedBlueLinks(ctx context.Context, tenantID uuid.UUID) (fixedCount int, err error) {
+	redInvoices, err := s.repo.GetRedInvoices(ctx, tenantID)
+	if err != nil {
+		return 0, fmt.Errorf("get red invoices: %w", err)
+	}
+	for _, inv := range redInvoices {
+		if inv.IsReversed {
+			continue
+		}
+		blueNo := ""
+		// Try SourceRedInvoiceNo column first
+		if inv.SourceRedInvoiceNo != nil && *inv.SourceRedInvoiceNo != "" {
+			blueNo = *inv.SourceRedInvoiceNo
+		}
+		// Extract from Remark field
+		if blueNo == "" && inv.Remark != nil && *inv.Remark != "" {
+			blueNo = extractBlueInvoiceNo(*inv.Remark)
+		}
+		if blueNo == "" {
+			continue
+		}
+		blue, err := s.repo.GetByInvoiceNo(ctx, tenantID, blueNo)
+		if err != nil || blue == nil {
+			continue
+		}
+		if blue.IsReversed || blue.Status == string(model.InvoiceStatusReversed) {
+			continue
+		}
+		if uerr := s.repo.UpdateFields(ctx, tenantID, blue.ID, map[string]interface{}{
+			"is_reversed": true,
+			"status":      string(model.InvoiceStatusReversed),
+		}); uerr != nil {
+			fmt.Printf("[WARN] PostImportFix: failed to mark %s as reversed: %v\n", blueNo, uerr)
+		} else {
+			fixedCount++
+			fmt.Printf("[INFO] PostImportFix: marked blue invoice %s as reversed (red: %s)\n", blueNo, inv.InvoiceNo)
+		}
+	}
+	return fixedCount, nil
+}
+
 // ImportFromExcel imports invoices from Excel data.
 func (s *InvoiceService) ImportFromExcel(ctx context.Context, tenantID uuid.UUID, req *model.InvoiceImportRequest) ([]model.SalesInvoice, error) {
 	if req == nil || len(req.Invoices) == 0 {
@@ -255,7 +364,12 @@ func (s *InvoiceService) ImportFromExcel(ctx context.Context, tenantID uuid.UUID
 	}
 
 	// Batch import
-	return s.repo.ImportBatch(ctx, tenantID, invoices)
+	inserted, err := s.repo.ImportBatch(ctx, tenantID, invoices)
+	if err != nil {
+		return nil, err
+	}
+	s.markBlueReversedForInvoices(ctx, tenantID, inserted)
+	return inserted, nil
 }
 
 // ImportFromExcelFile parses an Excel/CSV file and imports invoice rows.
@@ -353,6 +467,8 @@ func (s *InvoiceService) ImportFromExcelFile(ctx context.Context, tenantID uuid.
 	if err != nil {
 		return nil, fmt.Errorf("import batch: %w", err)
 	}
+
+	s.markBlueReversedForInvoices(ctx, tenantID, importedResult)
 
 	return &model.InvoiceFileImportResult{
 		TotalRows:  len(parsed),
@@ -1121,6 +1237,11 @@ func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invo
 	if err := s.repo.UpdateStatus(ctx, tenantID, invoiceID, string(model.InvoiceStatusVerified)); err != nil {
 		return err
 	}
+	// Mark the corresponding blue invoice as reversed (red→blue inverse link).
+	// Idempotent — silently skips if the blue isn't in the local DB.
+	if inv.IsReturn && inv.SourceRedInvoiceNo != nil {
+		s.markBlueReversed(ctx, tenantID, *inv.SourceRedInvoiceNo)
+	}
 	return s.repo.UpdateFields(ctx, tenantID, invoiceID, map[string]interface{}{"docstatus": 1})
 }
 
@@ -1197,6 +1318,11 @@ func (s *InvoiceService) ConfirmPurchaseInvoice(ctx context.Context, tenantID, i
 
 	if err := s.repo.UpdateStatus(ctx, tenantID, invoiceID, string(model.InvoiceStatusVerified)); err != nil {
 		return err
+	}
+	// Mark the corresponding blue invoice as reversed (red→blue inverse link).
+	// Idempotent — silently skips if the blue isn't in the local DB.
+	if inv.IsReturn && inv.SourceRedInvoiceNo != nil {
+		s.markBlueReversed(ctx, tenantID, *inv.SourceRedInvoiceNo)
 	}
 	return s.repo.UpdateFields(ctx, tenantID, invoiceID, map[string]interface{}{"docstatus": 1})
 }

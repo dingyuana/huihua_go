@@ -16,6 +16,7 @@ const (
 	InvoiceStatusVerified  InvoiceStatus = "verified"
 	InvoiceStatusInvalid   InvoiceStatus = "invalid"
 	InvoiceStatusUnpaid    InvoiceStatus = "unpaid"
+	InvoiceStatusReversed  InvoiceStatus = "reversed"
 )
 
 // SalesInvoice represents the sales_invoices table.
@@ -39,6 +40,7 @@ type SalesInvoice struct {
 	TaxTemplateID       *uuid.UUID      `json:"tax_template_id,omitempty" db:"tax_template_id"`
 	ReturnAgainst       *uuid.UUID      `json:"return_against,omitempty" db:"return_against"`
 	IsReturn            bool            `json:"is_return" db:"is_return"`
+	IsReversed          bool            `json:"is_reversed" db:"is_reversed"`
 	InvoiceCategory     *string         `json:"invoice_category,omitempty" db:"invoice_category"`
 	Remark              *string         `json:"remark,omitempty" db:"remark"`
 	SourceRedInvoiceNo  *string         `json:"source_red_invoice_no,omitempty" db:"source_red_invoice_no"`

@@ -180,7 +180,7 @@ func (s *AdvanceAllocationService) Allocate(ctx context.Context, tenantID, userI
 		if targetAvail.Sub(req.AllocatedAmount).IsPositive() {
 			newArStatus = "partially_paid"
 		}
-		if err := s.arRepo.IncrementPaid(ctx, tenantID, req.TargetID, delta, newArStatus); err != nil {
+		if err := s.arRepo.IncrementPaid(ctx, tenantID, req.TargetID, req.AllocatedAmount, newArStatus); err != nil {
 			return nil, fmt.Errorf("update ar paid: %w", err)
 		}
 	} else {
@@ -188,7 +188,7 @@ func (s *AdvanceAllocationService) Allocate(ctx context.Context, tenantID, userI
 		if targetAvail.Sub(req.AllocatedAmount).IsPositive() {
 			newApStatus = "partially_paid"
 		}
-		if err := s.apRepo.IncrementPaid(ctx, tenantID, req.TargetID, delta, newApStatus); err != nil {
+		if err := s.apRepo.IncrementPaid(ctx, tenantID, req.TargetID, req.AllocatedAmount, newApStatus); err != nil {
 			return nil, fmt.Errorf("update ap paid: %w", err)
 		}
 	}

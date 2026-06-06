@@ -2,10 +2,12 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 )
 
@@ -159,7 +161,8 @@ func (r *ApInvoiceRepository) ListByInvoiceID(ctx context.Context, tenantID, inv
 	return &ap, nil
 }
 
-func (r *ApInvoiceRepository) IncrementPaid(ctx context.Context, tenantID, id uuid.UUID, delta float64, newStatus string) error {
+// IncrementPaid increments paid_amount and recalculates outstanding_amount.
+func (r *ApInvoiceRepository) IncrementPaid(ctx context.Context, tenantID, id uuid.UUID, delta decimal.Decimal, newStatus string) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE ap_invoices
 		SET paid_amount = paid_amount + $3,
@@ -167,7 +170,55 @@ func (r *ApInvoiceRepository) IncrementPaid(ctx context.Context, tenantID, id uu
 			status = $4,
 			last_allocation_at = NOW()
 		WHERE tenant_id = $1 AND id = $2`,
-		tenantID, id, delta, newStatus)
+		tenantID, id, delta.String(), newStatus)
+	return err
+}
+
+// UpdateStatus updates the status of an ApInvoice.
+func (r *ApInvoiceRepository) UpdateStatus(ctx context.Context, tenantID, id uuid.UUID, status string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ap_invoices SET status = $3
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, status)
+	return err
+}
+
+// Delete removes an ApInvoice by ID within a tenant.
+func (r *ApInvoiceRepository) Delete(ctx context.Context, tenantID, id uuid.UUID) error {
+	result, err := r.pool.Exec(ctx, `
+		DELETE FROM ap_invoices WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("ap_invoice not found")
+	}
+	return nil
+}
+
+// SetVoucherID links a voucher to an ApInvoice.
+func (r *ApInvoiceRepository) SetVoucherID(ctx context.Context, tenantID, id, voucherID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ap_invoices SET voucher_id = $3
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, voucherID)
+	return err
+}
+
+// UpdateOutstandingAmount directly updates the outstanding amount on an ApInvoice.
+func (r *ApInvoiceRepository) UpdateOutstandingAmount(ctx context.Context, tenantID, id uuid.UUID, outstanding decimal.Decimal) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ap_invoices
+		SET outstanding_amount = $3,
+			last_allocation_at = NOW(),
+			status = CASE
+				WHEN $3 <= 0 THEN 'paid'
+				WHEN $3 < amount THEN 'partially_paid'
+				ELSE status
+			END
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, outstanding.String())
 	return err
 }
 

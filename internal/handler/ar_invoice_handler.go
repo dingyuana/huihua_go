@@ -6,15 +6,21 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"huihua/finance/internal/repository"
+	"huihua/finance/internal/service"
 )
 
 type ArInvoiceHandler struct {
 	repo      *repository.ArInvoiceRepository
 	partyRepo *repository.PartyRepository
+	svc       *service.ArInvoiceService
 }
 
-func NewArInvoiceHandler(repo *repository.ArInvoiceRepository, partyRepo *repository.PartyRepository) *ArInvoiceHandler {
-	return &ArInvoiceHandler{repo: repo, partyRepo: partyRepo}
+func NewArInvoiceHandler(
+	repo *repository.ArInvoiceRepository,
+	partyRepo *repository.PartyRepository,
+	svc *service.ArInvoiceService,
+) *ArInvoiceHandler {
+	return &ArInvoiceHandler{repo: repo, partyRepo: partyRepo, svc: svc}
 }
 
 func (h *ArInvoiceHandler) partyNameMap(c *fiber.Ctx, tenantID uuid.UUID) (map[uuid.UUID]string, error) {
@@ -127,4 +133,90 @@ func (h *ArInvoiceHandler) GetByID(c *fiber.Ctx) error {
 		"confirmed_at":     confirmedAt,
 		"approved_at":      approvedAt,
 	})
+}
+
+// Confirm POST /api/v1/ar-invoices/:id/confirm
+func (h *ArInvoiceHandler) Confirm(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	}
+	if err := h.svc.Confirm(c.Context(), tenantID, id, userID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"message": "ar_invoice confirmed"})
+}
+
+// Delete DELETE /api/v1/ar-invoices/:id
+func (h *ArInvoiceHandler) Delete(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	}
+	if err := h.svc.Delete(c.Context(), tenantID, id); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"message": "ar_invoice deleted"})
+}
+
+// ListByCustomer GET /api/v1/ar-invoices/customer/:customerId
+func (h *ArInvoiceHandler) ListByCustomer(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	customerID, err := uuid.Parse(c.Params("customerId"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid customer_id"})
+	}
+	var status *string
+	if v := c.Query("status"); v != "" {
+		status = &v
+	}
+	ars, err := h.svc.ListByCustomer(c.Context(), tenantID, customerID, status)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	nameMap, _ := h.partyNameMap(c, tenantID)
+	result := make([]map[string]interface{}, len(ars))
+	for i, ar := range ars {
+		result[i] = map[string]interface{}{
+			"id":                 ar.ID,
+			"invoice_no":         ar.InvoiceNo,
+			"amount":             ar.Amount.String(),
+			"paid_amount":        ar.PaidAmount.String(),
+			"outstanding_amount": ar.OutstandingAmount.String(),
+			"status":             ar.Status,
+			"customer_name":      nameMap[ar.CustomerID],
+		}
+	}
+	return c.JSON(fiber.Map{"list": result, "total": len(result)})
+}
+
+// ListUnpaidByCustomer GET /api/v1/ar-invoices/customer/:customerId/unpaid
+func (h *ArInvoiceHandler) ListUnpaidByCustomer(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	customerID, err := uuid.Parse(c.Params("customerId"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid customer_id"})
+	}
+	ars, err := h.svc.ListUnpaidByCustomer(c.Context(), tenantID, customerID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"list": ars, "total": len(ars)})
+}
+
+// CustomerSummary GET /api/v1/ar-invoices/customer/:customerId/summary
+func (h *ArInvoiceHandler) CustomerSummary(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	customerID, err := uuid.Parse(c.Params("customerId"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid customer_id"})
+	}
+	summary, err := h.svc.GetCustomerSummary(c.Context(), tenantID, customerID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(summary)
 }

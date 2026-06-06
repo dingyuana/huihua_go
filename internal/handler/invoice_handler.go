@@ -125,6 +125,7 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 			"status":                mapInvoiceStatus(inv.Status),
 			"docstatus":             inv.DocStatus,
 			"is_return":             inv.IsReturn,
+			"is_reversed":           inv.IsReversed,
 			"return_against":        returnAgainstStr,
 			"source_red_invoice_no": sourceRedInvoiceNoStr,
 			"remark":                remarkStr,
@@ -139,20 +140,24 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 	})
 }
 
+// mapInvoiceStatus translates the DB status (English canonical) to the UI
+// status label that statusLabel() in the frontend knows how to render. The
+// Chinese aliases on the right are legacy import data — the DB itself
+// stores English values from invoice_service / markBlueReversed.
 func mapInvoiceStatus(status string) string {
 	switch status {
-	case "正常", "unpaid":
-		return "draft"
+	case "正常", "unpaid", "draft":
+		return "unpaid"
 	case "已确认", "verified":
 		return "verified"
 	case "部分核销", "partially_paid":
 		return "partially_paid"
 	case "已核销", "paid":
 		return "paid"
-	case "已红冲-全额", "已红冲":
-		return "cancelled"
+	case "已红冲-全额", "已红冲", "cancelled", "reversed":
+		return "reversed"
 	default:
-		return "draft"
+		return status
 	}
 }
 
