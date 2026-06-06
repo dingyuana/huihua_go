@@ -32,13 +32,15 @@ func (r *InvoiceRepository) Create(ctx context.Context, tenantID uuid.UUID, inv 
 		INSERT INTO sales_invoices (id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
-			docstatus, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)`,
+			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
+			original_invoice_id, is_part_red, red_amount, tax_authority_code, confirm_status, confirm_date, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)`,
 		inv.ID, inv.InvoiceNo, inv.InvoiceCode, inv.InvoiceType, inv.CustomerID, inv.TaxID, inv.CompanyID,
 		inv.TenantID, inv.PostingDate, inv.DueDate, inv.TotalAmount, inv.TaxAmount, inv.NetAmount,
-		inv.OutstandingAmount, inv.Status, inv.TaxTemplateID, inv.ReturnAgainst, 		inv.IsReturn, inv.IsReversed,
+		inv.OutstandingAmount, inv.Status, inv.TaxTemplateID, inv.ReturnAgainst,		inv.IsReturn, inv.IsReversed,
 		inv.InvoiceCategory, inv.Remark, inv.SourceRedInvoiceNo,
-		inv.DocStatus, inv.CreatedBy, inv.CreatedAt)
+		inv.DocStatus, inv.CreatedBy, inv.InvoiceKind, inv.ElectronicURL, inv.RedLetterInfoID, inv.RedLetterReason,
+		inv.OriginalInvoiceID, inv.IsPartRed, inv.RedAmount, inv.TaxAuthorityCode, inv.ConfirmStatus, inv.ConfirmDate, inv.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +53,8 @@ func (r *InvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID
 		SELECT s.id, s.invoice_no, s.invoice_code, s.invoice_type, s.customer_id, s.tax_id, s.company_id,
 			s.tenant_id, s.posting_date, s.due_date, s.total_amount, s.tax_amount, s.net_amount, s.outstanding_amount,
 			s.status, s.tax_template_id, s.return_against, s.is_return, s.is_reversed, s.invoice_category, s.remark, s.source_red_invoice_no,
-			s.docstatus, s.created_by, s.created_at, COALESCE(p.name, '') AS customer_name
+			s.docstatus, s.created_by, s.invoice_kind, s.electronic_url, s.red_letter_info_id, s.red_letter_reason,
+			s.original_invoice_id, s.is_part_red, s.red_amount, s.tax_authority_code, s.confirm_status, s.confirm_date, s.created_at, COALESCE(p.name, '') AS customer_name
 		FROM sales_invoices s
 		LEFT JOIN parties p ON p.id = s.customer_id
 		WHERE s.tenant_id = $1`
@@ -106,7 +109,9 @@ func (r *InvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID
 			&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate, &inv.TotalAmount,
 			&inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount, &inv.Status, &inv.TaxTemplateID,
 			&inv.ReturnAgainst, &inv.IsReturn, &inv.IsReversed, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
-			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt, &inv.CustomerName); err != nil {
+			&inv.DocStatus, &inv.CreatedBy, &inv.InvoiceKind, &inv.ElectronicURL, &inv.RedLetterInfoID, &inv.RedLetterReason,
+			&inv.OriginalInvoiceID, &inv.IsPartRed, &inv.RedAmount, &inv.TaxAuthorityCode, &inv.ConfirmStatus, &inv.ConfirmDate,
+			&inv.CreatedAt, &inv.CustomerName); err != nil {
 			return nil, err
 		}
 		invoices = append(invoices, inv)
@@ -121,14 +126,17 @@ func (r *InvoiceRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID)
 		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
-			docstatus, created_by, created_at
+			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
+			original_invoice_id, is_part_red, red_amount, tax_authority_code, confirm_status, confirm_date, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND id = $2`,
 		tenantID, id).
 		Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceCode, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
 			&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate, &inv.TotalAmount,
 			&inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount, &inv.Status, &inv.TaxTemplateID,
 			&inv.ReturnAgainst, &inv.IsReturn, &inv.IsReversed, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
-			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt)
+			&inv.DocStatus, &inv.CreatedBy, &inv.InvoiceKind, &inv.ElectronicURL, &inv.RedLetterInfoID, &inv.RedLetterReason,
+			&inv.OriginalInvoiceID, &inv.IsPartRed, &inv.RedAmount, &inv.TaxAuthorityCode, &inv.ConfirmStatus, &inv.ConfirmDate,
+			&inv.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -143,14 +151,17 @@ func (r *InvoiceRepository) GetByInvoiceNo(ctx context.Context, tenantID uuid.UU
 		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
-			docstatus, created_by, created_at
+			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
+			original_invoice_id, is_part_red, red_amount, tax_authority_code, confirm_status, confirm_date, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND invoice_no = $2`,
 		tenantID, invoiceNo).
 		Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceCode, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
 			&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate, &inv.TotalAmount,
 			&inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount, &inv.Status, &inv.TaxTemplateID,
 			&inv.ReturnAgainst, &inv.IsReturn, &inv.IsReversed, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
-			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt)
+			&inv.DocStatus, &inv.CreatedBy, &inv.InvoiceKind, &inv.ElectronicURL, &inv.RedLetterInfoID, &inv.RedLetterReason,
+			&inv.OriginalInvoiceID, &inv.IsPartRed, &inv.RedAmount, &inv.TaxAuthorityCode, &inv.ConfirmStatus, &inv.ConfirmDate,
+			&inv.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +174,8 @@ func (r *InvoiceRepository) GetRedInvoices(ctx context.Context, tenantID uuid.UU
 		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
-			docstatus, created_by, created_at
+			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
+			original_invoice_id, is_part_red, red_amount, tax_authority_code, confirm_status, confirm_date, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND is_return = true
 		ORDER BY posting_date DESC`,
 		tenantID)
@@ -178,7 +190,9 @@ func (r *InvoiceRepository) GetRedInvoices(ctx context.Context, tenantID uuid.UU
 			&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate, &inv.TotalAmount,
 			&inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount, &inv.Status, &inv.TaxTemplateID,
 			&inv.ReturnAgainst, &inv.IsReturn, &inv.IsReversed, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
-			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt); err != nil {
+			&inv.DocStatus, &inv.CreatedBy, &inv.InvoiceKind, &inv.ElectronicURL, &inv.RedLetterInfoID, &inv.RedLetterReason,
+			&inv.OriginalInvoiceID, &inv.IsPartRed, &inv.RedAmount, &inv.TaxAuthorityCode, &inv.ConfirmStatus, &inv.ConfirmDate,
+			&inv.CreatedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, &inv)
@@ -450,7 +464,8 @@ func (r *InvoiceRepository) ListInvoicesForMatching(ctx context.Context, tenantI
 		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
-			docstatus, created_by, created_at
+			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
+			original_invoice_id, is_part_red, red_amount, tax_authority_code, confirm_status, confirm_date, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND outstanding_amount > 0`
 	args := []interface{}{tenantID}
 	argIdx := 2
@@ -475,7 +490,9 @@ func (r *InvoiceRepository) ListInvoicesForMatching(ctx context.Context, tenantI
 			&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate, &inv.TotalAmount,
 			&inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount, &inv.Status, &inv.TaxTemplateID,
 			&inv.ReturnAgainst, &inv.IsReturn, &inv.IsReversed, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
-			&inv.DocStatus, &inv.CreatedBy, &inv.CreatedAt); err != nil {
+			&inv.DocStatus, &inv.CreatedBy, &inv.InvoiceKind, &inv.ElectronicURL, &inv.RedLetterInfoID, &inv.RedLetterReason,
+			&inv.OriginalInvoiceID, &inv.IsPartRed, &inv.RedAmount, &inv.TaxAuthorityCode, &inv.ConfirmStatus, &inv.ConfirmDate,
+			&inv.CreatedAt); err != nil {
 			return nil, err
 		}
 		invoices = append(invoices, inv)
