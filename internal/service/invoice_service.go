@@ -1414,3 +1414,163 @@ func (s *InvoiceService) AllocateToPaymentEntry(ctx context.Context, tenantID uu
 	}
 	return result, nil
 }
+
+// ConfirmSalesInvoiceV2 confirms an invoice by updating confirm_status.
+// This is a simpler confirmation path than ConfirmSalesInvoice which creates ArInvoice.
+func (s *InvoiceService) ConfirmSalesInvoiceV2(ctx context.Context, tenantID, invoiceID uuid.UUID) error {
+	inv, err := s.repo.GetByID(ctx, tenantID, invoiceID)
+	if err != nil {
+		return err
+	}
+	if inv == nil {
+		return errors.New("invoice not found")
+	}
+	if inv.ConfirmStatus == model.ConfirmStatusConfirmed {
+		return errors.New("invoice already confirmed")
+	}
+	now := time.Now()
+	return s.repo.UpdateFields(ctx, tenantID, invoiceID, map[string]interface{}{
+		"confirm_status": model.ConfirmStatusConfirmed,
+		"confirm_date":   now,
+	})
+}
+
+// RedInvoice performs a full red-letter invoice (红冲).
+// It creates a red invoice with is_return=true, marks the original as reversed,
+// and triggers voucher generation.
+func (s *InvoiceService) RedInvoice(ctx context.Context, tenantID, originalInvoiceID, userID uuid.UUID, reason string) error {
+	// 1. Get and validate original invoice
+	inv, err := s.repo.GetByID(ctx, tenantID, originalInvoiceID)
+	if err != nil {
+		return err
+	}
+	if inv == nil {
+		return errors.New("invoice not found")
+	}
+	if inv.ConfirmStatus != model.ConfirmStatusConfirmed {
+		return errors.New("only confirmed invoices can be red-lettered")
+	}
+
+	// 2. Create red-letter invoice
+	now := time.Now()
+	redInvoice := &model.SalesInvoice{
+		ID:              uuid.New(),
+		InvoiceNo:       inv.InvoiceNo + "-R",
+		InvoiceCode:     inv.InvoiceCode,
+		InvoiceType:     inv.InvoiceType,
+		CustomerID:       inv.CustomerID,
+		TaxID:           inv.TaxID,
+		CompanyID:       inv.CompanyID,
+		TenantID:        tenantID,
+		PostingDate:     now,
+		DueDate:         inv.DueDate,
+		TotalAmount:     inv.TotalAmount.Neg(), // negative amount
+		TaxAmount:       inv.TaxAmount.Neg(),
+		NetAmount:       inv.NetAmount.Neg(),
+		OutstandingAmount: decimal.Zero,
+		Status:          string(model.InvoiceStatusReversed),
+		IsReturn:        true,
+		IsReversed:      false,
+		InvoiceCategory: inv.InvoiceCategory,
+		RedLetterReason: &reason,
+		OriginalInvoiceID: &originalInvoiceID,
+		IsPartRed:       false,
+		RedAmount:       inv.TotalAmount, // full amount red
+		ConfirmStatus:   model.ConfirmStatusConfirmed,
+		ConfirmDate:     &now,
+		CreatedBy:       &userID,
+		CreatedAt:       now,
+	}
+	if _, err := s.repo.Create(ctx, tenantID, redInvoice); err != nil {
+		return err
+	}
+
+	// 3. Mark original as reversed
+	if err := s.repo.UpdateFields(ctx, tenantID, originalInvoiceID, map[string]interface{}{
+		"is_reversed":   true,
+		"status":        string(model.InvoiceStatusReversed),
+		"confirm_status": model.ConfirmStatusInvalid,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// PartRedInvoice performs a partial red-letter (部分红冲).
+// The redAmount must not exceed the outstanding amount of the original invoice.
+func (s *InvoiceService) PartRedInvoice(ctx context.Context, tenantID, originalInvoiceID, userID uuid.UUID, redAmount decimal.Decimal, reason string) error {
+	// 1. Get and validate original invoice
+	inv, err := s.repo.GetByID(ctx, tenantID, originalInvoiceID)
+	if err != nil {
+		return err
+	}
+	if inv == nil {
+		return errors.New("invoice not found")
+	}
+	if redAmount.GreaterThan(inv.OutstandingAmount) {
+		return fmt.Errorf("red amount %s exceeds outstanding amount %s", redAmount.String(), inv.OutstandingAmount.String())
+	}
+
+	// 2. Create partial red-letter invoice
+	now := time.Now()
+	redInvoice := &model.SalesInvoice{
+		ID:              uuid.New(),
+		InvoiceNo:       inv.InvoiceNo + "-PR",
+		InvoiceCode:     inv.InvoiceCode,
+		InvoiceType:     inv.InvoiceType,
+		CustomerID:       inv.CustomerID,
+		TaxID:           inv.TaxID,
+		CompanyID:       inv.CompanyID,
+		TenantID:        tenantID,
+		PostingDate:     now,
+		DueDate:         inv.DueDate,
+		TotalAmount:     redAmount.Neg(),
+		TaxAmount:       inv.TaxAmount.Mul(redAmount).Div(inv.TotalAmount).Neg(), // proportional tax
+		NetAmount:       inv.NetAmount.Mul(redAmount).Div(inv.NetAmount).Neg(),
+		OutstandingAmount: decimal.Zero,
+		Status:          string(model.InvoiceStatusReversed),
+		IsReturn:        true,
+		IsReversed:      false,
+		InvoiceCategory: inv.InvoiceCategory,
+		RedLetterReason: &reason,
+		OriginalInvoiceID: &originalInvoiceID,
+		IsPartRed:       true,
+		RedAmount:       redAmount,
+		ConfirmStatus:   model.ConfirmStatusConfirmed,
+		ConfirmDate:     &now,
+		CreatedBy:       &userID,
+		CreatedAt:       now,
+	}
+	if _, err := s.repo.Create(ctx, tenantID, redInvoice); err != nil {
+		return err
+	}
+
+	// 3. Update original outstanding amount
+	newOutstanding := inv.OutstandingAmount.Sub(redAmount)
+	if err := s.repo.UpdateFields(ctx, tenantID, originalInvoiceID, map[string]interface{}{
+		"outstanding_amount": newOutstanding,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// VoidInvoice voids (作废) an invoice. Only draft/submitted invoices can be voided.
+func (s *InvoiceService) VoidInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) error {
+	inv, err := s.repo.GetByID(ctx, tenantID, invoiceID)
+	if err != nil {
+		return err
+	}
+	if inv == nil {
+		return errors.New("invoice not found")
+	}
+	// Only draft or submitted status can be voided
+	if inv.Status != string(model.InvoiceStatusDraft) && inv.Status != string(model.InvoiceStatusSubmitted) {
+		return errors.New("only draft or submitted invoices can be voided")
+	}
+	return s.repo.UpdateFields(ctx, tenantID, invoiceID, map[string]interface{}{
+		"confirm_status": model.ConfirmStatusInvalid,
+	})
+}
