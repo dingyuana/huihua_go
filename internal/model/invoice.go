@@ -17,6 +17,15 @@ const (
 	InvoiceStatusInvalid   InvoiceStatus = "invalid"
 	InvoiceStatusUnpaid    InvoiceStatus = "unpaid"
 	InvoiceStatusReversed  InvoiceStatus = "reversed"
+
+	InvoiceKindPaperSpecial       = "paper_special"
+	InvoiceKindPaperNormal        = "paper_normal"
+	InvoiceKindElectronicSpecial  = "electronic_special"
+	InvoiceKindElectronicNormal   = "electronic_normal"
+
+	ConfirmStatusUnconfirmed = "unconfirmed"
+	ConfirmStatusConfirmed   = "confirmed"
+	ConfirmStatusInvalid     = "invalid"
 )
 
 // SalesInvoice represents the sales_invoices table.
@@ -46,6 +55,16 @@ type SalesInvoice struct {
 	SourceRedInvoiceNo  *string         `json:"source_red_invoice_no,omitempty" db:"source_red_invoice_no"`
 	DocStatus           int16           `json:"docstatus" db:"docstatus"`
 	CreatedBy           *uuid.UUID      `json:"created_by,omitempty" db:"created_by"`
+	InvoiceKind         *string         `json:"invoice_kind,omitempty" db:"invoice_kind"`
+	ElectronicURL       *string         `json:"electronic_url,omitempty" db:"electronic_url"`
+	RedLetterInfoID     *string         `json:"red_letter_info_id,omitempty" db:"red_letter_info_id"`
+	RedLetterReason     *string         `json:"red_letter_reason,omitempty" db:"red_letter_reason"`
+	OriginalInvoiceID   *uuid.UUID      `json:"original_invoice_id,omitempty" db:"original_invoice_id"`
+	IsPartRed           bool            `json:"is_part_red" db:"is_part_red"`
+	RedAmount           decimal.Decimal `json:"red_amount,omitempty" db:"red_amount"`
+	TaxAuthorityCode    *string         `json:"tax_authority_code,omitempty" db:"tax_authority_code"`
+	ConfirmStatus       string          `json:"confirm_status" db:"confirm_status"`
+	ConfirmDate         *time.Time      `json:"confirm_date,omitempty" db:"confirm_date"`
 	CreatedAt           time.Time       `json:"created_at" db:"created_at"`
 }
 
