@@ -98,7 +98,17 @@
 
     <!-- 列表 -->
     <el-card>
-      <el-table :data="invoices" border stripe size="small" :expand-row-keys="expandedRows" @expand-change="handleExpandChange" row-key="id">
+      <div class="invoice-table-wrap">
+        <el-table
+          :data="paginatedInvoices"
+          border
+          stripe
+          size="small"
+          :expand-row-keys="expandedRows"
+          @expand-change="handleExpandChange"
+          row-key="id"
+          :row-class-name="invoiceRowClass"
+        >
         <el-table-column type="expand">
           <template #expand-icon="{ expanded, row }">
             <el-icon v-if="row.line_items && row.line_items.length > 1" :size="14">
@@ -145,7 +155,13 @@
         <el-table-column label="对应蓝字发票" width="150" show-overflow-tooltip>
           <template #default="{ row }">
             <template v-if="row.is_return">
-              <el-link v-if="row.source_red_invoice_no" type="primary" :underline="false" size="small">
+              <el-link
+                v-if="row.source_red_invoice_no"
+                type="primary"
+                :underline="false"
+                size="small"
+                @click="openInvoiceByNo(row.source_red_invoice_no)"
+              >
                 {{ row.source_red_invoice_no }}
               </el-link>
               <span v-else>—</span>
@@ -153,21 +169,25 @@
             <span v-else class="no-col">—</span>
           </template>
         </el-table-column>
-        <el-table-column prop="customer_name" label="对方单位" min-width="150" />
-        <el-table-column prop="tax_id" label="税号" width="140" />
+        <el-table-column prop="customer_name" label="对方单位" min-width="150" show-overflow-tooltip />
         <el-table-column prop="posting_date" label="开票日期" width="100" />
-        <el-table-column prop="total_amount" label="价税合计" width="120" align="right" />
-        <el-table-column prop="tax_amount" label="税额" width="100" align="right" />
-        <el-table-column prop="net_amount" label="不含税金额" width="120" align="right" />
-        <el-table-column label="未核销" width="120" align="right">
+        <el-table-column label="金额明细" width="170" align="right">
           <template #default="{ row }">
-            <span v-if="parseFloat(row.outstanding) > 0" class="amount-positive">{{ row.outstanding }}</span>
-            <span v-else class="amount-negative">已核销</span>
+            <el-tooltip placement="top" :show-after="200">
+              <template #content>
+                不含税：¥{{ row.net_amount }}　税额：¥{{ row.tax_amount }}<br/>价税合计：¥{{ row.total_amount }}
+              </template>
+              <div class="amount-detail" :class="{ 'is-negative': parseFloat(row.total_amount) < 0 }">
+                <div class="amount-total">¥{{ row.total_amount }}</div>
+                <div class="amount-breakdown">含税 ¥{{ row.tax_amount }} / 不含税 ¥{{ row.net_amount }}</div>
+              </div>
+            </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column prop="due_date" label="到期日" width="100">
+        <el-table-column label="未核销" width="120" align="right">
           <template #default="{ row }">
-            <span :class="{ 'expiring': isExpiring(row.due_date) }">{{ row.due_date }}</span>
+            <span v-if="parseFloat(row.outstanding_amount) > 0" class="amount-positive">{{ row.outstanding_amount }}</span>
+            <span v-else class="amount-negative">已核销</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="90">
@@ -175,21 +195,32 @@
             <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="showDetail = row">详情</el-button>
-            <el-button v-if="row.status === 'draft'" link type="warning" size="small" @click="handleConfirmInvoice(row)">确认</el-button>
+            <el-button v-if="['draft','unpaid'].includes(row.status)" link type="warning" size="small" @click="handleConfirmInvoice(row)">确认</el-button>
             <el-button v-if="row.status === 'verified' && row.docstatus === 0" link type="success" size="small" @click="handleGenerateVoucher(row)">生成凭证</el-button>
           </template>
         </el-table-column>
       </el-table>
-      <div style="margin-top:12px; display:flex; justify-content:flex-between; align-items:center;">
+      <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
         <span>已选 {{ selectedInvoices.length }} 条</span>
         <div>
           <el-button v-if="selectedInvoices.length > 0" type="primary" size="small" @click="batchConfirm">批量确认</el-button>
           <el-button v-if="selectedInvoices.length > 0" type="danger" size="small" @click="batchDelete">批量删除</el-button>
         </div>
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[20, 50, 100, 200]"
+          :total="invoices.length"
+          layout="total, sizes, prev, pager, next, jumper"
+          background
+          small
+          @size-change="handleSizeChange"
+          @current-change="handlePageChange"
+        />
+      </div>
       </div>
     </el-card>
 
@@ -385,7 +416,7 @@
           <el-descriptions-item label="不含税金额">¥{{ showDetail.net_amount }}</el-descriptions-item>
           <el-descriptions-item label="税额">¥{{ showDetail.tax_amount }}</el-descriptions-item>
           <el-descriptions-item label="价税合计">¥{{ showDetail.total_amount }}</el-descriptions-item>
-          <el-descriptions-item label="未核销金额">¥{{ showDetail.outstanding }}</el-descriptions-item>
+          <el-descriptions-item label="未核销金额">¥{{ showDetail.outstanding_amount }}</el-descriptions-item>
           <el-descriptions-item label="状态" :span="2">
             <el-tag :type="statusTag(showDetail.status)" size="small">{{ statusLabel(showDetail.status) }}</el-tag>
           </el-descriptions-item>
@@ -406,7 +437,7 @@
         </el-table>
 
         <div style="margin-top:16px;text-align:center">
-          <el-button v-if="showDetail.status === 'draft'" type="primary" :loading="confirmLoading === showDetail.id" @click="handleConfirmInvoice(showDetail)">确认发票</el-button>
+          <el-button v-if="['draft','unpaid'].includes(showDetail.status)" type="primary" :loading="confirmLoading === showDetail.id" @click="handleConfirmInvoice(showDetail)">确认发票</el-button>
           <el-button v-if="showDetail.status === 'verified' && showDetail.docstatus === 0" type="primary" :loading="genLoading === showDetail.id" @click="handleGenerateVoucher(showDetail)">
             生成凭证
           </el-button>
@@ -422,7 +453,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, ArrowRight } from '@element-plus/icons-vue'
 import request from '@/api/request'
-import { generateVoucherFromInvoice, uploadInvoice, importInvoicesFile, previewInvoiceExcel, confirmSalesInvoice } from '@/api/modules/invoice'
+import { generateVoucherFromInvoice, uploadInvoice, importInvoicesFile, previewInvoiceExcel, confirmSalesInvoice, fetchInvoices } from '@/api/modules/invoice'
 
 const activeTab = ref('sales')
 
@@ -453,9 +484,11 @@ interface InvoiceItem {
   tax_amount: string
   net_amount: string
   outstanding: string
+  outstanding_amount: string
   status: string
   docstatus: number
   is_return?: boolean
+  is_reversed?: boolean
   source_red_invoice_no?: string
   remark?: string
   line_items?: InvoiceLineItem[]
@@ -473,6 +506,21 @@ const invoices = ref<InvoiceItem[]>([])
 const selectedInvoices = ref<InvoiceItem[]>([])
 const confirmLoading = ref(false)
 const expandedRows = ref<string[]>([])
+
+// Client-side pagination
+const currentPage = ref(1)
+const pageSize = ref(20)
+const paginatedInvoices = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return invoices.value.slice(start, start + pageSize.value)
+})
+function handleSizeChange(sz: number) {
+  pageSize.value = sz
+  currentPage.value = 1
+}
+function handlePageChange(p: number) {
+  currentPage.value = p
+}
 
 function handleExpandChange(row: InvoiceItem, expanded: boolean) {
   const index = expandedRows.value.indexOf(row.id)
@@ -503,12 +551,24 @@ const redInvoiceCount = computed(() => invoices.value.filter(i => i.is_return).l
 
 const route = useRoute()
 
-function openInvoiceByNo(invoiceNo: string) {
-  const target = invoices.value.find(i => i.invoice_no === invoiceNo)
-  if (target) {
-    showDetail.value = target
-  } else {
-    ElMessage.warning(`未找到发票 ${invoiceNo}`)
+async function openInvoiceByNo(invoiceNo: string) {
+  // Fast path: blue invoice might already be in the loaded page
+  const local = invoices.value.find(i => i.invoice_no === invoiceNo)
+  if (local) {
+    showDetail.value = local
+    return
+  }
+  // Slow path: server-side search (handles pagination / filter cases)
+  try {
+    const res: any = await fetchInvoices({ keyword: invoiceNo, pageSize: 1, page: 1 })
+    const items = res?.data?.list || res?.list || []
+    if (items.length > 0) {
+      showDetail.value = items[0]
+    } else {
+      ElMessage.warning(`蓝字发票 ${invoiceNo} 不在本系统中（可能是其他期间/公司）`)
+    }
+  } catch (e: any) {
+    ElMessage.error('加载蓝字发票失败：' + (e?.message || e))
   }
 }
 
@@ -544,6 +604,7 @@ async function loadData() {
     const res: any = await request.get('/invoices', { params })
     const list = res?.list
     if (Array.isArray(list)) { invoices.value = list }
+    currentPage.value = 1
   } catch { /* no data */ }
 }
 
@@ -661,27 +722,37 @@ function isExpiring(date: string) {
 }
 
 function statusTag(s: string) {
-  const map: Record<string, string> = { 
-    draft: 'info', 
-    submitted: 'warning', 
+  const map: Record<string, string> = {
+    draft: 'info',
+    submitted: 'warning',
     verified: 'success',
-    unpaid: 'danger', 
-    partially_paid: 'warning', 
-    paid: 'success' 
+    unpaid: 'danger',
+    partially_paid: 'warning',
+    paid: 'success',
+    reversed: 'danger'
   }
   return map[s] || 'info'
 }
 
 function statusLabel(s: string) {
-  const map: Record<string, string> = { 
+  const map: Record<string, string> = {
     draft: '草稿',
     submitted: '待确认',
     verified: '已确认',
-    unpaid: '待核销', 
-    partially_paid: '部分核销', 
-    paid: '已核销' 
+    unpaid: '待核销',
+    partially_paid: '部分核销',
+    paid: '已核销',
+    reversed: '已红冲'
   }
   return map[s] || s
+}
+
+// Row-level visual cue: blue invoices that have been reversed get a faint
+// red tint so they stand out in long lists. Red invoices already have
+// their own column-level 红字 tag, so they don't need an extra row tint.
+function invoiceRowClass({ row }: { row: InvoiceItem }): string {
+  if (row.is_reversed) return 'row-reversed'
+  return ''
 }
 
 async function handleUpload(file: any) {
@@ -922,6 +993,42 @@ function closeUpload() {
 </script>
 
 <style scoped lang="scss">
+.invoice-table-wrap {
+  overflow-x: auto;
+  // Element Plus table sets a fixed min-width based on column widths;
+  // this wrapper makes the right-side columns scrollable instead of
+  // being clipped off the viewport.
+}
+.row-reversed {
+  // Reversed (已被红冲) blue invoices get a faint red row tint so
+  // they stand out in the list — same visual language as the 红字 tag.
+  background-color: rgba(245, 108, 108, 0.06) !important;
+}
+.row-reversed td.el-table__cell {
+  background-color: rgba(245, 108, 108, 0.06) !important;
+}
+.status-reversed {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+.amount-detail {
+  text-align: right;
+  line-height: 1.3;
+  cursor: help;
+}
+.amount-detail .amount-total {
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+.amount-detail .amount-breakdown {
+  font-size: 11px;
+  color: #999;
+  margin-top: 2px;
+}
+.amount-detail.is-negative .amount-total {
+  color: #f56c6c;
+}
 .page-header {
   display: flex;
   align-items: center;

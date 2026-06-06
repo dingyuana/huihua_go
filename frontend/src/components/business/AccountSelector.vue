@@ -237,9 +237,15 @@ function applyModelValue(newVal: AccountNode | string | null) {
   const node = findNodeById(treeData.value, id)
   if (node) {
     const path = getNodePath(node)
-    level1Id.value = path[1]?.id || null
-    level2Id.value = path[2]?.id || null
-    level3Id.value = path[3]?.id || null
+    // level1Options is flattened to root's grandchildren when all root.children are groups
+    // (see level1Options computed). So we need to find which path index corresponds
+    // to a level1 option, instead of blindly using path[1].
+    const l1Ids = new Set(level1Options.value.map(n => n.id))
+    let l1Idx = path.findIndex(n => l1Ids.has(n.id))
+    if (l1Idx === -1) l1Idx = 1 // fallback: assume original 3-level structure
+    level1Id.value = path[l1Idx]?.id || null
+    level2Id.value = path[l1Idx + 1]?.id || null
+    level3Id.value = path[l1Idx + 2]?.id || null
   }
 }
 
