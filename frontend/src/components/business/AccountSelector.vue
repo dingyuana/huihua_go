@@ -104,9 +104,19 @@ const level3Placeholder = computed(() => !level2Id.value ? '请先选择二级�
 const level1Options = computed<AccountNode[]>(() => {
   const root = treeData.value.find(n => !n.parent_id || n.parent_id === '')
   if (!root) return []
-  
+
+  // Skip the "title wrapper" group (e.g., "0000 会计科目总表") which only
+  // contains the real level-1 accounts. We want the actual level-1 accounts
+  // (流动资产/流动负债/...) in the dropdown, not the title.
+  const titleWrapper = (root.children || []).find(c =>
+    c.is_group && (c.code === '0000' || /会计科目总表|全部科目/.test(c.name))
+  )
+  if (titleWrapper && titleWrapper.children?.length) {
+    return titleWrapper.children.map(node => ({ ...node, level: 1 }))
+  }
+
+  // Fallback: original flatten logic if no title wrapper is found
   const children = root.children || []
-  
   if (children.length > 0 && children.every(n => n.is_group)) {
     const result: AccountNode[] = []
     for (const groupNode of children) {
@@ -119,7 +129,7 @@ const level1Options = computed<AccountNode[]>(() => {
     }
     return result
   }
-  
+
   return children.map(node => ({ ...node, level: 1 }))
 })
 
