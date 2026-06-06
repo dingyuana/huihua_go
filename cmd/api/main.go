@@ -163,6 +163,10 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/invoices/sales/import/preview", invoiceHandler.BatchImportPreview)
 	api.Post("/invoices/sales/import/confirm", invoiceHandler.BatchImportConfirm)
 	api.Post("/invoices/sales/confirm", invoiceHandler.ConfirmSalesInvoice)
+	api.Post("/invoices/sales/:id/confirm", invoiceHandler.ConfirmInvoice)
+	api.Post("/invoices/sales/:id/red", invoiceHandler.RedInvoice)
+	api.Post("/invoices/sales/:id/red/part", invoiceHandler.PartRedInvoice)
+	api.Post("/invoices/sales/:id/void", invoiceHandler.VoidInvoice)
 	api.Post("/invoices/purchase/confirm", invoiceHandler.ConfirmPurchaseInvoice)
 	api.Post("/invoices/batch-confirm", invoiceHandler.BatchConfirm)
 
