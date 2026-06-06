@@ -734,3 +734,94 @@ func (h *InvoiceHandler) MatchToBank(c *fiber.Ctx) error {
 		"message": "matched successfully",
 	})
 }
+
+// ConfirmInvoice confirms an invoice (updates confirm_status).
+// POST /api/v1/invoices/sales/:id/confirm
+func (h *InvoiceHandler) ConfirmInvoice(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	invoiceID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid invoice id"})
+	}
+
+	if err := h.svc.ConfirmSalesInvoiceV2(c.Context(), tenantID, invoiceID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "invoice confirmed"})
+}
+
+// RedInvoiceRequest represents a red-letter invoice request.
+type RedInvoiceRequest struct {
+	Reason string `json:"reason"`
+}
+
+// RedInvoice performs a full red-letter (红冲).
+// POST /api/v1/invoices/sales/:id/red
+func (h *InvoiceHandler) RedInvoice(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	invoiceID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid invoice id"})
+	}
+
+	var req RedInvoiceRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body: " + err.Error()})
+	}
+
+	if err := h.svc.RedInvoice(c.Context(), tenantID, invoiceID, userID, req.Reason); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "red invoice created and original marked as reversed"})
+}
+
+// PartRedInvoiceRequest represents a partial red-letter request.
+type PartRedInvoiceRequest struct {
+	RedAmount decimal.Decimal `json:"red_amount"`
+	Reason    string          `json:"reason"`
+}
+
+// PartRedInvoice performs a partial red-letter (部分红冲).
+// POST /api/v1/invoices/sales/:id/red/part
+func (h *InvoiceHandler) PartRedInvoice(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	invoiceID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid invoice id"})
+	}
+
+	var req PartRedInvoiceRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body: " + err.Error()})
+	}
+
+	if err := h.svc.PartRedInvoice(c.Context(), tenantID, invoiceID, userID, req.RedAmount, req.Reason); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "partial red invoice created"})
+}
+
+// VoidInvoice voids (作废) an invoice.
+// POST /api/v1/invoices/sales/:id/void
+func (h *InvoiceHandler) VoidInvoice(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	invoiceID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid invoice id"})
+	}
+
+	if err := h.svc.VoidInvoice(c.Context(), tenantID, invoiceID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "invoice voided"})
+}
