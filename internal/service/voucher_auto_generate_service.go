@@ -12,6 +12,10 @@ import (
 	"huihua/finance/internal/repository"
 )
 
+// Canonical sales-invoice type value. Must match the value used by
+// InvoiceImport (invoice_service.go) and the frontend enum.
+const invoiceTypeSale = "sale"
+
 // VoucherAutoGenerateService auto-generates vouchers from bank transactions, invoices, and reconciliation pairs.
 type VoucherAutoGenerateService struct {
 	journalRepo        *repository.JournalRepository
@@ -247,7 +251,7 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 	}
 
 	var lines []model.JournalEntryLine
-	isSales := invoice.InvoiceType == "sales" || invoice.InvoiceType == "output"
+	isSales := invoice.InvoiceType == invoiceTypeSale
 
 	counterpartyName := ""
 	if invoice.CustomerID != uuid.Nil {
@@ -324,7 +328,7 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 		}
 	} else {
 		if isReturn {
-			// Red purchase: Dr AP, Cr Cost
+			// Red purchase: Dr AP, Cr Cost, Cr Input Tax
 			apAccountID := s.findAccountByCode(ctx, tenantID, "2202")
 			if apAccountID != nil {
 				lines = append(lines, model.JournalEntryLine{
@@ -337,16 +341,32 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 				lines = append(lines, model.JournalEntryLine{
 					ID: uuid.New(), JournalEntryID: je.ID,
 					AccountID: *costID,
-					Debit: decimal.Zero, Credit: amount,
+					Debit: decimal.Zero, Credit: amount.Sub(invoice.TaxAmount.Abs()),
+				})
+			}
+			// Reverse input tax (Cr 2221)
+			if taxAccountID := s.findAccountByCode(ctx, tenantID, "2221"); taxAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *taxAccountID,
+					Debit: decimal.Zero, Credit: invoice.TaxAmount.Abs(),
 				})
 			}
 		} else {
-			// Normal purchase: Dr Cost, Cr AP
+			// Normal purchase: Dr Cost (net), Dr Input Tax, Cr AP (total)
 			if costID := s.findAccountByCode(ctx, tenantID, "5401"); costID != nil {
 				lines = append(lines, model.JournalEntryLine{
 					ID: uuid.New(), JournalEntryID: je.ID,
 					AccountID: *costID,
-					Debit: amount, Credit: decimal.Zero,
+					Debit: amount.Sub(invoice.TaxAmount), Credit: decimal.Zero,
+				})
+			}
+			// Input tax (Dr 2221)
+			if taxAccountID := s.findAccountByCode(ctx, tenantID, "2221"); taxAccountID != nil {
+				lines = append(lines, model.JournalEntryLine{
+					ID: uuid.New(), JournalEntryID: je.ID,
+					AccountID: *taxAccountID,
+					Debit: invoice.TaxAmount, Credit: decimal.Zero,
 				})
 			}
 			apAccountID := s.findAccountByCode(ctx, tenantID, "2202")

@@ -448,7 +448,9 @@ func (ci *columnIndex) get(names ...string) (int, bool) {
 			}
 		}
 	}
-	return 0, false
+	// Return -1 (not 0) so callers that discard the ok-flag get a safe "no
+	// value" via getCell(-1) instead of silently reading column 0.
+	return -1, false
 }
 
 func (ci *columnIndex) has(names ...string) bool {
@@ -764,8 +766,8 @@ func extractBlueInvoiceNo(remark string) string {
 		regexp.MustCompile(`被红冲蓝字数电发票号码[：:]\s*(\d{8,20})`),
 		regexp.MustCompile(`对应蓝字发票号[：:]\s*(\d{8,20})`),
 		regexp.MustCompile(`对应正数发票号码[：:]\s*(\d{8,20})`),
-		regexp.MustCompile(`红冲发票[：:号]?\s*(\d{8,20})`),
-		regexp.MustCompile(`蓝字发票[：:号]?\s*(\d{8,20})`),
+		regexp.MustCompile(`红冲发票(?:号[：:]?|[：:])?\s*(\d{8,20})`),
+		regexp.MustCompile(`蓝字发票(?:号[：:]?|[：:])?\s*(\d{8,20})`),
 	}
 	for _, p := range patterns {
 		if m := p.FindStringSubmatch(remark); len(m) > 1 {
@@ -1035,7 +1037,8 @@ func (s *InvoiceService) InjectAutoGenSvc(svc *VoucherAutoGenerateService) {
 	s.voucherAutoSvc = svc
 }
 
-// ConfirmSalesInvoice confirms a sales invoice, generates an ArInvoice draft, and triggers voucher auto-generation.
+// ConfirmSalesInvoice confirms a sales invoice, generates an ArInvoice (confirmed),
+// triggers voucher auto-generation, and updates invoice status/docstatus.
 func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invoiceID, userID uuid.UUID) error {
 	// 1. Get invoice
 	inv, err := s.repo.GetByID(ctx, tenantID, invoiceID)
@@ -1047,7 +1050,6 @@ func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invo
 	}
 
 	// 2. Check status
-	// Normalize status for confirmation eligibility check (support legacy Chinese values)
 	normalizedStatus := inv.Status
 	if normalizedStatus == "正常" || normalizedStatus == "unpaid" {
 		normalizedStatus = "draft"
@@ -1061,6 +1063,7 @@ func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invo
 	}
 
 	// 3. Check if ArInvoice already exists (prevent duplicate)
+	var arID uuid.UUID
 	if s.arInvoiceRepo != nil {
 		existing, err := s.arInvoiceRepo.ListByInvoiceID(ctx, tenantID, invoiceID)
 		if err != nil {
@@ -1069,33 +1072,56 @@ func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invo
 		if existing != nil {
 			return errors.New("ar_invoice already exists for this invoice")
 		}
-	}
 
-	// 4. Generate ArInvoice draft
-	if s.arInvoiceRepo != nil {
+		// 4. Create ArInvoice with "confirmed" status — it represents confirmed accounts receivable
+		confirmedBy := userID
+		now := time.Now()
 		ar := &model.ArInvoice{
 			ID:                uuid.New(),
 			TenantID:          tenantID,
-			CompanyID:          inv.CompanyID,
-			CustomerID:         inv.CustomerID,
-			InvoiceID:          invoiceID,
-			InvoiceNo:          inv.InvoiceNo,
-			Amount:             inv.TotalAmount,
-			PaidAmount:         decimal.Zero,
-			OutstandingAmount:  inv.TotalAmount,
-			DueDate:            inv.DueDate,
-			Status:             string(model.ArInvoiceStatusDraft),
-			SourceType:         "auto_import",
-			CreatedBy:          &userID,
-			CreatedAt:          time.Now(),
+			CompanyID:         inv.CompanyID,
+			CustomerID:        inv.CustomerID,
+			InvoiceID:         invoiceID,
+			InvoiceNo:         inv.InvoiceNo,
+			Amount:            inv.TotalAmount,
+			PaidAmount:        decimal.Zero,
+			OutstandingAmount: inv.TotalAmount,
+			DueDate:           inv.DueDate,
+			Status:            string(model.ArInvoiceStatusConfirmed),
+			SourceType:        "auto_import",
+			CreatedBy:         &userID,
+			CreatedAt:         now,
+			ConfirmedAt:       &now,
+			ConfirmedBy:       &confirmedBy,
+			ApprovedAt:        &now,
+			ApprovedBy:        &confirmedBy,
 		}
+		arID = ar.ID
 		if err := s.arInvoiceRepo.Create(ctx, ar); err != nil {
 			return fmt.Errorf("failed to create ar_invoice: %v", err)
 		}
 	}
 
-	// 6. Update invoice status to verified
-	return s.repo.UpdateStatus(ctx, tenantID, invoiceID, string(model.InvoiceStatusVerified))
+	// 5. Generate accounting voucher from the invoice. Failure is returned to
+	// the caller so the UI can show a clear error — silent warning prints
+	// used to leave users wondering why no voucher appeared.
+	if s.voucherAutoSvc != nil {
+		voucher, verr := s.voucherAutoSvc.GenerateFromInvoice(ctx, tenantID, invoiceID, userID)
+		if verr != nil {
+			return fmt.Errorf("generate voucher for sales invoice: %w", verr)
+		}
+		if voucher != nil && s.arInvoiceRepo != nil && arID != uuid.Nil {
+			if err := s.arInvoiceRepo.SetVoucherID(ctx, tenantID, arID, voucher.ID); err != nil {
+				return fmt.Errorf("link voucher to ar_invoice: %w", err)
+			}
+		}
+	}
+
+	// 6. Update invoice status + docstatus (marks it as having a voucher / being confirmed)
+	if err := s.repo.UpdateStatus(ctx, tenantID, invoiceID, string(model.InvoiceStatusVerified)); err != nil {
+		return err
+	}
+	return s.repo.UpdateFields(ctx, tenantID, invoiceID, map[string]interface{}{"docstatus": 1})
 }
 
 func (s *InvoiceService) ConfirmPurchaseInvoice(ctx context.Context, tenantID, invoiceID, userID uuid.UUID) error {
@@ -1119,6 +1145,7 @@ func (s *InvoiceService) ConfirmPurchaseInvoice(ctx context.Context, tenantID, i
 		return errors.New("invalid invoice status for confirmation")
 	}
 
+	var apID uuid.UUID
 	if s.apInvoiceRepo != nil {
 		existing, err := s.apInvoiceRepo.ListByInvoiceID(ctx, tenantID, invoiceID)
 		if err != nil {
@@ -1127,37 +1154,51 @@ func (s *InvoiceService) ConfirmPurchaseInvoice(ctx context.Context, tenantID, i
 		if existing != nil {
 			return errors.New("ap_invoice already exists for this invoice")
 		}
-	}
 
-	if s.apInvoiceRepo != nil {
+		confirmedBy := userID
+		now := time.Now()
 		ap := &model.ApInvoice{
 			ID:                uuid.New(),
 			TenantID:          tenantID,
-			CompanyID:          inv.CompanyID,
-			SupplierID:         inv.CustomerID,
-			InvoiceID:          invoiceID,
-			InvoiceNo:          inv.InvoiceNo,
-			Amount:             inv.TotalAmount,
-			PaidAmount:         decimal.Zero,
-			OutstandingAmount:  inv.TotalAmount,
-			DueDate:            inv.DueDate,
-			Status:             string(model.ApInvoiceStatusDraft),
-			SourceType:         "purchase_invoice",
-			CreatedBy:          &userID,
-			CreatedAt:          time.Now(),
+			CompanyID:         inv.CompanyID,
+			SupplierID:        inv.CustomerID,
+			InvoiceID:         invoiceID,
+			InvoiceNo:         inv.InvoiceNo,
+			Amount:            inv.TotalAmount,
+			PaidAmount:        decimal.Zero,
+			OutstandingAmount: inv.TotalAmount,
+			DueDate:           inv.DueDate,
+			Status:            string(model.ApInvoiceStatusConfirmed),
+			SourceType:        "purchase_invoice",
+			CreatedBy:         &userID,
+			CreatedAt:         now,
+			ConfirmedAt:       &now,
+			ConfirmedBy:       &confirmedBy,
+			ApprovedAt:        &now,
+			ApprovedBy:        &confirmedBy,
 		}
+		apID = ap.ID
 		if err := s.apInvoiceRepo.Create(ctx, ap); err != nil {
 			return fmt.Errorf("failed to create ap_invoice: %v", err)
 		}
 	}
 
 	if s.voucherAutoSvc != nil {
-		if _, err := s.voucherAutoSvc.GenerateFromInvoice(ctx, tenantID, invoiceID, userID); err != nil {
-			fmt.Printf("[WARN] failed to generate voucher for invoice %s: %v\n", invoiceID, err)
+		voucher, verr := s.voucherAutoSvc.GenerateFromInvoice(ctx, tenantID, invoiceID, userID)
+		if verr != nil {
+			return fmt.Errorf("generate voucher for purchase invoice: %w", verr)
+		}
+		if voucher != nil && s.apInvoiceRepo != nil && apID != uuid.Nil {
+			if err := s.apInvoiceRepo.SetVoucherID(ctx, tenantID, apID, voucher.ID); err != nil {
+				return fmt.Errorf("link voucher to ap_invoice: %w", err)
+			}
 		}
 	}
 
-	return s.repo.UpdateStatus(ctx, tenantID, invoiceID, string(model.InvoiceStatusVerified))
+	if err := s.repo.UpdateStatus(ctx, tenantID, invoiceID, string(model.InvoiceStatusVerified)); err != nil {
+		return err
+	}
+	return s.repo.UpdateFields(ctx, tenantID, invoiceID, map[string]interface{}{"docstatus": 1})
 }
 
 // ParseInvoicePDF is a placeholder for PDF OCR parsing.
