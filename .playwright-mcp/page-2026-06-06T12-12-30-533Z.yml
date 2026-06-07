@@ -1,0 +1,17 @@
+- generic [ref=e4]:
+  - heading "慧财智能财务平台" [level=1] [ref=e5]
+  - paragraph [ref=e6]: 银行流水驱动业财一体化
+  - generic [ref=e7]:
+    - generic [ref=e11]:
+      - img [ref=e14]
+      - textbox "账号" [ref=e16]
+    - generic [ref=e20]:
+      - img [ref=e23]
+      - textbox "密码" [ref=e26]
+    - button "登 录" [ref=e29] [cursor=pointer]:
+      - generic [ref=e30]: 登 录
+  - generic [ref=e31]:
+    - paragraph [ref=e32]: 演示账号：
+    - paragraph [ref=e33]: admin / admin123（财务主管）
+    - paragraph [ref=e34]: cashier / 123456（出纳）
+    - paragraph [ref=e35]: boss / 123456（老板）

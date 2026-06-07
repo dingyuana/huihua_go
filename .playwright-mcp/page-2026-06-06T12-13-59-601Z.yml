@@ -1,0 +1,87 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e41]:
+    - generic [ref=e42]:
+      - generic [ref=e44]:
+        - generic [ref=e45]: 慧财财务
+        - generic [ref=e46]: 测试公司
+      - menubar [ref=e47]:
+        - menuitem "基础设置" [ref=e48]:
+          - generic [ref=e49] [cursor=pointer]:
+            - img [ref=e51]
+            - generic [ref=e53]: 基础设置
+            - img [ref=e55]
+        - menuitem "银行流水" [ref=e57]:
+          - generic [ref=e58] [cursor=pointer]:
+            - img [ref=e60]
+            - generic [ref=e64]: 银行流水
+            - img [ref=e66]
+        - menuitem "往来管理" [ref=e68]:
+          - generic [ref=e69] [cursor=pointer]:
+            - img [ref=e71]
+            - generic [ref=e75]: 往来管理
+            - img [ref=e77]
+        - menuitem "账龄分析" [ref=e79] [cursor=pointer]:
+          - img [ref=e81]
+          - text: 账龄分析
+        - menuitem "信用管控" [ref=e83] [cursor=pointer]: 信用管控
+        - menuitem "核销中心" [ref=e85]:
+          - generic [ref=e86] [cursor=pointer]:
+            - img [ref=e88]
+            - generic [ref=e90]: 核销中心
+            - img [ref=e92]
+        - menuitem "凭证管理" [ref=e94]:
+          - generic [ref=e95] [cursor=pointer]:
+            - img [ref=e97]
+            - generic [ref=e100]: 凭证管理
+            - img [ref=e102]
+        - menuitem "期末处理" [ref=e104]:
+          - generic [ref=e105] [cursor=pointer]:
+            - img [ref=e107]
+            - generic [ref=e111]: 期末处理
+            - img [ref=e113]
+        - menuitem "银企对账" [ref=e115] [cursor=pointer]: 银企对账
+        - menuitem "对账差异报告" [ref=e117] [cursor=pointer]:
+          - img [ref=e119]
+          - text: 对账差异报告
+    - generic [ref=e121]:
+      - banner [ref=e122]:
+        - generic [ref=e123]:
+          - button [ref=e124] [cursor=pointer]:
+            - img [ref=e127]
+          - navigation "面包屑" [ref=e129]:
+            - generic [ref=e130]:
+              - link "首页" [ref=e131]
+              - text: /
+            - link "首页" [ref=e133]
+        - button "admin" [ref=e136] [cursor=pointer]:
+          - img [ref=e139]
+          - generic [ref=e141]: admin
+      - main [ref=e142]:
+        - generic [ref=e143]:
+          - heading "欢迎使用慧财智能财务平台" [level=2] [ref=e144]
+          - paragraph [ref=e145]: 测试公司
+          - generic [ref=e146]:
+            - generic [ref=e149]:
+              - paragraph [ref=e150]: 本月流水
+              - paragraph [ref=e151]: 0 笔
+            - generic [ref=e154]:
+              - paragraph [ref=e155]: 待审核凭证
+              - paragraph [ref=e156]: 0 张
+            - generic [ref=e159]:
+              - paragraph [ref=e160]: 本月净利润
+              - paragraph [ref=e161]: ¥0
+            - generic [ref=e164]:
+              - paragraph [ref=e165]: 待处理流水
+              - paragraph [ref=e166]: 0 条
+          - generic [ref=e167]:
+            - generic [ref=e168]: 快速入口
+            - generic [ref=e170]:
+              - button "导入银行流水" [ref=e172] [cursor=pointer]:
+                - generic [ref=e173]: 导入银行流水
+              - button "新增凭证" [ref=e175] [cursor=pointer]:
+                - generic [ref=e176]: 新增凭证
+              - button "结账体检" [ref=e178] [cursor=pointer]:
+                - generic [ref=e179]: 结账体检
+  - alert [ref=e180]:
+    - img [ref=e182]
+    - paragraph [ref=e184]: 登录成功
