@@ -137,7 +137,10 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 		}
 	}
 
-	summary, _ := h.svc.GetSummary(c.Context(), tenantID, filters)
+	summary, sumErr := h.svc.GetSummary(c.Context(), tenantID, filters)
+	if sumErr != nil {
+		log.Printf("[WARN] GetSummary failed for tenant %s: %v", tenantID, sumErr)
+	}
 
 	return c.JSON(fiber.Map{
 		"list":    result,
