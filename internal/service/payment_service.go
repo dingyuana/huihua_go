@@ -57,6 +57,10 @@ type CreatePaymentFromBankTxnRequest struct {
 	ReferenceNo       string
 	// UnallocatedAmount 可选，新建时未核销金额；缺省时 fallback 到 paid_amount
 	UnallocatedAmount decimal.Decimal
+	// Currency 可选，缺省 "CNY"；V1.1 仅落库，V2 远期多币种
+	Currency *string
+	// ExchangeRate 可选，缺省 1.0；V1.1 仅落库，V2 远期按日维护
+	ExchangeRate decimal.Decimal
 }
 
 func (s *PaymentEntryService) CreateFromBankTransaction(
@@ -118,6 +122,17 @@ func (s *PaymentEntryService) CreateFromBankTransaction(
 	}
 	if req.UnallocatedAmount.IsPositive() {
 		pe.UnallocatedAmount = req.UnallocatedAmount
+	}
+	// V1.1 仅落库：currency/exchange_rate 缺省 CNY/1.0，V2 远期多币种
+	currency := "CNY"
+	if req.Currency != nil && *req.Currency != "" {
+		currency = *req.Currency
+	}
+	pe.Currency = &currency
+	if req.ExchangeRate.IsPositive() {
+		pe.ExchangeRate = req.ExchangeRate
+	} else {
+		pe.ExchangeRate = decimal.NewFromInt(1)
 	}
 
 	entry, err := s.repo.Create(ctx, tenantID, pe)

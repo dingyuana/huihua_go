@@ -37,6 +37,10 @@ type CreateFromBankTxnRequest struct {
 	PostingDate       string          `json:"posting_date"`
 	// UnallocatedAmount 可选，新建时未核销金额；缺省时 service 端 fallback 到 paid_amount
 	UnallocatedAmount decimal.Decimal `json:"unallocated_amount,omitempty"`
+	// Currency 可选，缺省 "CNY"；V1.1 仅落库
+	Currency *string `json:"currency,omitempty"`
+	// ExchangeRate 可选，缺省 1.0；V1.1 仅落库
+	ExchangeRate decimal.Decimal `json:"exchange_rate,omitempty"`
 }
 
 func (h *PaymentEntryHandler) CreateFromBankTransaction(c *fiber.Ctx) error {
@@ -84,6 +88,8 @@ func (h *PaymentEntryHandler) CreateFromBankTransaction(c *fiber.Ctx) error {
 		PostingDate:       postingDate,
 		ReferenceNo:       "",
 		UnallocatedAmount: req.UnallocatedAmount,
+		Currency:          req.Currency,
+		ExchangeRate:      req.ExchangeRate,
 	}
 
 	if bankTxn.ReferenceNo != nil {
