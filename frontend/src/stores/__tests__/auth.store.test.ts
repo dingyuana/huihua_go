@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth.store'
+import { Role } from '@/types/enums'
 
 describe('AuthStore', () => {
   beforeEach(() => {
@@ -20,7 +21,7 @@ describe('AuthStore', () => {
       id: 'u-001',
       username: 'admin',
       name: '管理员',
-      role: 'admin',
+      role: Role.Admin,
       permissions: ['voucher.create', 'voucher.approve'],
       avatar: null,
     })
@@ -37,7 +38,7 @@ describe('AuthStore', () => {
       id: 'u-002',
       username: 'operator',
       name: '操作员',
-      role: 'operator',
+      role: Role.Cashier,
       permissions: ['voucher.read'],
       avatar: null,
     })
@@ -52,7 +53,7 @@ describe('AuthStore', () => {
       id: 'u-003',
       username: 'admin',
       name: '管理员',
-      role: 'admin',
+      role: Role.Admin,
       permissions: [],
       avatar: null,
     })
@@ -67,7 +68,7 @@ describe('AuthStore', () => {
       id: 'u-001',
       username: 'admin',
       name: '管理员',
-      role: 'admin',
+      role: Role.Admin,
       permissions: [],
       avatar: null,
     })
