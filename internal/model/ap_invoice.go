@@ -39,3 +39,11 @@ type ApInvoice struct {
 	ApprovedAt       *time.Time      `json:"approved_at,omitempty" db:"approved_at"`
 	LastAllocationAt *time.Time      `json:"last_allocation_at,omitempty" db:"last_allocation_at"`
 }
+
+// ApInvoiceRequest is the JSON body for create/update of an ApInvoice.
+// DueDate is a string (YYYY-MM-DD) so callers can omit time-of-day and timezone.
+// Service-layer code converts to *time.Time when persisting.
+type ApInvoiceRequest struct {
+	ApInvoice
+	DueDateStr *string `json:"due_date,omitempty"`
+}

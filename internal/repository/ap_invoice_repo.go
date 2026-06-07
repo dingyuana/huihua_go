@@ -161,6 +161,64 @@ func (r *ApInvoiceRepository) ListByInvoiceID(ctx context.Context, tenantID, inv
 	return &ap, nil
 }
 
+// Confirm confirms an AP invoice, setting confirmed_at, confirmed_by, and status = 'confirmed'.
+func (r *ApInvoiceRepository) Confirm(ctx context.Context, tenantID, id, confirmedBy uuid.UUID) error {
+	now := time.Now()
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ap_invoices SET confirmed_at = $3, confirmed_by = $4, status = $5
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, now, confirmedBy, model.ApInvoiceStatusConfirmed)
+	return err
+}
+
+// Approve approves an AP invoice (after confirmation), setting approved_at, approved_by, and status = 'approved'.
+func (r *ApInvoiceRepository) Approve(ctx context.Context, tenantID, id, approvedBy uuid.UUID) error {
+	now := time.Now()
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ap_invoices SET approved_at = $3, approved_by = $4, status = $5
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, now, approvedBy, model.ApInvoiceStatusConfirmed)
+	return err
+}
+
+// Update updates editable fields on a draft ApInvoice (supplier_id, invoice_no, amount, due_date).
+func (r *ApInvoiceRepository) Update(ctx context.Context, tenantID, id uuid.UUID, ap *model.ApInvoice) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ap_invoices
+		SET supplier_id = $3, invoice_no = $4, amount = $5, due_date = $6
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, ap.SupplierID, ap.InvoiceNo, ap.Amount, ap.DueDate)
+	return err
+}
+
+// ListOutstanding returns AP invoices with outstanding balance > 0 within a tenant.
+func (r *ApInvoiceRepository) ListOutstanding(ctx context.Context, tenantID uuid.UUID) ([]*model.ApInvoice, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, tenant_id, company_id, supplier_id, invoice_id, invoice_no, amount,
+			paid_amount, outstanding_amount, due_date, status, source_type, created_by, created_at,
+			confirmed_at, confirmed_by, approved_by, approved_at
+		FROM ap_invoices
+		WHERE tenant_id = $1 AND outstanding_amount > 0
+			AND status IN ('confirmed','partially_paid')
+		ORDER BY due_date ASC NULLS LAST, created_at ASC`,
+		tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.ApInvoice
+	for rows.Next() {
+		var ap model.ApInvoice
+		if err := rows.Scan(&ap.ID, &ap.TenantID, &ap.CompanyID, &ap.SupplierID, &ap.InvoiceID, &ap.InvoiceNo,
+			&ap.Amount, &ap.PaidAmount, &ap.OutstandingAmount, &ap.DueDate, &ap.Status, &ap.SourceType,
+			&ap.CreatedBy, &ap.CreatedAt, &ap.ConfirmedAt, &ap.ConfirmedBy, &ap.ApprovedBy, &ap.ApprovedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, &ap)
+	}
+	return list, rows.Err()
+}
+
 // IncrementPaid increments paid_amount and recalculates outstanding_amount.
 func (r *ApInvoiceRepository) IncrementPaid(ctx context.Context, tenantID, id uuid.UUID, delta decimal.Decimal, newStatus string) error {
 	_, err := r.pool.Exec(ctx, `

@@ -190,9 +190,18 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/ar-invoices/customer/:customerId/summary", arInvoiceHandler.CustomerSummary)
 
 	// AP invoice routes
-	apInvoiceHandler := handler.NewApInvoiceHandler(apInvoiceRepo, partyRepo)
+	apInvoiceSvc := service.NewApInvoiceService(apInvoiceRepo)
+	apInvoiceHandler := handler.NewApInvoiceHandler(apInvoiceRepo, partyRepo, apInvoiceSvc)
 	api.Get("/ap-invoices", apInvoiceHandler.List)
+	api.Get("/ap-invoices/outstanding", apInvoiceHandler.ListOutstanding)
+	api.Get("/ap-invoices/by-supplier/:supplier_id", apInvoiceHandler.ListBySupplier)
 	api.Get("/ap-invoices/:id", apInvoiceHandler.GetByID)
+	api.Post("/ap-invoices", apInvoiceHandler.Create)
+	api.Put("/ap-invoices/:id", apInvoiceHandler.Update)
+	api.Delete("/ap-invoices/:id", apInvoiceHandler.Delete)
+	api.Post("/ap-invoices/:id/confirm", apInvoiceHandler.Confirm)
+	api.Post("/ap-invoices/:id/approve", apInvoiceHandler.Approve)
+	api.Post("/ap-invoices/:id/allocate", apInvoiceHandler.Allocate)
 
 	// Expense invoice routes (进项发票)
 	expenseInvoiceRepo := repository.NewExpenseInvoiceRepository(db.GetPool())
