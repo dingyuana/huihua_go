@@ -1385,6 +1385,17 @@ type AllocationRequest struct {
 }
 
 // AllocateToPaymentEntry creates payment allocations and updates invoice outstanding amounts.
+//
+// Cash discount side effects (V1.0 §3.7):
+//   When a.DiscountAmount > 0, this method will:
+//     1) Call s.repo.CreateCashDiscount to insert a row in cash_discounts (audit trail).
+//     2) Call s.voucherAutoSvc.GenerateCashDiscountVoucher to auto-generate a
+//        discount voucher (借：应收/应付 / 贷：银行存款 + 财务费用).
+//
+// Errors from the cash-discount side are returned to the caller — voucher
+// generation failure is treated as a hard failure because the allocation row
+// is already in place and the system would be left in an inconsistent state
+// if the discount is recorded but the voucher is missing.
 func (s *InvoiceService) AllocateToPaymentEntry(ctx context.Context, tenantID uuid.UUID, paymentEntryID uuid.UUID, allocations []AllocationRequest) ([]model.PaymentAllocation, error) {
 	var result []model.PaymentAllocation
 	for _, a := range allocations {
@@ -1418,6 +1429,33 @@ func (s *InvoiceService) AllocateToPaymentEntry(ctx context.Context, tenantID uu
 			return nil, err
 		}
 		result = append(result, *alloc)
+
+		// Cash discount side effects (V1.0 §3.7) — only when discount > 0.
+		// Both steps are required for consistency: audit trail + voucher.
+		if a.DiscountAmount.GreaterThan(decimal.Zero) {
+			// 1) Insert cash_discounts trace row.
+			//    Discount rate = discount_amount / invoice_total_amount.
+			//    If inv.TotalAmount is zero (shouldn't happen in practice) we
+			//    skip the rate calc to avoid division-by-zero; the rate column
+			//    is nullable so a nil rate is acceptable.
+			var discountRate *decimal.Decimal
+			if inv.TotalAmount.GreaterThan(decimal.Zero) {
+				rate := a.DiscountAmount.Div(inv.TotalAmount)
+				discountRate = &rate
+			}
+			if err := s.repo.CreateCashDiscount(ctx, alloc, discountRate); err != nil {
+				return nil, fmt.Errorf("create cash discount (alloc=%s): %w", alloc.ID, err)
+			}
+
+			// 2) Auto-generate cash discount voucher (借：应收/应付 / 贷：银行存款 + 财务费用).
+			//    Only attempt when the auto voucher service is wired in (may be nil
+			//    during early initialization in main.go).
+			if s.voucherAutoSvc != nil {
+				if _, err := s.voucherAutoSvc.GenerateCashDiscountVoucher(ctx, tenantID, alloc.ID, paymentEntryID, a.InvoiceID, invoiceType, a.DiscountAmount, a.AllocatedAmount); err != nil {
+					return nil, fmt.Errorf("generate cash discount voucher (alloc=%s): %w", alloc.ID, err)
+				}
+			}
+		}
 	}
 	return result, nil
 }

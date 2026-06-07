@@ -1123,3 +1123,218 @@ func (s *VoucherAutoGenerateService) GenerateFromAdvanceOffset(
 	}
 	return voucherNo, nil
 }
+
+// GenerateCashDiscountVoucher auto-generates a voucher for a cash discount scenario
+// (V1.0 §3.7). When a payment entry's allocation to an invoice carries a discount
+// (discount_amount > 0), this method records the financial fact as a 3-line voucher:
+//
+//	Dr. 应收账款 1122 (sale)  /  应付账款 2202 (purchase)   amount = allocated + discount
+//	Cr. 银行存款 1002 / 1001 (per payment_method)        amount = allocated
+//	Cr. 财务费用 5602                                       amount = discount
+//
+// The voucher_no uses prefix "CD-" to distinguish it from normal payment vouchers.
+// Called from InvoiceService.AllocateToPaymentEntry when DiscountAmount > 0.
+//
+// Parameters:
+//   - tenantID: tenant
+//   - paymentAllocationID: payment_allocations.id (used for UNIQUE voucher mapping)
+//   - paymentEntryID: payment_entries.id (source document)
+//   - invoiceID: invoices.id
+//   - invoiceType: "sale" or "purchase" (determines AR vs AP account)
+//   - discountAmount: cash discount amount
+//   - allocatedAmount: actual paid amount (debit to bank)
+func (s *VoucherAutoGenerateService) GenerateCashDiscountVoucher(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	paymentAllocationID uuid.UUID,
+	paymentEntryID uuid.UUID,
+	invoiceID uuid.UUID,
+	invoiceType string,
+	discountAmount decimal.Decimal,
+	allocatedAmount decimal.Decimal,
+) (*model.JournalEntry, error) {
+
+	// 1. Load payment entry to resolve company + bank account
+	pe, err := s.paymentRepo.GetByID(ctx, tenantID, paymentEntryID)
+	if err != nil {
+		return nil, fmt.Errorf("get payment entry for cash discount: %w", err)
+	}
+	if pe == nil {
+		return nil, fmt.Errorf("payment entry %s not found for cash discount", paymentEntryID)
+	}
+
+	// 2. Resolve the bank/cash side account based on payment_method
+	//    "bank"/"wechat"/"alipay" → 1002, "cash" → 1001
+	paymentMethod := "bank"
+	if pe.PaymentMethod != nil && *pe.PaymentMethod != "" {
+		paymentMethod = *pe.PaymentMethod
+	}
+	var bankSideAcctID *uuid.UUID
+	switch paymentMethod {
+	case "cash":
+		bankSideAcctID = s.findAccountByCode(ctx, tenantID, "1001")
+		if bankSideAcctID == nil {
+			bankSideAcctID = s.findAccountByCode(ctx, tenantID, "1002")
+		}
+	default:
+		if pe.BankAccountID != nil {
+			bankAcct, repoErr := s.bankRepo.GetByID(ctx, tenantID, *pe.BankAccountID)
+			if repoErr == nil && bankAcct != nil && bankAcct.ClearingAccountID != nil {
+				bankSideAcctID = bankAcct.ClearingAccountID
+			}
+		}
+		if bankSideAcctID == nil {
+			bankSideAcctID = s.findAccountByCode(ctx, tenantID, "1002")
+		}
+		if bankSideAcctID == nil {
+			bankSideAcctID = s.findAccountByCode(ctx, tenantID, "1001")
+		}
+	}
+	if bankSideAcctID == nil {
+		return nil, fmt.Errorf("cannot resolve bank/cash account for cash discount voucher (method=%s)", paymentMethod)
+	}
+
+	// 3. Resolve AR / AP account based on invoice type
+	//    sale → 应收账款 1122,  purchase → 应付账款 2202
+	var arApAcctID *uuid.UUID
+	if invoiceType == "purchase" {
+		arApAcctID = s.findAccountByCode(ctx, tenantID, "2202")
+	} else {
+		// default to sale side
+		arApAcctID = s.findAccountByCode(ctx, tenantID, "1122")
+	}
+	if arApAcctID == nil {
+		return nil, fmt.Errorf("cannot resolve AR/AP account for invoice_type=%s", invoiceType)
+	}
+
+	// 4. Resolve 财务费用 5602
+	financeFeeAcctID := s.findAccountByCode(ctx, tenantID, "5602")
+	if financeFeeAcctID == nil {
+		return nil, fmt.Errorf("cannot resolve 财务费用 5602 account for cash discount voucher")
+	}
+
+	// 5. Load invoice to fetch invoice_no (for remarks)
+	invoice, err := s.invoiceRepo.GetByID(ctx, tenantID, invoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("get invoice for cash discount: %w", err)
+	}
+	invoiceNo := ""
+	if invoice != nil {
+		invoiceNo = invoice.InvoiceNo
+	}
+
+	// 6. Resolve party (counterparty) — same pattern as GenerateFromPaymentEntry
+	party, _ := s.partyRepo.GetByID(ctx, tenantID, pe.PartyID)
+	partyTypeStr := pe.PartyType
+	partyIDCopy := pe.PartyID
+	partyName := ""
+	if party != nil {
+		partyName = party.Name
+		if party.PartyType != "" {
+			partyTypeStr = party.PartyType
+		}
+		if partyIDCopy == uuid.Nil {
+			partyIDCopy = party.ID
+		}
+	}
+	if partyName == "" && pe.CounterpartyName != nil {
+		partyName = *pe.CounterpartyName
+	}
+
+	// 7. Compute gross AR/AP = allocated + discount (this is the original invoice amount)
+	grossAmount := allocatedAmount.Add(discountAmount)
+
+	// 8. Generate voucher_no with "CD-" prefix (cash discount)
+	now := time.Now()
+	voucherNo := fmt.Sprintf("CD-%s-%04d",
+		now.Format("20060102"),
+		now.UnixNano()%10000)
+
+	// 9. Build voucher header
+	peID := pe.ID
+	peNo := pe.PaymentNo
+	sourceDocType := "cash_discount"
+	remark := fmt.Sprintf("[%s] 现金折扣 %s", peNo, invoiceNo)
+	if invoiceNo == "" {
+		remark = fmt.Sprintf("[%s] 现金折扣", peNo)
+	}
+
+	var createdBy uuid.UUID
+	if pe.CreatedBy != nil {
+		createdBy = *pe.CreatedBy
+	}
+	je := &model.JournalEntry{
+		ID:               uuid.New(),
+		TenantID:         tenantID,
+		CompanyID:        pe.CompanyID,
+		VoucherNo:        voucherNo,
+		PostingDate:      now,
+		CreatedBy:        createdBy,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		DocStatus:        0,
+		CounterpartyName: &partyName,
+		SourceDocType:    &sourceDocType,
+		SourceDocID:      &peID,
+		SourceDocNo:      &peNo,
+		Remark:           &remark,
+	}
+
+	// 10. Build 3 lines
+	var debitRemark string
+	if invoiceType == "purchase" {
+		debitRemark = fmt.Sprintf("冲销应付 %s", partyName)
+	} else {
+		debitRemark = fmt.Sprintf("冲销应收 %s", partyName)
+	}
+	creditBankRemark := fmt.Sprintf("实付 %s", partyName)
+	creditDiscountRemark := fmt.Sprintf("现金折扣 %s", partyName)
+
+	lines := []model.JournalEntryLine{
+		{
+			ID:             uuid.New(),
+			JournalEntryID: je.ID,
+			AccountID:      *arApAcctID,
+			Debit:          grossAmount,
+			Credit:         decimal.Zero,
+			PartyType:      &partyTypeStr,
+			PartyID:        &partyIDCopy,
+			UserRemark:     &debitRemark,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: je.ID,
+			AccountID:      *bankSideAcctID,
+			Debit:          decimal.Zero,
+			Credit:         allocatedAmount,
+			PartyType:      &partyTypeStr,
+			PartyID:        &partyIDCopy,
+			UserRemark:     &creditBankRemark,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: je.ID,
+			AccountID:      *financeFeeAcctID,
+			Debit:          decimal.Zero,
+			Credit:         discountAmount,
+			PartyType:      &partyTypeStr,
+			PartyID:        &partyIDCopy,
+			UserRemark:     &creditDiscountRemark,
+		},
+	}
+
+	// 11. Persist journal entry + lines
+	if _, err := s.journalRepo.Create(ctx, tenantID, je); err != nil {
+		return nil, fmt.Errorf("create cash discount journal entry: %w", err)
+	}
+	if _, err := s.journalRepo.AddLines(ctx, tenantID, je.ID, lines); err != nil {
+		return nil, fmt.Errorf("add cash discount journal entry lines: %w", err)
+	}
+
+	// 12. Map allocation → voucher (UNIQUE payment_allocation_id provides idempotency)
+	if err := s.invoiceRepo.CreateCashDiscountVoucher(ctx, paymentAllocationID, je.ID, invoiceType, tenantID); err != nil {
+		return nil, fmt.Errorf("create cash discount voucher mapping: %w", err)
+	}
+
+	return je, nil
+}

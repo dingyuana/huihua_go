@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 )
 
@@ -530,10 +531,38 @@ func (r *InvoiceRepository) CreateAllocation(ctx context.Context, alloc *model.P
 	alloc.ID = uuid.New()
 	alloc.CreatedAt = time.Now()
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO payment_allocations (id, payment_entry_id, invoice_id, invoice_type, allocated_amount, tenant_id, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		INSERT INTO payment_allocations (id, payment_entry_id, invoice_id, invoice_type, allocated_amount, discount_amount, tenant_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		alloc.ID, alloc.PaymentEntryID, alloc.InvoiceID, alloc.InvoiceType,
-		alloc.AllocatedAmount.String(), alloc.TenantID, alloc.CreatedAt)
+		alloc.AllocatedAmount.String(), alloc.DiscountAmount.String(), alloc.TenantID, alloc.CreatedAt)
+	return err
+}
+
+// CreateCashDiscount inserts a record into cash_discounts.
+// Called from AllocateToPaymentEntry when DiscountAmount > 0.
+// The full allocation row is passed in so the discount row carries both the
+// allocation ID and the payment/invoice context.
+func (r *InvoiceRepository) CreateCashDiscount(ctx context.Context, alloc *model.PaymentAllocation, discountRate *decimal.Decimal) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO cash_discounts (id, payment_allocation_id, payment_entry_id, invoice_id, discount_amount, discount_rate, tenant_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, now())`,
+		uuid.New(), alloc.ID, alloc.PaymentEntryID, alloc.InvoiceID,
+		alloc.DiscountAmount.String(), discountRate, alloc.TenantID)
+	return err
+}
+
+// CreateCashDiscountVoucher inserts a record into cash_discount_vouchers.
+// Called from GenerateCashDiscountVoucher (voucher_auto_generate_service.go) after
+// a journal entry has been generated for a cash discount. Maps payment_allocation
+// 1:1 to the generated voucher so the allocation can be traced back to the voucher.
+//
+// UNIQUE(payment_allocation_id) provides idempotency: re-generating the same
+// allocation's voucher will conflict, which is desirable to prevent duplicates.
+func (r *InvoiceRepository) CreateCashDiscountVoucher(ctx context.Context, paymentAllocationID, voucherID uuid.UUID, invoiceType string, tenantID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO cash_discount_vouchers (id, payment_allocation_id, voucher_id, invoice_type, tenant_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, now())`,
+		uuid.New(), paymentAllocationID, voucherID, invoiceType, tenantID)
 	return err
 }
 
