@@ -1381,6 +1381,7 @@ func (s *InvoiceService) ListUnmatchedInvoices(ctx context.Context, tenantID uui
 type AllocationRequest struct {
 	InvoiceID       uuid.UUID
 	AllocatedAmount decimal.Decimal
+	DiscountAmount  decimal.Decimal // 现金折扣金额
 }
 
 // AllocateToPaymentEntry creates payment allocations and updates invoice outstanding amounts.
@@ -1405,6 +1406,7 @@ func (s *InvoiceService) AllocateToPaymentEntry(ctx context.Context, tenantID uu
 			InvoiceID:       a.InvoiceID,
 			InvoiceType:     &invoiceType,
 			AllocatedAmount: a.AllocatedAmount,
+			DiscountAmount:  a.DiscountAmount,
 			TenantID:        tenantID,
 		}
 
