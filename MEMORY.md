@@ -1,4 +1,26 @@
 ---
+## ⚠️ 项目边界（强约束）
+
+> **永不再操作** `/root/data/disk/huihua-financial-master`（Python FastAPI 版）。**所有"财务软件" = 本仓库 Go 项目**，除非用户显式说 Python 才考虑。
+
+| 路径 | 状态 | 操作 |
+|---|---|---|
+| `/root/data/disk/huihua-finance` (Go + Fiber + pgx) | 🟢 **活跃** | 唯一允许修改 |
+| `/root/data/disk/huihua-financial-master` (Python FastAPI) | 🔴 **停用** | 永不操作 |
+| `/root/.hermes/skills/projects/huihua-financial` 等 | 🔴 Python 技能 | 忽略 |
+| `/root/.hermes/skills/projects/huihua-go-backend` | 🟢 Go 技能 | 可参考 |
+
+## 🛠️ Dev Server 维护责任
+
+> **本地 = 开发服务器**。Sisyphus 负责保持本地与 origin 最新一致。
+
+- **跟踪分支**：`feature/expense-invoice`（当前唯一活跃分支）
+- **同步节奏**：每次任务开始前 `git fetch origin && git status`，如有漂移立即 pull / rebase
+- **构建验证**：每次改完代码跑 `go build ./... && go vet ./... && (cd frontend && pnpm exec vite build)` 三件套
+- **不上生产**：本地 dev server ≠ 生产 `129.211.7.254`。部署到生产是用户手动操作
+- **MEMORY.md 是真理**：未来 Sisyphus 必须先读本文件 + 仓库 README.md 了解项目状态
+
+---
 ## 📌 Changelog
 
 ### 🔴 Major Change — 2026-06-03
