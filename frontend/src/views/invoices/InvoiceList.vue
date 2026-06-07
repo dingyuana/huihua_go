@@ -555,9 +555,112 @@
           <el-button v-if="showDetail.status === 'verified' && showDetail.docstatus === 0" type="primary" :loading="genLoading === showDetail.id" @click="handleGenerateVoucher(showDetail)">
             生成凭证
           </el-button>
+          <!-- 整单红冲：原发票已确认时显示，不填金额 -->
+          <el-button
+            v-if="showDetail && !showDetail.is_return && showDetail.type === 'sale' && ['confirmed','unpaid','paid'].includes(showDetail.status)"
+            type="danger"
+            plain
+            :loading="redLoading === showDetail.id"
+            @click="openRedDialog(showDetail)"
+          >整单红冲</el-button>
+          <!-- 部分红冲：原发票已确认时显示，必须填 red_amount -->
+          <el-button
+            v-if="showDetail && !showDetail.is_return && showDetail.type === 'sale' && ['confirmed','unpaid'].includes(showDetail.status)"
+            type="warning"
+            plain
+            @click="openPartRedDialog(showDetail)"
+          >部分红冲</el-button>
+          <!-- 作废：原发票未确认时显示（已确认的不能作废，只能红冲） -->
+          <el-button
+            v-if="showDetail && !showDetail.is_return && showDetail.type === 'sale' && ['draft','submitted'].includes(showDetail.status)"
+            type="info"
+            plain
+            :loading="voidLoading === showDetail.id"
+            @click="openVoidDialog(showDetail)"
+          >作废</el-button>
         </div>
       </template>
     </el-drawer>
+
+    <!-- 整单红冲弹窗 -->
+    <el-dialog v-model="redDialogVisible" title="整单红冲" width="480px" :close-on-click-modal="false">
+      <el-alert type="warning" :closable="false" show-icon style="margin-bottom:12px">
+        <template #title>整单红冲将生成与原发票等额的红字发票，操作不可撤销</template>
+      </el-alert>
+      <el-form :model="redForm" label-width="90px" label-position="right">
+        <el-form-item label="原发票号">
+          <span>{{ redForm.invoice_no || '—' }}</span>
+        </el-form-item>
+        <el-form-item label="原发票金额">
+          <span>¥{{ redForm.total_amount || '0.00' }}</span>
+        </el-form-item>
+        <el-form-item label="红冲原因" prop="reason">
+          <el-input v-model="redForm.reason" type="textarea" :rows="3" placeholder="请填写红冲原因" maxlength="200" show-word-limit />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="redDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="redSubmitting" @click="handleRedSubmit">确认红冲</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 部分红冲弹窗 -->
+    <el-dialog v-model="partRedDialogVisible" title="部分红冲" width="480px" :close-on-click-modal="false">
+      <el-alert type="info" :closable="false" show-icon style="margin-bottom:12px">
+        <template #title>部分红冲将按指定金额生成红字发票</template>
+      </el-alert>
+      <el-form :model="partRedForm" :rules="partRedFormRules" ref="partRedFormRef" label-width="90px" label-position="right">
+        <el-form-item label="原发票号">
+          <span>{{ partRedForm.invoice_no || '—' }}</span>
+        </el-form-item>
+        <el-form-item label="原发票金额">
+          <span>¥{{ partRedForm.total_amount || '0.00' }}</span>
+        </el-form-item>
+        <el-form-item label="红冲金额" prop="red_amount">
+          <el-input-number
+            v-model="partRedForm.red_amount"
+            :min="0.01"
+            :max="Number(partRedForm.total_amount) || 0"
+            :precision="2"
+            :step="0.01"
+            style="width: 100%"
+            placeholder="请输入红冲金额"
+          />
+          <div style="color:#999; font-size:12px; line-height:1.4; margin-top:4px">
+            不得大于原发票金额 ¥{{ partRedForm.total_amount || '0.00' }}
+          </div>
+        </el-form-item>
+        <el-form-item label="红冲原因" prop="reason">
+          <el-input v-model="partRedForm.reason" type="textarea" :rows="3" placeholder="请填写红冲原因" maxlength="200" show-word-limit />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="partRedDialogVisible = false">取消</el-button>
+        <el-button type="warning" :loading="partRedSubmitting" @click="handlePartRedSubmit">确认部分红冲</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 作废弹窗 -->
+    <el-dialog v-model="voidDialogVisible" title="作废发票" width="480px" :close-on-click-modal="false">
+      <el-alert type="error" :closable="false" show-icon style="margin-bottom:12px">
+        <template #title>作废发票后无法恢复，请确认操作</template>
+      </el-alert>
+      <el-form :model="voidForm" label-width="90px" label-position="right">
+        <el-form-item label="原发票号">
+          <span>{{ voidForm.invoice_no || '—' }}</span>
+        </el-form-item>
+        <el-form-item label="原发票金额">
+          <span>¥{{ voidForm.total_amount || '0.00' }}</span>
+        </el-form-item>
+        <el-form-item label="作废原因" prop="reason">
+          <el-input v-model="voidForm.reason" type="textarea" :rows="3" placeholder="请填写作废原因" maxlength="200" show-word-limit />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="voidDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="voidSubmitting" @click="handleVoidSubmit">确认作废</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -567,7 +670,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, ArrowRight } from '@element-plus/icons-vue'
 import request from '@/api/request'
-import { generateVoucherFromInvoice, uploadInvoice, importInvoicesFile, previewInvoiceExcel, confirmSalesInvoice, fetchInvoices } from '@/api/modules/invoice'
+import { generateVoucherFromInvoice, uploadInvoice, importInvoicesFile, previewInvoiceExcel, confirmSalesInvoice, fetchInvoices, redSalesInvoice, partRedSalesInvoice, voidSalesInvoice } from '@/api/modules/invoice'
 
 const activeTab = ref('sales')
 
@@ -953,6 +1056,173 @@ async function handleGenerateVoucher(invoice: InvoiceItem | null) {
     ElMessage.error('凭证生成失败')
   }
   genLoading.value = false
+}
+
+// ============== 红冲 / 部分红冲 / 作废 ==============
+const redLoading = ref<string | null>(null)
+const partRedLoading = ref<string | null>(null)
+const voidLoading = ref<string | null>(null)
+const redSubmitting = ref(false)
+const partRedSubmitting = ref(false)
+const voidSubmitting = ref(false)
+
+const redDialogVisible = ref(false)
+const partRedDialogVisible = ref(false)
+const voidDialogVisible = ref(false)
+
+const redForm = reactive<{ invoice_id: string; invoice_no: string; total_amount: string; reason: string }>({
+  invoice_id: '',
+  invoice_no: '',
+  total_amount: '',
+  reason: '',
+})
+
+const partRedForm = reactive<{ invoice_id: string; invoice_no: string; total_amount: string; red_amount: number; reason: string }>({
+  invoice_id: '',
+  invoice_no: '',
+  total_amount: '',
+  red_amount: 0,
+  reason: '',
+})
+
+const voidForm = reactive<{ invoice_id: string; invoice_no: string; total_amount: string; reason: string }>({
+  invoice_id: '',
+  invoice_no: '',
+  total_amount: '',
+  reason: '',
+})
+
+const partRedFormRef = ref()
+const partRedFormRules = {
+  red_amount: [
+    { required: true, message: '请输入红冲金额', trigger: 'blur' },
+    {
+      validator: (_: any, value: any, callback: any) => {
+        const n = Number(value)
+        if (!n || n <= 0) {
+          callback(new Error('红冲金额必须大于 0'))
+          return
+        }
+        const max = Number(partRedForm.total_amount) || 0
+        if (max > 0 && n > max) {
+          callback(new Error(`红冲金额不能超过原发票金额 ¥${max.toFixed(2)}`))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur',
+    },
+  ],
+  reason: [{ required: true, message: '请填写红冲原因', trigger: 'blur' }],
+} as any
+
+function openRedDialog(invoice: InvoiceItem) {
+  redForm.invoice_id = invoice.id
+  redForm.invoice_no = invoice.invoice_no
+  redForm.total_amount = invoice.total_amount
+  redForm.reason = ''
+  redDialogVisible.value = true
+}
+
+function openPartRedDialog(invoice: InvoiceItem) {
+  partRedForm.invoice_id = invoice.id
+  partRedForm.invoice_no = invoice.invoice_no
+  partRedForm.total_amount = invoice.total_amount
+  partRedForm.red_amount = 0
+  partRedForm.reason = ''
+  partRedFormRef.value?.clearValidate?.()
+  partRedDialogVisible.value = true
+}
+
+function openVoidDialog(invoice: InvoiceItem) {
+  voidForm.invoice_id = invoice.id
+  voidForm.invoice_no = invoice.invoice_no
+  voidForm.total_amount = invoice.total_amount
+  voidForm.reason = ''
+  voidDialogVisible.value = true
+}
+
+async function handleRedSubmit() {
+  if (!redForm.reason || !redForm.reason.trim()) {
+    ElMessage.warning('请填写红冲原因')
+    return
+  }
+  const id = redForm.invoice_id
+  redSubmitting.value = true
+  redLoading.value = id
+  try {
+    await redSalesInvoice(id, redForm.reason.trim())
+    ElMessage.success('整单红冲成功')
+    redDialogVisible.value = false
+    setTimeout(async () => {
+      await loadData()
+      if (showDetail.value && showDetail.value.id === id) {
+        const updated = invoices.value.find(i => i.id === id)
+        if (updated) showDetail.value = updated
+      }
+    }, 1500)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || e?.message || '整单红冲失败')
+  } finally {
+    redSubmitting.value = false
+    redLoading.value = null
+  }
+}
+
+async function handlePartRedSubmit() {
+  if (!partRedFormRef.value) return
+  try {
+    await partRedFormRef.value.validate()
+  } catch {
+    return
+  }
+  const id = partRedForm.invoice_id
+  partRedSubmitting.value = true
+  partRedLoading.value = id
+  try {
+    await partRedSalesInvoice(id, String(partRedForm.red_amount), partRedForm.reason.trim())
+    ElMessage.success('部分红冲成功')
+    partRedDialogVisible.value = false
+    setTimeout(async () => {
+      await loadData()
+      if (showDetail.value && showDetail.value.id === id) {
+        const updated = invoices.value.find(i => i.id === id)
+        if (updated) showDetail.value = updated
+      }
+    }, 1500)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || e?.message || '部分红冲失败')
+  } finally {
+    partRedSubmitting.value = false
+    partRedLoading.value = null
+  }
+}
+
+async function handleVoidSubmit() {
+  if (!voidForm.reason || !voidForm.reason.trim()) {
+    ElMessage.warning('请填写作废原因')
+    return
+  }
+  const id = voidForm.invoice_id
+  voidSubmitting.value = true
+  voidLoading.value = id
+  try {
+    await voidSalesInvoice(id, voidForm.reason.trim())
+    ElMessage.success('发票已作废')
+    voidDialogVisible.value = false
+    setTimeout(async () => {
+      await loadData()
+      if (showDetail.value && showDetail.value.id === id) {
+        const updated = invoices.value.find(i => i.id === id)
+        if (updated) showDetail.value = updated
+      }
+    }, 1500)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || e?.message || '作废失败')
+  } finally {
+    voidSubmitting.value = false
+    voidLoading.value = null
+  }
 }
 
 async function handleConfirmInvoice(invoice: InvoiceItem) {
