@@ -151,6 +151,7 @@ type InvoiceSummary struct {
 	DraftCount         int64           `json:"draft_count"`
 	SubmittedCount     int64           `json:"submitted_count"`
 	VerifiedCount      int64           `json:"verified_count"`
+	UnpaidCount        int64           `json:"unpaid_count"`
 	PartiallyPaidCount int64           `json:"partially_paid_count"`
 	PaidCount          int64           `json:"paid_count"`
 	ReversedCount      int64           `json:"reversed_count"`

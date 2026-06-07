@@ -39,6 +39,10 @@
           <span class="stat-value confirmed">{{ confirmedCount }}</span>
         </div>
         <div class="stat-item">
+          <span class="stat-label">待核销</span>
+          <span class="stat-value danger">{{ unpaidCount }}</span>
+        </div>
+        <div class="stat-item">
           <span class="stat-label">部分核销</span>
           <span class="stat-value partial">{{ partialCount }}</span>
         </div>
@@ -510,6 +514,7 @@ interface InvoiceSummary {
   draft_count: number
   submitted_count: number
   verified_count: number
+  unpaid_count: number
   partially_paid_count: number
   paid_count: number
   reversed_count: number
@@ -560,6 +565,7 @@ function handleExpandChange(row: InvoiceItem, expanded: boolean) {
 const draftCount = computed(() => summary.value?.draft_count ?? 0)
 const pendingCount = computed(() => summary.value?.submitted_count ?? 0)
 const confirmedCount = computed(() => summary.value?.verified_count ?? 0)
+const unpaidCount = computed(() => summary.value?.unpaid_count ?? 0)
 const partialCount = computed(() => summary.value?.partially_paid_count ?? 0)
 const paidCount = computed(() => summary.value?.paid_count ?? 0)
 const salesBadge = computed(() => activeTab.value === 'sales' ? draftCount.value : 0)
@@ -650,6 +656,7 @@ function computeExpenseSummary(list: any[]): InvoiceSummary {
     draft_count: list.filter(i => i.verify_status === 'unverified' || i.status === 'pending').length,
     submitted_count: 0,
     verified_count: list.filter(i => i.verify_status === 'verified').length,
+    unpaid_count: 0,
     partially_paid_count: 0,
     paid_count: 0,
     reversed_count: 0,

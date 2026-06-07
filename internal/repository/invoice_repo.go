@@ -600,12 +600,13 @@ func (r *InvoiceRepository) GetSummary(ctx context.Context, tenantID uuid.UUID, 
 
 	query := fmt.Sprintf(`
 		SELECT
-			COALESCE(SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END), 0) AS draft_count,
-			COALESCE(SUM(CASE WHEN status IN ('submitted', '待确认') THEN 1 ELSE 0 END), 0) AS submitted_count,
-			COALESCE(SUM(CASE WHEN status IN ('verified', '已确认') THEN 1 ELSE 0 END), 0) AS verified_count,
-			COALESCE(SUM(CASE WHEN status IN ('partially_paid', '部分核销') THEN 1 ELSE 0 END), 0) AS partially_paid_count,
-			COALESCE(SUM(CASE WHEN status IN ('paid', '已核销') THEN 1 ELSE 0 END), 0) AS paid_count,
-			COALESCE(SUM(CASE WHEN status IN ('reversed', '已红冲-全额', '已红冲', 'cancelled') THEN 1 ELSE 0 END), 0) AS reversed_count,
+			COALESCE(SUM(CASE WHEN status IN ('draft', '草稿') THEN 1 ELSE 0 END), 0) AS draft_count,
+			COALESCE(SUM(CASE WHEN status IN ('submitted', '待确认', '待审核', '待处理') THEN 1 ELSE 0 END), 0) AS submitted_count,
+			COALESCE(SUM(CASE WHEN status IN ('verified', '已确认', '已审核', '已通过') THEN 1 ELSE 0 END), 0) AS verified_count,
+			COALESCE(SUM(CASE WHEN status IN ('unpaid', '正常', '待核销') THEN 1 ELSE 0 END), 0) AS unpaid_count,
+			COALESCE(SUM(CASE WHEN status IN ('partially_paid', '部分核销', '部分付款', '部分收款') THEN 1 ELSE 0 END), 0) AS partially_paid_count,
+			COALESCE(SUM(CASE WHEN status IN ('paid', '已核销', '已付款', '已收款') THEN 1 ELSE 0 END), 0) AS paid_count,
+			COALESCE(SUM(CASE WHEN status IN ('reversed', '已红冲-全额', '已红冲', '已作废', 'cancelled') THEN 1 ELSE 0 END), 0) AS reversed_count,
 			COALESCE(SUM(total_amount), 0) AS total_amount,
 			COALESCE(SUM(tax_amount), 0) AS tax_amount,
 			COALESCE(SUM(net_amount), 0) AS net_amount,
@@ -615,7 +616,7 @@ func (r *InvoiceRepository) GetSummary(ctx context.Context, tenantID uuid.UUID, 
 
 	var s model.InvoiceSummary
 	err := r.pool.QueryRow(ctx, query, args...).Scan(
-		&s.DraftCount, &s.SubmittedCount, &s.VerifiedCount,
+		&s.DraftCount, &s.SubmittedCount, &s.VerifiedCount, &s.UnpaidCount,
 		&s.PartiallyPaidCount, &s.PaidCount, &s.ReversedCount,
 		&s.TotalAmount, &s.TaxAmount, &s.NetAmount, &s.OutstandingAmount,
 	)
