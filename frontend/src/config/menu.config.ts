@@ -55,6 +55,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
       path: '/receivables-payables', title: '往来管理', icon: 'Coin',
       children: [
         { path: '/invoices', title: '发票管理', icon: 'Document' },
+        { path: '/expense-invoices/list', title: '进项发票', icon: 'Document' },
         { path: '/receivables-payables', title: '应收应付汇总' },
         { path: '/ar-invoices', title: '应收款单' },
         { path: '/ap-invoices', title: '应付款单' },

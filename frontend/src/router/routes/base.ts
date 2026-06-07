@@ -323,6 +323,42 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/opening-balance/OpeningBalanceImport.vue'),
         meta: { title: '期初余额导入', roles: ['admin', 'agent'] },
       },
+      // ==== 进项发票 ====
+      {
+        path: 'expense-invoices',
+        redirect: '/expense-invoices/list',
+        meta: { title: '进项发票', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'expense-invoices/list',
+        name: 'ExpenseInvoiceList',
+        component: () => import('@/views/expense-invoices/ExpenseInvoiceList.vue'),
+        meta: { title: '进项发票', roles: ['admin', 'agent'], keepAlive: true },
+      },
+      {
+        path: 'expense-invoices/create',
+        name: 'ExpenseInvoiceCreate',
+        component: () => import('@/views/expense-invoices/ExpenseInvoiceForm.vue'),
+        meta: { title: '新增进项发票', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'expense-invoices/edit/:id',
+        name: 'ExpenseInvoiceEdit',
+        component: () => import('@/views/expense-invoices/ExpenseInvoiceForm.vue'),
+        meta: { title: '编辑进项发票', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'expense-invoices/detail/:id',
+        name: 'ExpenseInvoiceDetail',
+        component: () => import('@/views/expense-invoices/ExpenseInvoiceDetail.vue'),
+        meta: { title: '进项发票详情', roles: ['admin', 'agent'] },
+      },
+      {
+        path: 'expense-invoices/import',
+        name: 'ExpenseInvoiceImport',
+        component: () => import('@/views/expense-invoices/ExpenseInvoiceImport.vue'),
+        meta: { title: '进项发票导入', roles: ['admin', 'agent'] },
+      },
       // 后续模块路由在此嵌套
     ],
   },
