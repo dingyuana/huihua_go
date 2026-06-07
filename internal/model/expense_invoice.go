@@ -7,6 +7,19 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// Expense invoice verification status constants
+const (
+	ExpenseVerifyStatusUnverified = "unverified"
+	ExpenseVerifyStatusVerified   = "verified"
+	ExpenseVerifyStatusInvalid    = "invalid"
+)
+
+// Expense invoice deduction status constants
+const (
+	ExpenseDeductionStatusUndeducted = "undeducted"
+	ExpenseDeductionStatusDeducted   = "deducted"
+)
+
 type ExpenseInvoice struct {
 	ID              uuid.UUID       `json:"id" db:"id"`
 	TenantID        uuid.UUID       `json:"tenant_id" db:"tenant_id"`
