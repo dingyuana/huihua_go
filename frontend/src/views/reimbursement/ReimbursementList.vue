@@ -11,10 +11,10 @@
     <el-card class="filter-card">
       <el-form :inline="true" size="small">
         <el-form-item label="申请人">
-          <el-input v-model="filter.applicant_name" placeholder="申请人姓名" clearable style="width: 130px" />
+          <el-input v-model="filter.employee_name" placeholder="申请人姓名" clearable style="width: 130px" />
         </el-form-item>
         <el-form-item label="部门">
-          <el-input v-model="filter.department_name" placeholder="部门" clearable style="width: 130px" />
+          <el-input v-model="filter.department" placeholder="部门" clearable style="width: 130px" />
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="filter.status" placeholder="全部" style="width: 130px" clearable>
@@ -38,8 +38,8 @@
     <el-card>
       <el-table :data="reimbursements" border stripe size="small" v-loading="loading">
         <el-table-column type="index" label="序号" width="60" />
-        <el-table-column prop="applicant_name" label="申请人" min-width="100" />
-        <el-table-column prop="department_name" label="部门" min-width="120" />
+        <el-table-column prop="employee_name" label="申请人" min-width="100" />
+        <el-table-column prop="department" label="部门" min-width="120" />
         <el-table-column label="报销金额" width="130" align="right">
           <template #default="{ row }">
             <b>{{ formatAmount(row.amount) }}</b>
@@ -48,7 +48,7 @@
         <el-table-column prop="description" label="说明" min-width="180" show-overflow-tooltip />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <DocStatusTag :docstatus="row.doc_status" />
+            <DocStatusTag :docstatus="row.docstatus" />
           </template>
         </el-table-column>
         <el-table-column prop="voucher_id" label="凭证" width="100">
@@ -65,8 +65,8 @@
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="goDetail(row)">详情</el-button>
-            <el-button v-if="row.doc_status === 0" link type="warning" size="small" @click="goEdit(row)">编辑</el-button>
-            <el-button v-if="row.doc_status === 0" link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="row.docstatus === 0" link type="warning" size="small" @click="goEdit(row)">编辑</el-button>
+            <el-button v-if="row.docstatus === 0" link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -101,8 +101,8 @@ const page = ref(1)
 const pageSize = ref(20)
 
 const filter = reactive({
-  applicant_name: '',
-  department_name: '',
+  employee_name: '',
+  department: '',
   status: '',
   keyword: '',
 })
@@ -118,8 +118,8 @@ async function loadData() {
     const res: any = await fetchReimbursementList({
       page: page.value,
       pageSize: pageSize.value,
-      applicant_name: filter.applicant_name || undefined,
-      department_name: filter.department_name || undefined,
+      employee_name: filter.employee_name || undefined,
+      department: filter.department || undefined,
       status: filter.status || undefined,
       keyword: filter.keyword || undefined,
     })
@@ -134,8 +134,8 @@ async function loadData() {
 }
 
 function resetFilter() {
-  filter.applicant_name = ''
-  filter.department_name = ''
+  filter.employee_name = ''
+  filter.department = ''
   filter.status = ''
   filter.keyword = ''
   page.value = 1

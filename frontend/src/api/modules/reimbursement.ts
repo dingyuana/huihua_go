@@ -4,25 +4,45 @@ import type { ApiResponse } from '@/types/api'
 export interface Reimbursement {
   id: string
   tenant_id: string
-  applicant_id: string
-  applicant_name: string
-  department_name: string
+  /** 后端 BusReimbursement 无此字段，保留为 optional 以兼容旧调用 */
+  applicant_id?: string
+  employee_id?: string
+  employee_name: string
+  /** 后端字段名为 department（*string），前端保留 dept_name 兼容旧引用 */
+  dept_name?: string
+  /** 后端字段名为 department */
+  department?: string
   amount: string
   description: string
-  status: string
-  doc_status: number
-  voucher_id?: string
+  /** 后端字段名为 docstatus（小写） */
+  docstatus: number
+  /** 旧字段名 alias，兼容旧代码读取 */
+  doc_status?: number
+  /** 旧字段名 alias，兼容旧代码读取（后端对应 description） */
   remark?: string
+  voucher_id?: string
   created_by: string
   created_at: string
+  /** 后端 BusReimbursement 额外字段 */
+  reimbursement_no?: string
+  expense_type?: string
+  posting_date?: string
+  voucher_no?: string
+  company_id?: string
+  reject_reason?: string
+  sub_expense_type?: string
+  bank_account?: string
+  updated_at?: string
 }
 
 /** 查询报销单列表 */
 export function fetchReimbursementList(params?: {
   page?: number
   pageSize?: number
-  applicant_name?: string
-  department_name?: string
+  employee_name?: string
+  department?: string
+  dept_name?: string
+  docstatus?: number
   status?: string
   keyword?: string
 }): Promise<ApiResponse<{ list: Reimbursement[]; total: number }>> {

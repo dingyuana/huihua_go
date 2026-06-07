@@ -2,7 +2,7 @@
   <div class="reimbursement-detail-page">
     <div class="page-header">
       <h3>报销单详情</h3>
-      <DocStatusTag v-if="reimbursement" :docstatus="reimbursement.doc_status" size="default" />
+      <DocStatusTag v-if="reimbursement" :docstatus="reimbursement.docstatus" size="default" />
     </div>
 
     <el-tabs v-if="reimbursement" v-model="activeTab" class="detail-tabs">
@@ -10,14 +10,14 @@
       <el-tab-pane label="基本信息" name="basic">
         <el-card>
           <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="申请人">{{ reimbursement.applicant_name }}</el-descriptions-item>
-            <el-descriptions-item label="部门">{{ reimbursement.department_name }}</el-descriptions-item>
+            <el-descriptions-item label="申请人">{{ reimbursement.employee_name }}</el-descriptions-item>
+            <el-descriptions-item label="部门">{{ reimbursement.department }}</el-descriptions-item>
             <el-descriptions-item label="报销金额">
               <b>¥{{ formatAmount(reimbursement.amount) }}</b>
             </el-descriptions-item>
             <el-descriptions-item label="说明">{{ reimbursement.description }}</el-descriptions-item>
             <el-descriptions-item label="单据状态">
-              <DocStatusTag :docstatus="reimbursement.doc_status" />
+              <DocStatusTag :docstatus="reimbursement.docstatus" />
             </el-descriptions-item>
             <el-descriptions-item label="凭证ID">
               <template v-if="reimbursement.voucher_id">
@@ -36,19 +36,19 @@
             <el-button @click="$router.back()">返回</el-button>
 
             <!-- 草稿: 提交按钮 -->
-            <template v-if="reimbursement.doc_status === 0">
+            <template v-if="reimbursement.docstatus === 0">
               <el-button type="primary" :loading="actionLoading" @click="handleSubmit">提交</el-button>
               <el-button type="warning" :loading="actionLoading" @click="$router.push(`/expense/reimbursement/${reimbursement!.id}/edit`)">编辑</el-button>
             </template>
 
             <!-- 已提交: 审核按钮 -->
-            <template v-if="reimbursement.doc_status === 1">
+            <template v-if="reimbursement.docstatus === 1">
               <el-button type="success" :loading="actionLoading" @click="handleApprove">审核通过</el-button>
               <el-button type="danger" :loading="actionLoading" @click="handleReject">驳回</el-button>
             </template>
 
             <!-- 已审核且有凭证ID: 查看凭证 -->
-            <template v-if="reimbursement.doc_status >= 2 && reimbursement.voucher_id">
+            <template v-if="reimbursement.docstatus >= 2 && reimbursement.voucher_id">
               <el-button type="primary" @click="goVoucher(reimbursement.voucher_id)">查看凭证</el-button>
             </template>
           </div>

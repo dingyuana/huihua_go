@@ -8,13 +8,13 @@
       <el-form :model="form" :rules="rules" ref="formRef" label-width="120px" size="small">
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="申请人" prop="applicant_name">
-              <el-input v-model="form.applicant_name" placeholder="请输入申请人姓名" :disabled="readonly" />
+            <el-form-item label="申请人" prop="employee_name">
+              <el-input v-model="form.employee_name" placeholder="请输入申请人姓名" :disabled="readonly" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="部门" prop="department_name">
-              <el-input v-model="form.department_name" placeholder="请输入部门" :disabled="readonly" />
+            <el-form-item label="部门" prop="department">
+              <el-input v-model="form.department" placeholder="请输入部门" :disabled="readonly" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -36,8 +36,8 @@
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="备注">
-              <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="可选" :disabled="readonly" />
+            <el-form-item label="备注" prop="description">
+              <el-input v-model="form.description" type="textarea" :rows="2" placeholder="可选" :disabled="readonly" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -72,16 +72,16 @@ const formRef = ref()
 const saving = ref(false)
 
 const form = reactive({
-  applicant_name: '',
-  department_name: '',
+  employee_name: '',
+  department: '',
   amount: 0,
   description: '',
   remark: '',
 })
 
 const rules = {
-  applicant_name: [{ required: true, message: '请输入申请人姓名', trigger: 'blur' }],
-  department_name: [{ required: true, message: '请输入部门', trigger: 'blur' }],
+  employee_name: [{ required: true, message: '请输入申请人姓名', trigger: 'blur' }],
+  department: [{ required: true, message: '请输入部门', trigger: 'blur' }],
   amount: [{ required: true, message: '请输入报销金额', trigger: 'blur' }],
   description: [{ required: true, message: '请输入报销说明', trigger: 'blur' }],
 }
@@ -121,8 +121,8 @@ onMounted(async () => {
       const res: any = await fetchReimbursementDetail(route.params.id as string)
       const data: Reimbursement = res?.data || res
       Object.assign(form, {
-        applicant_name: data.applicant_name,
-        department_name: data.department_name,
+        employee_name: data.employee_name,
+        department: data.department,
         amount: parseFloat(data.amount) || 0,
         description: data.description,
         remark: data.remark || '',
