@@ -736,7 +736,7 @@ const filter = reactive({
 const invoices = ref<InvoiceItem[]>([])
 const summary = ref<InvoiceSummary | null>(null)
 const selectedInvoices = ref<InvoiceItem[]>([])
-const confirmLoading = ref(false)
+const confirmLoading = ref<string | null>(null)
 const expandedRows = ref<string[]>([])
 
 // Client-side pagination
@@ -1036,7 +1036,7 @@ async function handleManualCreate() {
 }
 const ocrResult = ref<any>(null)
 const fieldErrors = ref<string[]>([])
-const genLoading = ref(false)
+const genLoading = ref<string | null>(null)
 const batchLoading = ref(false)
 const importResult = ref<{
   total_rows: number
@@ -1047,7 +1047,7 @@ const importResult = ref<{
 
 async function handleGenerateVoucher(invoice: InvoiceItem | null) {
   if (!invoice) return
-  genLoading.value = true
+  genLoading.value = invoice.id
   try {
     const res = await generateVoucherFromInvoice(invoice.id)
     ElMessage.success(`凭证已生成: ${res?.data?.voucher_no || ''}`)
@@ -1055,7 +1055,7 @@ async function handleGenerateVoucher(invoice: InvoiceItem | null) {
   } catch {
     ElMessage.error('凭证生成失败')
   }
-  genLoading.value = false
+  genLoading.value = null
 }
 
 // ============== 红冲 / 部分红冲 / 作废 ==============
@@ -1226,7 +1226,7 @@ async function handleVoidSubmit() {
 }
 
 async function handleConfirmInvoice(invoice: InvoiceItem) {
-  confirmLoading.value = true
+  confirmLoading.value = invoice.id
   try {
     await confirmSalesInvoice(invoice.id)
     ElMessage.success(`发票 ${invoice.invoice_no} 已确认，将生成应收账款记录`)
@@ -1234,7 +1234,7 @@ async function handleConfirmInvoice(invoice: InvoiceItem) {
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error || '确认失败')
   }
-  confirmLoading.value = false
+  confirmLoading.value = null
 }
 
 async function batchConfirm() {
@@ -1242,7 +1242,7 @@ async function batchConfirm() {
     ElMessage.warning('请先选择要确认的发票')
     return
   }
-  confirmLoading.value = true
+  confirmLoading.value = 'batch'
   let successCount = 0
   for (const invoice of selectedInvoices.value) {
     try {
@@ -1253,7 +1253,7 @@ async function batchConfirm() {
   ElMessage.success(`成功确认 ${successCount} 条发票`)
   selectedInvoices.value = []
   await loadData()
-  confirmLoading.value = false
+  confirmLoading.value = null
 }
 
 async function batchDelete() {
@@ -1261,7 +1261,7 @@ async function batchDelete() {
     ElMessage.warning('请先选择要删除的发票')
     return
   }
-  confirmLoading.value = true
+  confirmLoading.value = 'batch-delete'
   let successCount = 0
   for (const invoice of selectedInvoices.value) {
     try {
@@ -1272,7 +1272,7 @@ async function batchDelete() {
   ElMessage.success(`成功删除 ${successCount} 条发票`)
   selectedInvoices.value = []
   await loadData()
-  confirmLoading.value = false
+  confirmLoading.value = null
 }
 
 function handleSelectionChange(val: InvoiceItem[]) {
