@@ -8,11 +8,14 @@ import (
 )
 
 const (
-	ExpenseTypeTravel     = "travel"     // 差旅费
-	ExpenseTypeEntertain = "entertain"   // 招待费
-	ExpenseTypeOffice    = "office"     // 办公费
-	ExpenseTypeTransport = "transport"  // 交通费
-	ExpenseTypeOther     = "other"      // 其他
+	ExpenseTypeTravel        = "travel"        // 差旅费
+	ExpenseTypeOffice        = "office"        // 办公费
+	ExpenseTypeEntertain     = "entertain"     // 业务招待费
+	ExpenseTypeTransport     = "transport"     // 交通费
+	ExpenseTypeCommunication = "communication" // 通讯费
+	ExpenseTypeTraining      = "training"      // 培训费
+	ExpenseTypeWelfare       = "welfare"       // 福利费
+	ExpenseTypeOther         = "other"         // 其他
 )
 
 // BusReimbursement represents the bus_reimbursements table.
@@ -32,5 +35,8 @@ type BusReimbursement struct {
 	CreatedBy       *uuid.UUID     `json:"created_by,omitempty" db:"created_by"`
 	TenantID        uuid.UUID      `json:"tenant_id" db:"tenant_id"`
 	CompanyID       uuid.UUID      `json:"company_id" db:"company_id"`
-	CreatedAt       time.Time      `json:"created_at" db:"created_at"`
+	RejectReason     *string        `json:"reject_reason,omitempty" db:"reject_reason"`
+	SubExpenseType   *string        `json:"sub_expense_type,omitempty" db:"sub_expense_type"`
+	UpdatedAt        *time.Time     `json:"updated_at,omitempty" db:"updated_at"`
+	CreatedAt time.Time      `json:"created_at" db:"created_at"`
 }
