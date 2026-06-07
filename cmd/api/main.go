@@ -277,6 +277,25 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/reimbursements/:id/submit", reimbursementHandler.Submit)
 	api.Post("/reimbursements/:id/approve", reimbursementHandler.Approve)
 	api.Post("/reimbursements/:id/generate-voucher", reimbursementHandler.GenerateVoucher)
+	api.Put("/reimbursements/:id/reject", reimbursementHandler.Reject)
+
+	// Reimbursement attachment routes
+	reimbAttachmentRepo := repository.NewReimbursementAttachmentRepository(db.GetPool())
+	reimbAttachmentSvc := service.NewReimbursementAttachmentService(reimbAttachmentRepo, reimbRepo)
+	reimbAttachmentHandler := handler.NewReimbursementAttachmentHandler(reimbAttachmentSvc)
+	api.Post("/reimbursements/:id/attachments", reimbAttachmentHandler.UploadAttachment)
+	api.Get("/reimbursements/:id/attachments", reimbAttachmentHandler.ListAttachments)
+	api.Delete("/reimbursements/:id/attachments/:file_id", reimbAttachmentHandler.DeleteAttachment)
+	api.Get("/reimbursements/:id/attachments/:file_id/download", reimbAttachmentHandler.DownloadAttachment)
+
+	// Reimbursement invoice link routes
+	reimbInvoiceLinkRepo := repository.NewReimbursementInvoiceLinkRepository(db.GetPool())
+	reimbInvoiceLinkSvc := service.NewReimbursementInvoiceLinkService(reimbInvoiceLinkRepo, reimbRepo)
+	reimbInvoiceLinkHandler := handler.NewReimbursementInvoiceLinkHandler(reimbInvoiceLinkSvc)
+	api.Get("/reimbursements/:id/invoices", reimbInvoiceLinkHandler.ListAvailable)
+	api.Post("/reimbursements/:id/invoices/:invoice_id", reimbInvoiceLinkHandler.Link)
+	api.Delete("/reimbursements/:id/invoices/:invoice_id", reimbInvoiceLinkHandler.Unlink)
+	api.Get("/reimbursements/:id/invoices/linked", reimbInvoiceLinkHandler.ListLinked)
 
 	// Payroll routes
 	payrollRepo := repository.NewPayrollRepository(db.GetPool())

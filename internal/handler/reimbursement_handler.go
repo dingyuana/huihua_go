@@ -203,3 +203,27 @@ func (h *ReimbursementHandler) GenerateVoucher(c *fiber.Ctx) error {
 		"voucher_no": voucher.VoucherNo,
 	})
 }
+
+// Reject handles PUT /api/v1/reimbursements/:id/reject
+func (h *ReimbursementHandler) Reject(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	}
+
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	if err := h.svc.Reject(c.Context(), tenantID, id, req.Reason); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "reimbursement rejected"})
+}
