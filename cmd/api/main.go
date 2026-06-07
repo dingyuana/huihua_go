@@ -210,6 +210,11 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/expense-invoices/import/:batch_id/preview", expenseInvoiceImportHandler.Preview)
 	api.Post("/expense-invoices/import/:batch_id/confirm", expenseInvoiceImportHandler.Confirm)
 
+	// Expense invoice OCR routes
+	ocrSvc := service.NewOcrService("mock")
+	expenseInvoiceOcrHandler := handler.NewExpenseInvoiceOcrHandler(ocrSvc)
+	api.Post("/expense-invoices/ocr", expenseInvoiceOcrHandler.Recognize)
+
 	// Classification rule routes
 	classificationRuleRepo := repository.NewClassificationRuleRepository(db.GetPool())
 	classificationRuleSvc := service.NewClassificationRuleService(classificationRuleRepo)
