@@ -10,7 +10,7 @@ npm-debug.log*
 .env.*.local
 
 # Binary
-api
+/api
 *.exe
 *.dll
 *.so
