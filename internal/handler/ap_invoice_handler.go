@@ -198,6 +198,7 @@ func (h *ApInvoiceHandler) Approve(c *fiber.Ctx) error {
 // Body: { "payment_amount": 100.50, "payment_entry_id": "uuid" (optional) }
 func (h *ApInvoiceHandler) Allocate(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
@@ -214,7 +215,7 @@ func (h *ApInvoiceHandler) Allocate(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "payment_amount must be positive"})
 	}
 
-	if err := h.svc.Allocate(c.Context(), tenantID, id, decimal.NewFromFloat(req.PaymentAmount)); err != nil {
+	if err := h.svc.Allocate(c.Context(), tenantID, id, userID, decimal.NewFromFloat(req.PaymentAmount)); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 

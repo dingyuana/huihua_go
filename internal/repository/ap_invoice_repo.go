@@ -232,6 +232,26 @@ func (r *ApInvoiceRepository) IncrementPaid(ctx context.Context, tenantID, id uu
 	return err
 }
 
+// LockAndIncrementPaid acquires a row lock on the ApInvoice and applies the
+// payment in a single statement. Sets locked_at / locked_by to the userID
+// (re-acquiring the lock if the same user already holds it). The WHERE clause
+// uses locked_by IS NULL OR locked_by = $5 so that the same user can re-allocate
+// idempotently while blocking concurrent allocations from a different user.
+func (r *ApInvoiceRepository) LockAndIncrementPaid(ctx context.Context, tenantID, id, userID uuid.UUID, delta decimal.Decimal, newStatus string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE ap_invoices
+		SET paid_amount = paid_amount + $3,
+			outstanding_amount = amount - (paid_amount + $3),
+			status = $4,
+			last_allocation_at = NOW(),
+			locked_at = NOW(),
+			locked_by = $5
+		WHERE tenant_id = $1 AND id = $2
+		  AND (locked_by IS NULL OR locked_by = $5)`,
+		tenantID, id, delta.String(), newStatus, userID)
+	return err
+}
+
 // UpdateStatus updates the status of an ApInvoice.
 func (r *ApInvoiceRepository) UpdateStatus(ctx context.Context, tenantID, id uuid.UUID, status string) error {
 	_, err := r.pool.Exec(ctx, `

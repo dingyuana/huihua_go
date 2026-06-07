@@ -38,6 +38,8 @@ type ApInvoice struct {
 	ApprovedBy       *uuid.UUID      `json:"approved_by,omitempty" db:"approved_by"`
 	ApprovedAt       *time.Time      `json:"approved_at,omitempty" db:"approved_at"`
 	LastAllocationAt *time.Time      `json:"last_allocation_at,omitempty" db:"last_allocation_at"`
+	LockedAt         *time.Time      `json:"locked_at,omitempty" db:"locked_at"`
+	LockedBy         *uuid.UUID      `json:"locked_by,omitempty" db:"locked_by"`
 }
 
 // ApInvoiceRequest is the JSON body for create/update of an ApInvoice.

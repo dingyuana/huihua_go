@@ -147,7 +147,12 @@ func (s *ApInvoiceService) Delete(ctx context.Context, tenantID, id uuid.UUID) e
 // This is the inverse of RecordPayment on ArInvoiceService: it represents a payment
 // made to the supplier that reduces the AP outstanding balance. The optional
 // paymentEntryID links the allocation to an originating payment entry (if any).
-func (s *ApInvoiceService) Allocate(ctx context.Context, tenantID, id uuid.UUID, paymentAmount decimal.Decimal) error {
+//
+// Concurrency control: Allocate takes an advisory lock on the ApInvoice row.
+// If the invoice is already locked by a different user, it returns a 409-style
+// conflict error to prevent lost updates from concurrent payment allocations.
+// The lock owner is recorded in locked_at / locked_by for audit.
+func (s *ApInvoiceService) Allocate(ctx context.Context, tenantID, id, userID uuid.UUID, paymentAmount decimal.Decimal) error {
 	ap, err := s.repo.GetByID(ctx, tenantID, id)
 	if err != nil {
 		return fmt.Errorf("load ap_invoice: %w", err)
@@ -155,6 +160,12 @@ func (s *ApInvoiceService) Allocate(ctx context.Context, tenantID, id uuid.UUID,
 	if ap == nil {
 		return errors.New("ap_invoice not found")
 	}
+
+	// Lock check: if another user has already locked this invoice, refuse.
+	if ap.LockedAt != nil && ap.LockedBy != nil && *ap.LockedBy != userID {
+		return fmt.Errorf("ap_invoice is locked by another user since %s", ap.LockedAt.Format(time.RFC3339))
+	}
+
 	if paymentAmount.LessThanOrEqual(decimal.Zero) {
 		return errors.New("payment amount must be positive")
 	}
@@ -170,5 +181,10 @@ func (s *ApInvoiceService) Allocate(ctx context.Context, tenantID, id uuid.UUID,
 	} else {
 		newStatus = string(model.ApInvoiceStatusPartiallyPaid)
 	}
-	return s.repo.IncrementPaid(ctx, tenantID, id, paymentAmount, newStatus)
+
+	// Acquire the lock (set locked_at/locked_by) and apply the payment in one go.
+	if err := s.repo.LockAndIncrementPaid(ctx, tenantID, id, userID, paymentAmount, newStatus); err != nil {
+		return fmt.Errorf("allocate ap_invoice: %w", err)
+	}
+	return nil
 }
