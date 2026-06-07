@@ -41,6 +41,9 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 	if status := c.Query("status"); status != "" {
 		filters.Status = status
 	}
+	if t := c.Query("type"); t != "" {
+		filters.Type = t
+	}
 	if fromDate := c.Query("from_date"); fromDate != "" {
 		if t, err := time.Parse("2006-01-02", fromDate); err == nil {
 			filters.FromDate = &t
@@ -134,9 +137,12 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 		}
 	}
 
+	summary, _ := h.svc.GetSummary(c.Context(), tenantID, filters)
+
 	return c.JSON(fiber.Map{
-		"list":  result,
-		"total": len(result),
+		"list":    result,
+		"total":   len(result),
+		"summary": summary,
 	})
 }
 
@@ -146,8 +152,10 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 // stores English values from invoice_service / markBlueReversed.
 func mapInvoiceStatus(status string) string {
 	switch status {
-	case "正常", "unpaid", "draft":
+	case "正常", "unpaid":
 		return "unpaid"
+	case "draft":
+		return "draft"
 	case "已确认", "verified":
 		return "verified"
 	case "部分核销", "partially_paid":

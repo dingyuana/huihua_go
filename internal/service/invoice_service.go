@@ -68,6 +68,11 @@ func (s *InvoiceService) List(ctx context.Context, tenantID uuid.UUID, filters m
 	return s.repo.ListByTenant(ctx, tenantID, filters)
 }
 
+// GetSummary returns aggregate stats for the tenant with the same filters as List.
+func (s *InvoiceService) GetSummary(ctx context.Context, tenantID uuid.UUID, filters model.InvoiceFilter) (*model.InvoiceSummary, error) {
+	return s.repo.GetSummary(ctx, tenantID, filters)
+}
+
 // GetByID retrieves an invoice by ID.
 func (s *InvoiceService) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.SalesInvoice, error) {
 	return s.repo.GetByID(ctx, tenantID, id)

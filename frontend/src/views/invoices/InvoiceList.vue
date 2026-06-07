@@ -48,6 +48,18 @@
         </div>
         <el-divider direction="vertical" />
         <div class="stat-item">
+          <span class="stat-label">价税合计</span>
+          <span class="stat-value confirmed">¥{{ formatAmount(summary?.total_amount) }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">税额</span>
+          <span class="stat-value paid">¥{{ formatAmount(summary?.tax_amount) }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">未核销</span>
+          <span class="stat-value partial">¥{{ formatAmount(summary?.outstanding_amount) }}</span>
+        </div>
+        <div class="stat-item">
           <span class="stat-label">普通发票</span>
           <span class="stat-value confirmed">{{ normalInvoiceCount }}</span>
         </div>
@@ -494,6 +506,19 @@ interface InvoiceItem {
   line_items?: InvoiceLineItem[]
 }
 
+interface InvoiceSummary {
+  draft_count: number
+  submitted_count: number
+  verified_count: number
+  partially_paid_count: number
+  paid_count: number
+  reversed_count: number
+  total_amount: string
+  tax_amount: string
+  net_amount: string
+  outstanding_amount: string
+}
+
 const filter = reactive({
   status: '',
   type: '',
@@ -503,6 +528,7 @@ const filter = reactive({
 })
 
 const invoices = ref<InvoiceItem[]>([])
+const summary = ref<InvoiceSummary | null>(null)
 const selectedInvoices = ref<InvoiceItem[]>([])
 const confirmLoading = ref(false)
 const expandedRows = ref<string[]>([])
@@ -531,15 +557,14 @@ function handleExpandChange(row: InvoiceItem, expanded: boolean) {
   }
 }
 
-const salesBadge = computed(() => invoices.value.filter(i => i.type === 'sale' && i.status === 'draft').length)
-const purchaseBadge = computed(() => invoices.value.filter(i => i.type === 'purchase' && i.status === 'draft').length)
-const expenseBadge = computed(() => invoices.value.filter(i => i.type === 'expense' && i.status === 'draft').length)
-
-const draftCount = computed(() => invoices.value.filter(i => i.status === 'draft').length)
-const pendingCount = computed(() => invoices.value.filter(i => i.status === 'submitted').length)
-const confirmedCount = computed(() => invoices.value.filter(i => i.status === 'verified').length)
-const partialCount = computed(() => invoices.value.filter(i => i.status === 'partially_paid').length)
-const paidCount = computed(() => invoices.value.filter(i => i.status === 'paid').length)
+const draftCount = computed(() => summary.value?.draft_count ?? 0)
+const pendingCount = computed(() => summary.value?.submitted_count ?? 0)
+const confirmedCount = computed(() => summary.value?.verified_count ?? 0)
+const partialCount = computed(() => summary.value?.partially_paid_count ?? 0)
+const paidCount = computed(() => summary.value?.paid_count ?? 0)
+const salesBadge = computed(() => activeTab.value === 'sales' ? draftCount.value : 0)
+const purchaseBadge = computed(() => activeTab.value === 'purchase' ? draftCount.value : 0)
+const expenseBadge = computed(() => activeTab.value === 'expense' ? draftCount.value : 0)
 
 const normalInvoiceCount = computed(() => invoices.value.filter(i =>
   i.invoice_category && i.invoice_category.includes('普通') && !i.is_return
@@ -587,25 +612,52 @@ watch(() => route.query.invoice_no, (no) => {
 })
 
 async function loadData() {
+  summary.value = null
   try {
-    const params: any = {}
-    if (filter.status) params.status = filter.status
-    if (filter.type) params.type = filter.type
-    if (filter.isReturn !== null) params.is_return = filter.isReturn
-    if (filter.keyword) params.keyword = filter.keyword
-    if (filter.dateRange && filter.dateRange.length === 2) {
-      params.from_date = filter.dateRange[0]
-      params.to_date = filter.dateRange[1]
+    if (activeTab.value === 'expense') {
+      const res: any = await request.get('/expense-invoices', { params: buildFilterParams() })
+      const list = res?.list ?? res?.data?.list ?? []
+      invoices.value = Array.isArray(list) ? list : []
+      summary.value = computeExpenseSummary(invoices.value)
+    } else {
+      const params: any = buildFilterParams()
+      if (filter.isReturn !== null) params.is_return = filter.isReturn
+      params.type = activeTab.value === 'sales' ? 'sale' : 'purchase'
+      const res: any = await request.get('/invoices', { params })
+      const list = res?.list ?? res?.data?.list ?? []
+      if (Array.isArray(list)) invoices.value = list
+      if (res?.summary) summary.value = res.summary
     }
-    if (activeTab.value === 'sales') params.type = 'sale'
-    else if (activeTab.value === 'purchase') params.type = 'purchase'
-    else if (activeTab.value === 'expense') params.type = 'expense'
-
-    const res: any = await request.get('/invoices', { params })
-    const list = res?.list
-    if (Array.isArray(list)) { invoices.value = list }
     currentPage.value = 1
   } catch { /* no data */ }
+}
+
+function buildFilterParams() {
+  const params: any = {}
+  if (filter.status) params.status = filter.status
+  if (filter.keyword) params.keyword = filter.keyword
+  if (filter.dateRange && filter.dateRange.length === 2) {
+    params.from_date = filter.dateRange[0]
+    params.to_date = filter.dateRange[1]
+  }
+  return params
+}
+
+function computeExpenseSummary(list: any[]): InvoiceSummary {
+  const total = list.reduce((s, i) => s + (parseFloat(i.total_amount) || 0), 0)
+  const tax = list.reduce((s, i) => s + (parseFloat(i.tax_amount) || 0), 0)
+  return {
+    draft_count: list.filter(i => i.verify_status === 'unverified' || i.status === 'pending').length,
+    submitted_count: 0,
+    verified_count: list.filter(i => i.verify_status === 'verified').length,
+    partially_paid_count: 0,
+    paid_count: 0,
+    reversed_count: 0,
+    total_amount: total.toFixed(2),
+    tax_amount: tax.toFixed(2),
+    net_amount: (total - tax).toFixed(2),
+    outstanding_amount: total.toFixed(2),
+  }
 }
 
 function handleTabChange() {
@@ -745,6 +797,13 @@ function statusLabel(s: string) {
     reversed: '已红冲'
   }
   return map[s] || s
+}
+
+function formatAmount(value: string | number | undefined | null): string {
+  if (value === undefined || value === null || value === '') return '0.00'
+  const num = typeof value === 'string' ? parseFloat(value) : value
+  if (isNaN(num)) return '0.00'
+  return num.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 // Row-level visual cue: blue invoices that have been reversed get a faint

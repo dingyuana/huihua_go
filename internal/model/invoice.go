@@ -139,10 +139,25 @@ type InvoiceFileImportResult struct {
 type InvoiceFilter struct {
 	CustomerID *uuid.UUID `json:"customer_id,omitempty"`
 	Status     string     `json:"status,omitempty"`
+	Type       string     `json:"type,omitempty"`
 	FromDate   *time.Time `json:"from_date,omitempty"`
 	ToDate     *time.Time `json:"to_date,omitempty"`
 	Limit      int        `json:"limit,omitempty"`
 	Offset     int        `json:"offset,omitempty"`
+}
+
+// InvoiceSummary represents aggregate stats for a tenant's invoices.
+type InvoiceSummary struct {
+	DraftCount         int64           `json:"draft_count"`
+	SubmittedCount     int64           `json:"submitted_count"`
+	VerifiedCount      int64           `json:"verified_count"`
+	PartiallyPaidCount int64           `json:"partially_paid_count"`
+	PaidCount          int64           `json:"paid_count"`
+	ReversedCount      int64           `json:"reversed_count"`
+	TotalAmount        decimal.Decimal `json:"total_amount"`
+	TaxAmount          decimal.Decimal `json:"tax_amount"`
+	NetAmount          decimal.Decimal `json:"net_amount"`
+	OutstandingAmount  decimal.Decimal `json:"outstanding_amount"`
 }
 
 // InvoiceBatchPreviewResult represents the result of batch import preview.

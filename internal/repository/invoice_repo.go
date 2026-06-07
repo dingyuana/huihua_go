@@ -54,7 +54,10 @@ func (r *InvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID
 			s.tenant_id, s.posting_date, s.due_date, s.total_amount, s.tax_amount, s.net_amount, s.outstanding_amount,
 			s.status, s.tax_template_id, s.return_against, s.is_return, s.is_reversed, s.invoice_category, s.remark, s.source_red_invoice_no,
 			s.docstatus, s.created_by, s.invoice_kind, s.electronic_url, s.red_letter_info_id, s.red_letter_reason,
-			s.original_invoice_id, s.is_part_red, s.red_amount, s.tax_authority_code, s.confirm_status, s.confirm_date, s.created_at, COALESCE(p.name, '') AS customer_name
+			s.original_invoice_id,
+			COALESCE(s.is_part_red, FALSE) AS is_part_red,
+			COALESCE(s.red_amount, 0) AS red_amount,
+			s.tax_authority_code, COALESCE(s.confirm_status,'unconfirmed') AS confirm_status, COALESCE(s.confirm_date, CURRENT_DATE) AS confirm_date, s.created_at, COALESCE(p.name, '') AS customer_name
 		FROM sales_invoices s
 		LEFT JOIN parties p ON p.id = s.customer_id
 		WHERE s.tenant_id = $1`
@@ -64,6 +67,16 @@ func (r *InvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID
 	if filters.CustomerID != nil {
 		query += fmt.Sprintf(" AND customer_id = $%d", argIdx)
 		args = append(args, *filters.CustomerID)
+		argIdx++
+	}
+	if filters.Status != "" {
+		query += fmt.Sprintf(" AND status = $%d", argIdx)
+		args = append(args, filters.Status)
+		argIdx++
+	}
+	if filters.Type != "" {
+		query += fmt.Sprintf(" AND invoice_type = $%d", argIdx)
+		args = append(args, filters.Type)
 		argIdx++
 	}
 	if filters.Status != "" {
@@ -127,7 +140,10 @@ func (r *InvoiceRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID)
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
 			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
-			original_invoice_id, is_part_red, red_amount, tax_authority_code, confirm_status, confirm_date, created_at
+			original_invoice_id,
+			COALESCE(is_part_red, FALSE) AS is_part_red,
+			COALESCE(red_amount, 0) AS red_amount,
+			tax_authority_code, COALESCE(confirm_status, 'unconfirmed') AS confirm_status, COALESCE(confirm_date, created_at) AS confirm_date, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND id = $2`,
 		tenantID, id).
 		Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceCode, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
@@ -152,7 +168,10 @@ func (r *InvoiceRepository) GetByInvoiceNo(ctx context.Context, tenantID uuid.UU
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
 			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
-			original_invoice_id, is_part_red, red_amount, tax_authority_code, confirm_status, confirm_date, created_at
+			original_invoice_id,
+			COALESCE(is_part_red, FALSE) AS is_part_red,
+			COALESCE(red_amount, 0) AS red_amount,
+			tax_authority_code, COALESCE(confirm_status, 'unconfirmed') AS confirm_status, COALESCE(confirm_date, created_at) AS confirm_date, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND invoice_no = $2`,
 		tenantID, invoiceNo).
 		Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceCode, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
@@ -175,7 +194,10 @@ func (r *InvoiceRepository) GetRedInvoices(ctx context.Context, tenantID uuid.UU
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
 			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
-			original_invoice_id, is_part_red, red_amount, tax_authority_code, confirm_status, confirm_date, created_at
+			original_invoice_id,
+			COALESCE(is_part_red, FALSE) AS is_part_red,
+			COALESCE(red_amount, 0) AS red_amount,
+			tax_authority_code, COALESCE(confirm_status, 'unconfirmed') AS confirm_status, COALESCE(confirm_date, created_at) AS confirm_date, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND is_return = true
 		ORDER BY posting_date DESC`,
 		tenantID)
@@ -465,7 +487,10 @@ func (r *InvoiceRepository) ListInvoicesForMatching(ctx context.Context, tenantI
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
 			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
-			original_invoice_id, is_part_red, red_amount, tax_authority_code, confirm_status, confirm_date, created_at
+			original_invoice_id,
+			COALESCE(is_part_red, FALSE) AS is_part_red,
+			COALESCE(red_amount, 0) AS red_amount,
+			tax_authority_code, COALESCE(confirm_status, 'unconfirmed') AS confirm_status, COALESCE(confirm_date, created_at) AS confirm_date, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND outstanding_amount > 0`
 	args := []interface{}{tenantID}
 	argIdx := 2
@@ -549,4 +574,53 @@ func (r *InvoiceRepository) GetDefaultCompanyID(ctx context.Context, tenantID uu
 		return uuid.Nil, err
 	}
 	return companyID, nil
+}
+
+// GetSummary returns aggregate stats for a tenant's invoices.
+func (r *InvoiceRepository) GetSummary(ctx context.Context, tenantID uuid.UUID, filters model.InvoiceFilter) (*model.InvoiceSummary, error) {
+	whereClauses := []string{"tenant_id = $1"}
+	args := []interface{}{tenantID}
+	argIdx := 2
+
+	if filters.Type != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("invoice_type = $%d", argIdx))
+		args = append(args, filters.Type)
+		argIdx++
+	}
+	if filters.FromDate != nil {
+		whereClauses = append(whereClauses, fmt.Sprintf("posting_date >= $%d", argIdx))
+		args = append(args, *filters.FromDate)
+		argIdx++
+	}
+	if filters.ToDate != nil {
+		whereClauses = append(whereClauses, fmt.Sprintf("posting_date <= $%d", argIdx))
+		args = append(args, *filters.ToDate)
+		argIdx++
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			COALESCE(SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END), 0) AS draft_count,
+			COALESCE(SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END), 0) AS submitted_count,
+			COALESCE(SUM(CASE WHEN status = 'verified' THEN 1 ELSE 0 END), 0) AS verified_count,
+			COALESCE(SUM(CASE WHEN status = 'partially_paid' THEN 1 ELSE 0 END), 0) AS partially_paid_count,
+			COALESCE(SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END), 0) AS paid_count,
+			COALESCE(SUM(CASE WHEN status = 'reversed' THEN 1 ELSE 0 END), 0) AS reversed_count,
+			COALESCE(SUM(total_amount), 0) AS total_amount,
+			COALESCE(SUM(tax_amount), 0) AS tax_amount,
+			COALESCE(SUM(net_amount), 0) AS net_amount,
+			COALESCE(SUM(outstanding_amount), 0) AS outstanding_amount
+		FROM sales_invoices
+		WHERE %s`, strings.Join(whereClauses, " AND "))
+
+	var s model.InvoiceSummary
+	err := r.pool.QueryRow(ctx, query, args...).Scan(
+		&s.DraftCount, &s.SubmittedCount, &s.VerifiedCount,
+		&s.PartiallyPaidCount, &s.PaidCount, &s.ReversedCount,
+		&s.TotalAmount, &s.TaxAmount, &s.NetAmount, &s.OutstandingAmount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
