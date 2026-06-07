@@ -133,7 +133,7 @@ import AccountSelector from '@/components/business/AccountSelector.vue'
 
 interface TemplateLine {
   id?: string
-  account: Account | null
+  account: any
   dr_amount_template: string
   cr_amount_template: string
   summary_template: string
