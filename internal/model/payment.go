@@ -42,6 +42,9 @@ type PaymentEntry struct {
 	PaidToID         *uuid.UUID       `json:"paid_to_id,omitempty" db:"paid_to_id"`
 	PaidAmount       decimal.Decimal  `json:"paid_amount" db:"paid_amount"`
 	ReceivedAmount   *decimal.Decimal `json:"received_amount,omitempty" db:"received_amount"`
+	// UnallocatedAmount 收款/付款单未核销金额（独立字段，P1 拆分）
+	// 等于 paid_amount - SUM(payment_allocations.allocated_amount)
+	UnallocatedAmount decimal.Decimal  `json:"unallocated_amount" db:"unallocated_amount"`
 	ReferenceNo      *string          `json:"reference_no,omitempty" db:"reference_no"`
 	ReferenceDate    *time.Time       `json:"reference_date,omitempty" db:"reference_date"`
 	PostingDate      time.Time        `json:"posting_date" db:"posting_date"`
