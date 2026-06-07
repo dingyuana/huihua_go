@@ -190,6 +190,19 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/ap-invoices", apInvoiceHandler.List)
 	api.Get("/ap-invoices/:id", apInvoiceHandler.GetByID)
 
+	// Expense invoice routes (进项发票)
+	expenseInvoiceRepo := repository.NewExpenseInvoiceRepository(db.GetPool())
+	expenseInvoiceSvc := service.NewExpenseInvoiceService(expenseInvoiceRepo)
+	expenseInvoiceHandler := handler.NewExpenseInvoiceHandler(expenseInvoiceSvc)
+	api.Get("/expense-invoices", expenseInvoiceHandler.List)
+	api.Post("/expense-invoices", expenseInvoiceHandler.Create)
+	api.Get("/expense-invoices/:id", expenseInvoiceHandler.GetByID)
+	api.Put("/expense-invoices/:id", expenseInvoiceHandler.Update)
+	api.Delete("/expense-invoices/:id", expenseInvoiceHandler.Delete)
+	api.Post("/expense-invoices/:id/verify", expenseInvoiceHandler.Verify)
+	api.Post("/expense-invoices/verify/batch", expenseInvoiceHandler.BatchVerify)
+	api.Post("/expense-invoices/:id/deduct", expenseInvoiceHandler.Deduct)
+
 	// Classification rule routes
 	classificationRuleRepo := repository.NewClassificationRuleRepository(db.GetPool())
 	classificationRuleSvc := service.NewClassificationRuleService(classificationRuleRepo)
