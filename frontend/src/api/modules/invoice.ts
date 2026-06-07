@@ -129,5 +129,20 @@ export function batchImportConfirm(data: InvoiceBatchConfirmRequest): Promise<Ap
 
 /** 确认销售发票（生成应收账款） */
 export function confirmSalesInvoice(invoiceID: string): Promise<ApiResponse<void>> {
-  return request.post('/invoices/sales/confirm', { invoice_id: invoiceID })
+  return request.post(`/invoices/sales/${invoiceID}/confirm`)
+}
+
+/** 整单红冲 */
+export function redSalesInvoice(id: string, reason?: string): Promise<ApiResponse<any>> {
+  return request.post(`/invoices/sales/${id}/red`, { reason })
+}
+
+/** 部分红冲 */
+export function partRedSalesInvoice(id: string, redAmount: string, reason?: string): Promise<ApiResponse<any>> {
+  return request.post(`/invoices/sales/${id}/red/part`, { red_amount: redAmount, reason })
+}
+
+/** 作废销售发票 */
+export function voidSalesInvoice(id: string, reason?: string): Promise<ApiResponse<any>> {
+  return request.post(`/invoices/sales/${id}/void`, { reason })
 }
