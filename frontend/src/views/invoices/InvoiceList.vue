@@ -16,7 +16,7 @@
 
     <!-- 发票类型Tabs -->
     <el-card class="tax-tabs-card">
-      <el-tabs v-model="activeTab" @change="handleTabChange">
+      <el-tabs v-model="activeTab">
         <el-tab-pane :label="`销售发票 ${salesBadge > 0 ? '(' + salesBadge + ')' : ''}`" name="sales" />
         <el-tab-pane :label="`采购发票 ${purchaseBadge > 0 ? '(' + purchaseBadge + ')' : ''}`" name="purchase" />
         <el-tab-pane :label="`费用发票 ${expenseBadge > 0 ? '(' + expenseBadge + ')' : ''}`" name="expense" />
@@ -675,6 +675,12 @@ function computeExpenseSummary(list: any[]): InvoiceSummary {
 function handleTabChange() {
   loadData()
 }
+
+// Robust tab-change handler: el-tabs @change has quirks with v-model
+// in some Element Plus versions, so use a Vue watcher as the source of truth.
+watch(activeTab, () => {
+  loadData()
+})
 
 const showUpload = ref(false)
 const uploadTab = ref('batch')
