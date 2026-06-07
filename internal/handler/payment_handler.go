@@ -111,9 +111,9 @@ func (h *PaymentEntryHandler) Allocate(c *fiber.Ctx) error {
 
 	var req struct {
 		Allocations []struct {
-			InvoiceID       string  `json:"invoice_id"`
-			AllocatedAmount float64 `json:"allocated_amount"`
-			DiscountAmount  float64 `json:"discount_amount"`
+			InvoiceID       string          `json:"invoice_id"`
+			AllocatedAmount decimal.Decimal `json:"allocated_amount"`
+			DiscountAmount  decimal.Decimal `json:"discount_amount"`
 		} `json:"allocations"`
 	}
 	if err := c.BodyParser(&req); err != nil {
@@ -130,8 +130,8 @@ func (h *PaymentEntryHandler) Allocate(c *fiber.Ctx) error {
 		}
 		allocs = append(allocs, service.AllocationRequest{
 			InvoiceID:       invoiceID,
-			AllocatedAmount: decimal.NewFromFloat(a.AllocatedAmount),
-			DiscountAmount:  decimal.NewFromFloat(a.DiscountAmount),
+			AllocatedAmount: a.AllocatedAmount,
+			DiscountAmount:  a.DiscountAmount,
 		})
 	}
 
