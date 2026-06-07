@@ -231,13 +231,13 @@ func (s *PaymentStateMachine) rollbackInvoiceAllocationsTx(
 
 		var newStatus string
 		if newOutstanding.IsPositive() {
-			if invoice.Status == "paid" {
-				newStatus = "partially_paid"
+			if invoice.Status == string(model.InvoiceStatusPaid) {
+				newStatus = string(model.InvoiceStatusPartiallyPaid)
 			} else {
 				newStatus = invoice.Status
 			}
 		} else {
-			newStatus = "unpaid"
+			newStatus = string(model.InvoiceStatusUnpaid)
 		}
 		if newStatus != invoice.Status {
 			if err := s.invoiceRepo.UpdateStatusTx(ctx, tx, tenantID, allocation.InvoiceID, newStatus); err != nil {

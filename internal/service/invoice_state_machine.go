@@ -68,14 +68,14 @@ func (s *InvoiceStateMachine) ValidateTransition(currentStatus string, action In
 		default:
 			return fmt.Errorf("invalid action %q for status %s", action, currentStatus)
 		}
-	case "partially_paid":
+	case string(model.InvoiceStatusPartiallyPaid):
 		switch action {
 		case InvoiceActionAllocate, InvoiceActionReverse:
 			return nil
 		default:
 			return fmt.Errorf("invalid action %q for status %s", action, currentStatus)
 		}
-	case "paid":
+	case string(model.InvoiceStatusPaid):
 		switch action {
 		case InvoiceActionReverse:
 			return nil
@@ -121,9 +121,9 @@ func (s *InvoiceStateMachine) ExecuteTransition(
 		newStatus = string(model.InvoiceStatusInvalid)
 	case InvoiceActionAllocate:
 		if invoice.OutstandingAmount.IsPositive() {
-			newStatus = "partially_paid"
+			newStatus = string(model.InvoiceStatusPartiallyPaid)
 		} else {
-			newStatus = "paid"
+			newStatus = string(model.InvoiceStatusPaid)
 		}
 	case InvoiceActionReverse:
 		newStatus = string(model.InvoiceStatusUnpaid)
@@ -191,8 +191,8 @@ func (s *InvoiceStateMachine) RollbackAllocation(
 
 	var newStatus string
 	if newOutstanding.IsPositive() {
-		if invoice.Status == "paid" {
-			newStatus = "partially_paid"
+		if invoice.Status == string(model.InvoiceStatusPaid) {
+			newStatus = string(model.InvoiceStatusPartiallyPaid)
 		} else {
 			newStatus = invoice.Status
 		}

@@ -149,24 +149,23 @@ func (h *InvoiceHandler) List(c *fiber.Ctx) error {
 	})
 }
 
-// mapInvoiceStatus translates the DB status (English canonical) to the UI
-// status label that statusLabel() in the frontend knows how to render. The
-// Chinese aliases on the right are legacy import data — the DB itself
-// stores English values from invoice_service / markBlueReversed.
+// mapInvoiceStatus normalizes DB values (English + legacy Chinese) to
+// canonical English status. The frontend renders "unpaid" as "未确认"
+// (not "待核销") because unpaid semantically means "入系统未确认" here.
 func mapInvoiceStatus(status string) string {
 	switch status {
-	case "正常", "unpaid":
-		return "unpaid"
-	case "draft":
-		return "draft"
-	case "已确认", "verified":
-		return "verified"
-	case "部分核销", "partially_paid":
-		return "partially_paid"
-	case "已核销", "paid":
-		return "paid"
-	case "已红冲-全额", "已红冲", "cancelled", "reversed":
-		return "reversed"
+	case "正常", string(model.InvoiceStatusUnpaid):
+		return string(model.InvoiceStatusUnpaid)
+	case string(model.InvoiceStatusDraft):
+		return string(model.InvoiceStatusDraft)
+	case "已确认", string(model.InvoiceStatusVerified):
+		return string(model.InvoiceStatusVerified)
+	case "部分核销", string(model.InvoiceStatusPartiallyPaid):
+		return string(model.InvoiceStatusPartiallyPaid)
+	case "已核销", string(model.InvoiceStatusPaid):
+		return string(model.InvoiceStatusPaid)
+	case "已红冲-全额", "已红冲", "cancelled", string(model.InvoiceStatusReversed):
+		return string(model.InvoiceStatusReversed)
 	default:
 		return status
 	}

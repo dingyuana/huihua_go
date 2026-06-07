@@ -39,8 +39,8 @@
           <span class="stat-value confirmed">{{ confirmedCount }}</span>
         </div>
         <div class="stat-item">
-          <span class="stat-label">待核销</span>
-          <span class="stat-value danger">{{ unpaidCount }}</span>
+          <span class="stat-label">未确认</span>
+          <span class="stat-value danger">{{ unconfirmedCount }}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">部分核销</span>
@@ -49,6 +49,10 @@
         <div class="stat-item">
           <span class="stat-label">已核销</span>
           <span class="stat-value paid">{{ paidCount }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">已红冲</span>
+          <span class="stat-value paid">{{ reversedCount }}</span>
         </div>
         <el-divider direction="vertical" />
         <div class="stat-item">
@@ -565,9 +569,10 @@ function handleExpandChange(row: InvoiceItem, expanded: boolean) {
 const draftCount = computed(() => summary.value?.draft_count ?? 0)
 const pendingCount = computed(() => summary.value?.submitted_count ?? 0)
 const confirmedCount = computed(() => summary.value?.verified_count ?? 0)
-const unpaidCount = computed(() => summary.value?.unpaid_count ?? 0)
+const unconfirmedCount = computed(() => summary.value?.unpaid_count ?? 0)
 const partialCount = computed(() => summary.value?.partially_paid_count ?? 0)
 const paidCount = computed(() => summary.value?.paid_count ?? 0)
+const reversedCount = computed(() => summary.value?.reversed_count ?? 0)
 const salesBadge = computed(() => activeTab.value === 'sales' ? draftCount.value : 0)
 const purchaseBadge = computed(() => activeTab.value === 'purchase' ? draftCount.value : 0)
 const expenseBadge = computed(() => activeTab.value === 'expense' ? draftCount.value : 0)
@@ -798,7 +803,7 @@ function statusLabel(s: string) {
     draft: '草稿',
     submitted: '待确认',
     verified: '已确认',
-    unpaid: '待核销',
+    unpaid: '未确认',
     partially_paid: '部分核销',
     paid: '已核销',
     reversed: '已红冲'

@@ -11,12 +11,14 @@ import (
 type InvoiceStatus string
 
 const (
-	InvoiceStatusDraft     InvoiceStatus = "draft"
-	InvoiceStatusSubmitted InvoiceStatus = "submitted"
-	InvoiceStatusVerified  InvoiceStatus = "verified"
-	InvoiceStatusInvalid   InvoiceStatus = "invalid"
-	InvoiceStatusUnpaid    InvoiceStatus = "unpaid"
-	InvoiceStatusReversed  InvoiceStatus = "reversed"
+	InvoiceStatusDraft         InvoiceStatus = "draft"
+	InvoiceStatusSubmitted     InvoiceStatus = "submitted"
+	InvoiceStatusVerified      InvoiceStatus = "verified"
+	InvoiceStatusInvalid       InvoiceStatus = "invalid"
+	InvoiceStatusUnpaid        InvoiceStatus = "unpaid"
+	InvoiceStatusPartiallyPaid InvoiceStatus = "partially_paid"
+	InvoiceStatusPaid          InvoiceStatus = "paid"
+	InvoiceStatusReversed      InvoiceStatus = "reversed"
 
 	InvoiceKindPaperSpecial       = "paper_special"
 	InvoiceKindPaperNormal        = "paper_normal"
