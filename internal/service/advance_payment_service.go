@@ -116,3 +116,9 @@ func (s *AdvancePaymentService) GetByID(ctx context.Context, tenantID, id uuid.U
 func (s *AdvancePaymentService) ListOutstanding(ctx context.Context, tenantID, supplierID uuid.UUID) ([]*model.AdvancePayment, error) {
 	return s.repo.ListOutstanding(ctx, tenantID, supplierID)
 }
+
+// GetSupplierSummary returns per-supplier aggregated advance payment balances.
+// companyID == uuid.Nil means "all companies in tenant".
+func (s *AdvancePaymentService) GetSupplierSummary(ctx context.Context, tenantID, companyID uuid.UUID) ([]repository.SupplierAdvanceSummary, error) {
+	return s.repo.GetSupplierSummary(ctx, tenantID, companyID)
+}

@@ -6,11 +6,22 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 )
 
 type AdvanceReceiptRepository struct {
 	pool *pgxpool.Pool
+}
+
+// CustomerAdvanceSummary aggregates advance receipt balances per customer.
+type CustomerAdvanceSummary struct {
+	CustomerID   uuid.UUID
+	CustomerName string
+	TotalAdvance decimal.Decimal
+	Allocated    decimal.Decimal
+	Outstanding  decimal.Decimal
+	Count        int
 }
 
 func NewAdvanceReceiptRepository(pool *pgxpool.Pool) *AdvanceReceiptRepository {
@@ -186,6 +197,54 @@ func (r *AdvanceReceiptRepository) GenerateAdvanceNo(ctx context.Context, tenant
 	}
 	year := time.Now().Format("2006")
 	return prefix + "-" + year + "-" + padSeq(count+1, 4), nil
+}
+
+// GetCustomerSummary returns per-customer aggregated advance receipt balances.
+// Only confirmed / partially-allocated / allocated records are included
+// (draft and reversed are excluded). If companyID is uuid.Nil, all companies
+// under the tenant are included.
+func (r *AdvanceReceiptRepository) GetCustomerSummary(
+	ctx context.Context, tenantID, companyID uuid.UUID,
+) ([]CustomerAdvanceSummary, error) {
+	query := `
+		SELECT  a.customer_id,
+		        COALESCE(p.name, '')            AS customer_name,
+		        COALESCE(SUM(a.amount), 0)       AS total_advance,
+		        COALESCE(SUM(a.allocated_amount), 0) AS allocated,
+		        COALESCE(SUM(a.outstanding_amount), 0) AS outstanding,
+		        COUNT(*)                         AS cnt
+		FROM advance_receipts a
+		LEFT JOIN parties p
+		       ON p.tenant_id = a.tenant_id AND p.id = a.customer_id
+		WHERE a.tenant_id = $1
+		  AND a.status NOT IN ('draft', 'reversed')`
+	args := []interface{}{tenantID}
+	if companyID != uuid.Nil {
+		query += " AND a.company_id = $2"
+		args = append(args, companyID)
+	}
+	query += `
+		GROUP BY a.customer_id, p.name
+		ORDER BY outstanding DESC, customer_name ASC`
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CustomerAdvanceSummary
+	for rows.Next() {
+		var s CustomerAdvanceSummary
+		if err := rows.Scan(
+			&s.CustomerID, &s.CustomerName,
+			&s.TotalAdvance, &s.Allocated, &s.Outstanding, &s.Count,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 func padSeq(n int, width int) string {

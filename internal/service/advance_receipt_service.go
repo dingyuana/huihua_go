@@ -116,3 +116,9 @@ func (s *AdvanceReceiptService) GetByID(ctx context.Context, tenantID, id uuid.U
 func (s *AdvanceReceiptService) ListOutstanding(ctx context.Context, tenantID, customerID uuid.UUID) ([]*model.AdvanceReceipt, error) {
 	return s.repo.ListOutstanding(ctx, tenantID, customerID)
 }
+
+// GetCustomerSummary returns per-customer aggregated advance receipt balances.
+// companyID == uuid.Nil means "all companies in tenant".
+func (s *AdvanceReceiptService) GetCustomerSummary(ctx context.Context, tenantID, companyID uuid.UUID) ([]repository.CustomerAdvanceSummary, error) {
+	return s.repo.GetCustomerSummary(ctx, tenantID, companyID)
+}

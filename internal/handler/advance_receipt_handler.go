@@ -156,6 +156,36 @@ func (h *AdvanceReceiptHandler) ListOutstanding(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"list": out, "total": len(out)})
 }
 
+// GetSummary returns per-customer aggregated advance receipt balances.
+// Optional query: company_id=<uuid>. If absent/empty, all companies under the tenant.
+func (h *AdvanceReceiptHandler) GetSummary(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	var companyID uuid.UUID
+	if v := c.Query("company_id"); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid company_id"})
+		}
+		companyID = id
+	}
+	list, err := h.svc.GetCustomerSummary(c.Context(), tenantID, companyID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	out := make([]map[string]interface{}, 0, len(list))
+	for _, s := range list {
+		out = append(out, map[string]interface{}{
+			"customer_id":   s.CustomerID,
+			"customer_name": s.CustomerName,
+			"total_advance": s.TotalAdvance.String(),
+			"allocated":     s.Allocated.String(),
+			"outstanding":   s.Outstanding.String(),
+			"count":         s.Count,
+		})
+	}
+	return c.JSON(fiber.Map{"list": out, "total": len(out)})
+}
+
 func formatDatePtr(t *time.Time) string {
 	if t == nil {
 		return ""

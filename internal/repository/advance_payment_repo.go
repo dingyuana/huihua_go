@@ -6,11 +6,22 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 )
 
 type AdvancePaymentRepository struct {
 	pool *pgxpool.Pool
+}
+
+// SupplierAdvanceSummary aggregates advance payment balances per supplier.
+type SupplierAdvanceSummary struct {
+	SupplierID   uuid.UUID
+	SupplierName string
+	TotalAdvance decimal.Decimal
+	Allocated    decimal.Decimal
+	Outstanding  decimal.Decimal
+	Count        int
 }
 
 func NewAdvancePaymentRepository(pool *pgxpool.Pool) *AdvancePaymentRepository {
@@ -165,4 +176,52 @@ func (r *AdvancePaymentRepository) GenerateAdvanceNo(ctx context.Context, tenant
 	}
 	year := time.Now().Format("2006")
 	return prefix + "-" + year + "-" + padSeq(count+1, 4), nil
+}
+
+// GetSupplierSummary returns per-supplier aggregated advance payment balances.
+// Only confirmed / partially-allocated / allocated records are included
+// (draft and reversed are excluded). If companyID is uuid.Nil, all companies
+// under the tenant are included.
+func (r *AdvancePaymentRepository) GetSupplierSummary(
+	ctx context.Context, tenantID, companyID uuid.UUID,
+) ([]SupplierAdvanceSummary, error) {
+	query := `
+		SELECT  a.supplier_id,
+		        COALESCE(p.name, '')            AS supplier_name,
+		        COALESCE(SUM(a.amount), 0)       AS total_advance,
+		        COALESCE(SUM(a.allocated_amount), 0) AS allocated,
+		        COALESCE(SUM(a.outstanding_amount), 0) AS outstanding,
+		        COUNT(*)                         AS cnt
+		FROM advance_payments a
+		LEFT JOIN parties p
+		       ON p.tenant_id = a.tenant_id AND p.id = a.supplier_id
+		WHERE a.tenant_id = $1
+		  AND a.status NOT IN ('draft', 'reversed')`
+	args := []interface{}{tenantID}
+	if companyID != uuid.Nil {
+		query += " AND a.company_id = $2"
+		args = append(args, companyID)
+	}
+	query += `
+		GROUP BY a.supplier_id, p.name
+		ORDER BY outstanding DESC, supplier_name ASC`
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SupplierAdvanceSummary
+	for rows.Next() {
+		var s SupplierAdvanceSummary
+		if err := rows.Scan(
+			&s.SupplierID, &s.SupplierName,
+			&s.TotalAdvance, &s.Allocated, &s.Outstanding, &s.Count,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
