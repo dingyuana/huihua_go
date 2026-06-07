@@ -15,6 +15,7 @@ const (
 	ArInvoiceStatusPartiallyPaid ArInvoiceStatus = "partially_paid"
 	ArInvoiceStatusPaid          ArInvoiceStatus = "paid"
 	ArInvoiceStatusReversed      ArInvoiceStatus = "reversed"
+	ArInvoiceStatusOverdue       ArInvoiceStatus = "overdue"
 )
 
 type ArInvoice struct {
