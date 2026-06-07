@@ -55,6 +55,8 @@ type CreatePaymentFromBankTxnRequest struct {
 	CounterpartyName  *string
 	PostingDate       time.Time
 	ReferenceNo       string
+	// UnallocatedAmount 可选，新建时未核销金额；缺省时 fallback 到 paid_amount
+	UnallocatedAmount decimal.Decimal
 }
 
 func (s *PaymentEntryService) CreateFromBankTransaction(
@@ -103,6 +105,7 @@ func (s *PaymentEntryService) CreateFromBankTransaction(
 		PaidToID:         paidToID,
 		PaidAmount:       amount,
 		ReceivedAmount:   receivedAmt,
+		UnallocatedAmount: amount,
 		ReferenceNo:      &req.ReferenceNo,
 		ReferenceDate:    &bankTxn.TxnDate,
 		PostingDate:      req.PostingDate,
@@ -112,6 +115,9 @@ func (s *PaymentEntryService) CreateFromBankTransaction(
 		Description:      bankTxn.Description,
 		PaymentMethod:    &paymentMethod,
 		CreatedBy:        &userID,
+	}
+	if req.UnallocatedAmount.IsPositive() {
+		pe.UnallocatedAmount = req.UnallocatedAmount
 	}
 
 	entry, err := s.repo.Create(ctx, tenantID, pe)

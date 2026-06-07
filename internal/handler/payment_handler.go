@@ -30,11 +30,13 @@ func NewPaymentEntryHandler(
 }
 
 type CreateFromBankTxnRequest struct {
-	BankTransactionID string `json:"bank_transaction_id"`
-	PaymentType       string `json:"payment_type"`
-	PartyType         string `json:"party_type"`
-	PartyID           string `json:"party_id"`
-	PostingDate       string `json:"posting_date"`
+	BankTransactionID string          `json:"bank_transaction_id"`
+	PaymentType       string          `json:"payment_type"`
+	PartyType         string          `json:"party_type"`
+	PartyID           string          `json:"party_id"`
+	PostingDate       string          `json:"posting_date"`
+	// UnallocatedAmount 可选，新建时未核销金额；缺省时 service 端 fallback 到 paid_amount
+	UnallocatedAmount decimal.Decimal `json:"unallocated_amount,omitempty"`
 }
 
 func (h *PaymentEntryHandler) CreateFromBankTransaction(c *fiber.Ctx) error {
@@ -81,6 +83,7 @@ func (h *PaymentEntryHandler) CreateFromBankTransaction(c *fiber.Ctx) error {
 		PartyID:           partyID,
 		PostingDate:       postingDate,
 		ReferenceNo:       "",
+		UnallocatedAmount: req.UnallocatedAmount,
 	}
 
 	if bankTxn.ReferenceNo != nil {
