@@ -121,6 +121,10 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/account-setup/status", setupHandler.GetStatus)
 	api.Post("/account-setup/wizard", setupHandler.CreateCompany)
 
+	// Company settings (current tenant)
+	companyHandler := handler.NewCompanyHandler(companyRepo)
+	api.Get("/company-settings/current", companyHandler.GetCurrent)
+
 	// Clear-data routes (dev/test only — gated by cfg.App.Mode).
 	// Wipes tenant-scoped business data or master data, in that order.
 	clearDataSvc := service.NewClearDataService(db.GetPool())

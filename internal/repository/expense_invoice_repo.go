@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"huihua/finance/internal/model"
 )
@@ -65,6 +67,9 @@ func (r *ExpenseInvoiceRepository) GetByID(ctx context.Context, tenantID, id uui
 			&inv.VerifyStatus, &inv.VerifiedAt, &inv.VerifyResult, &inv.DeductionStatus, &inv.DeductedAt,
 			&inv.SourceFile, &inv.OcrData, &inv.Status, &inv.DocStatus, &inv.Remark, &inv.CreatedBy, &inv.CreatedAt, &inv.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &inv, nil
@@ -85,6 +90,9 @@ func (r *ExpenseInvoiceRepository) GetByInvoiceNo(ctx context.Context, tenantID 
 			&inv.VerifyStatus, &inv.VerifiedAt, &inv.VerifyResult, &inv.DeductionStatus, &inv.DeductedAt,
 			&inv.SourceFile, &inv.OcrData, &inv.Status, &inv.DocStatus, &inv.Remark, &inv.CreatedBy, &inv.CreatedAt, &inv.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &inv, nil

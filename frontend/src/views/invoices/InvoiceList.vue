@@ -5,10 +5,10 @@
       <div class="header-actions">
         <template v-if="activeTab === 'sales'">
           <el-button type="primary" @click="showUpload = true">导入销售发票</el-button>
-          <el-button type="default" @click="showManualCreate = true">手工录入</el-button>
+          <el-button type="default" @click="openManualCreate">手工录入</el-button>
         </template>
         <template v-else>
-          <el-button type="primary" @click="showManualCreate = true">手工录入</el-button>
+          <el-button type="primary" @click="openManualCreate">手工录入</el-button>
           <el-button type="default" @click="showUpload = true">OCR识别录入</el-button>
         </template>
       </div>
@@ -416,6 +416,100 @@
       </template>
     </el-dialog>
 
+    <!-- 手工录入 dialog -->
+    <el-dialog
+      v-model="showManualCreate"
+      :title="`手工录入发票 — ${activeTab === 'expense' ? '费用' : (activeTab === 'sales' ? '销售' : '采购')}`"
+      width="640px"
+      :close-on-click-modal="false"
+      @open="onManualDialogOpen"
+      @closed="onManualDialogClosed"
+    >
+      <el-form
+        ref="manualFormRef"
+        :model="manualForm"
+        :rules="manualFormRules"
+        label-width="100px"
+        label-position="right"
+        size="default"
+      >
+        <el-form-item label="发票号" prop="invoice_no">
+          <el-input v-model="manualForm.invoice_no" placeholder="例如 12345678" maxlength="50" />
+        </el-form-item>
+
+        <template v-if="activeTab === 'expense'">
+          <el-form-item label="发票种类" prop="invoice_kind">
+            <el-select v-model="manualForm.invoice_kind" placeholder="选择发票种类" style="width: 100%">
+              <el-option label="电子普通发票" value="电子普通发票" />
+              <el-option label="电子专用发票" value="电子专用发票" />
+              <el-option label="数电普通发票" value="数电普通发票" />
+              <el-option label="数电专用发票" value="数电专用发票" />
+              <el-option label="增值税专用发票" value="增值税专用发票" />
+              <el-option label="增值税普通发票" value="增值税普通发票" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="开票日期" prop="invoice_date">
+            <el-date-picker v-model="manualForm.invoice_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="供应商" prop="vendor_name">
+            <el-input v-model="manualForm.vendor_name" placeholder="供应商名称（可手输也可下拉选）" clearable>
+              <template #append>
+                <el-select v-model="manualForm.vendor_id" placeholder="从往来单位选" clearable filterable style="width: 180px">
+                  <el-option v-for="p in partyList" :key="p.id" :label="p.name" :value="p.id" />
+                </el-select>
+              </template>
+            </el-input>
+          </el-form-item>
+          <el-form-item label="税号" prop="tax_id">
+            <el-input v-model="manualForm.tax_id" placeholder="供应商税号（可选）" maxlength="20" />
+          </el-form-item>
+          <el-form-item label="税额" prop="tax_amount">
+            <el-input-number v-model="manualForm.tax_amount" :min="0" :precision="2" :step="0.01" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="价税合计" prop="total_amount">
+            <el-input-number v-model="manualForm.total_amount" :min="0" :precision="2" :step="0.01" style="width: 100%" />
+          </el-form-item>
+        </template>
+
+        <template v-else>
+          <el-form-item label="供应商" prop="customer_id">
+            <el-select v-model="manualForm.customer_id" placeholder="选择供应商（往来单位）" filterable clearable style="width: 100%">
+              <el-option v-for="p in partyList" :key="p.id" :label="p.name" :value="p.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="税号" prop="tax_id">
+            <el-input v-model="manualForm.tax_id" placeholder="供应商税号（可选）" maxlength="20" />
+          </el-form-item>
+          <el-form-item label="开票日期" prop="posting_date">
+            <el-date-picker v-model="manualForm.posting_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="到期日" prop="due_date">
+            <el-date-picker v-model="manualForm.due_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="不含税金额" prop="net_amount">
+            <el-input-number v-model="manualForm.net_amount" :min="0" :precision="2" :step="0.01" style="width: 100%" @change="recalcTotalFromNet" />
+          </el-form-item>
+          <el-form-item label="税额" prop="tax_amount">
+            <el-input-number v-model="manualForm.tax_amount" :min="0" :precision="2" :step="0.01" style="width: 100%" @change="recalcTotalFromNet" />
+          </el-form-item>
+          <el-form-item label="价税合计" prop="total_amount">
+            <el-input-number v-model="manualForm.total_amount" :min="0" :precision="2" :step="0.01" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="未核销金额" prop="outstanding_amount">
+            <el-input-number v-model="manualForm.outstanding_amount" :min="0" :precision="2" :step="0.01" style="width: 100%" />
+          </el-form-item>
+        </template>
+
+        <el-form-item label="备注" prop="remark">
+          <el-input v-model="manualForm.remark" type="textarea" :rows="2" placeholder="可选" maxlength="200" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showManualCreate = false">取消</el-button>
+        <el-button type="primary" :loading="manualSubmitting" @click="handleManualCreate">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 详情抽屉 -->
     <el-drawer v-model="showDetail" :title="`发票 ${showDetail?.invoice_no}`" size="560px">
       <template v-if="showDetail">
@@ -627,7 +721,7 @@ async function loadData() {
   try {
     if (activeTab.value === 'expense') {
       const res: any = await request.get('/expense-invoices', { params: buildFilterParams() })
-      const list = res?.list ?? res?.data?.list ?? []
+      const list = Array.isArray(res?.data) ? res.data : (res?.list ?? res?.data?.list ?? [])
       invoices.value = Array.isArray(list) ? list : []
       summary.value = computeExpenseSummary(invoices.value)
     } else {
@@ -635,7 +729,7 @@ async function loadData() {
       if (filter.isReturn !== null) params.is_return = filter.isReturn
       params.type = activeTab.value === 'sales' ? 'sale' : 'purchase'
       const res: any = await request.get('/invoices', { params })
-      const list = res?.list ?? res?.data?.list ?? []
+      const list = Array.isArray(res?.data) ? res.data : (res?.list ?? res?.data?.list ?? [])
       if (Array.isArray(list)) invoices.value = list
       if (res?.summary) summary.value = res.summary
     }
@@ -686,6 +780,157 @@ const showUpload = ref(false)
 const uploadTab = ref('batch')
 const showDetail = ref<InvoiceItem | null>(null)
 const showManualCreate = ref(false)
+const manualSubmitting = ref(false)
+const currentCompanyId = ref('')
+const partyList = ref<Array<{ id: string; name: string; party_type: string; tax_number: string }>>([])
+
+interface ManualForm {
+  invoice_no: string
+  remark: string
+  // sales / purchase
+  customer_id: string
+  tax_id: string
+  posting_date: string
+  due_date: string
+  net_amount: number
+  tax_amount: number
+  total_amount: number
+  outstanding_amount: number
+  // expense
+  vendor_id: string
+  vendor_name: string
+  invoice_kind: string
+  invoice_date: string
+}
+
+function freshManualForm(): ManualForm {
+  return {
+    invoice_no: '',
+    remark: '',
+    customer_id: '',
+    tax_id: '',
+    posting_date: new Date().toISOString().slice(0, 10),
+    due_date: '',
+    net_amount: 0,
+    tax_amount: 0,
+    total_amount: 0,
+    outstanding_amount: 0,
+    vendor_id: '',
+    vendor_name: '',
+    invoice_kind: '电子普通发票',
+    invoice_date: new Date().toISOString().slice(0, 10),
+  }
+}
+const manualForm = reactive<ManualForm>(freshManualForm())
+const manualFormRef = ref()
+
+const manualFormRules = {
+  invoice_no: [{ required: true, message: '请输入发票号', trigger: 'blur' }],
+  customer_id: [{ required: true, message: '请选择供应商', trigger: 'change' }],
+  posting_date: [{ required: true, message: '请选择开票日期', trigger: 'change' }],
+  net_amount: [{ required: true, message: '请输入不含税金额', trigger: 'blur' }],
+  tax_amount: [{ required: true, message: '请输入税额', trigger: 'blur' }],
+  total_amount: [{ required: true, message: '请输入价税合计', trigger: 'blur' }],
+  invoice_date: [{ required: true, message: '请选择开票日期', trigger: 'change' }],
+  invoice_kind: [{ required: true, message: '请选择发票种类', trigger: 'change' }],
+  vendor_name: [{ required: true, message: '请输入或选择供应商', trigger: 'blur' }],
+} as any
+
+function recalcTotalFromNet() {
+  const n = Number(manualForm.net_amount) || 0
+  const t = Number(manualForm.tax_amount) || 0
+  manualForm.total_amount = Math.round((n + t) * 100) / 100
+  if (!manualForm.outstanding_amount) {
+    manualForm.outstanding_amount = manualForm.total_amount
+  }
+}
+
+async function onManualDialogOpen() {
+  Object.assign(manualForm, freshManualForm())
+  try {
+    const [company, parties] = await Promise.all([
+      request.get('/company-settings/current'),
+      request.get('/parties', { params: { page_size: 1000 } }),
+    ])
+    currentCompanyId.value = (company as any)?.id || ''
+    const raw = parties as any
+    const list = Array.isArray(raw) ? raw : (raw?.data || raw?.list || [])
+    partyList.value = (list || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      party_type: p.party_type,
+      tax_number: p.tax_number,
+    }))
+  } catch (e: any) {
+    ElMessage.error('加载公司或往来单位失败：' + (e?.message || e))
+  }
+}
+
+function onManualDialogClosed() {
+  Object.assign(manualForm, freshManualForm())
+  manualFormRef.value?.clearValidate()
+}
+
+async function openManualCreate() {
+  showManualCreate.value = true
+}
+
+async function handleManualCreate() {
+  if (!manualFormRef.value) return
+  try {
+    await manualFormRef.value.validate()
+  } catch {
+    return
+  }
+  if (!currentCompanyId.value) {
+    ElMessage.error('公司信息未加载，请重试')
+    return
+  }
+  manualSubmitting.value = true
+  try {
+    if (activeTab.value === 'expense') {
+      const payload: Record<string, any> = {
+        company_id: currentCompanyId.value,
+        invoice_no: manualForm.invoice_no,
+        invoice_date: manualForm.invoice_date + 'T00:00:00Z',
+        invoice_kind: manualForm.invoice_kind,
+        tax_amount: String(manualForm.tax_amount),
+        total_amount: String(manualForm.total_amount),
+      }
+      if (manualForm.vendor_id) payload.vendor_id = manualForm.vendor_id
+      if (manualForm.vendor_name) payload.vendor_name = manualForm.vendor_name
+      if (manualForm.tax_id) payload.tax_id = manualForm.tax_id
+      if (manualForm.remark) payload.remark = manualForm.remark
+      await request.post('/expense-invoices', payload)
+      ElMessage.success('费用发票录入成功')
+    } else {
+      const invoiceType = activeTab.value === 'sales' ? 'sale' : 'purchase'
+      const payload: Record<string, any> = {
+        invoice_no: manualForm.invoice_no,
+        invoice_type: invoiceType,
+        customer_id: manualForm.customer_id,
+        company_id: currentCompanyId.value,
+        tax_id: manualForm.tax_id || undefined,
+        posting_date: manualForm.posting_date,
+        due_date: manualForm.due_date || undefined,
+        net_amount: Number(manualForm.net_amount),
+        tax_amount: Number(manualForm.tax_amount),
+        total_amount: Number(manualForm.total_amount),
+        outstanding_amount: Number(manualForm.outstanding_amount) || Number(manualForm.total_amount),
+        remark: manualForm.remark || undefined,
+      }
+      await request.post('/invoices', payload)
+      const label = activeTab.value === 'sales' ? '销售' : '采购'
+      ElMessage.success(`${label}发票录入成功`)
+    }
+    showManualCreate.value = false
+    await loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || e?.message || '录入失败')
+  } finally {
+    manualSubmitting.value = false
+  }
+}
 const ocrResult = ref<any>(null)
 const fieldErrors = ref<string[]>([])
 const genLoading = ref(false)

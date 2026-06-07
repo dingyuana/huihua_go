@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,6 +71,7 @@ func (r *CompanyRepository) CreateWithTx(ctx context.Context, tx pgx.Tx, tenantI
 }
 
 // GetByTenant retrieves company settings for a tenant.
+// Returns (nil, nil) if not configured.
 func (r *CompanyRepository) GetByTenant(ctx context.Context, tenantID uuid.UUID) (*model.CompanySettings, error) {
 	var cs model.CompanySettings
 	err := r.pool.QueryRow(ctx, `
@@ -79,6 +81,9 @@ func (r *CompanyRepository) GetByTenant(ctx context.Context, tenantID uuid.UUID)
 		Scan(&cs.ID, &cs.TenantID, &cs.CompanyName, &cs.FiscalYearStartMonth, &cs.EnableDate,
 			&cs.DefaultCurrency, &cs.ChartOfAccountsTemplate, &cs.IsInitialized, &cs.CreatedAt, &cs.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &cs, nil
