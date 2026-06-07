@@ -7,6 +7,7 @@ export interface Account {
   account_type: AccountType
   root_type: RootType
   parent_id: string | null
+  level?: number
   lft: number
   rgt: number
   is_group: boolean
