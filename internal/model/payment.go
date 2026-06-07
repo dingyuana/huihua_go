@@ -64,6 +64,9 @@ type PaymentAllocation struct {
 	InvoiceID       uuid.UUID       `json:"invoice_id" db:"invoice_id"`
 	InvoiceType     *string         `json:"invoice_type,omitempty" db:"invoice_type"`
 	AllocatedAmount decimal.Decimal `json:"allocated_amount" db:"allocated_amount"`
+	// DiscountAmount 现金折扣金额（采购 V1.0 §3.7）：折扣期内付款可享受的现金折扣
+	// 实际付款 = allocated_amount - discount_amount
+	DiscountAmount  decimal.Decimal `json:"discount_amount" db:"discount_amount"`
 	TenantID        uuid.UUID       `json:"tenant_id" db:"tenant_id"`
 	CreatedAt       time.Time       `json:"created_at" db:"created_at"`
 }
