@@ -147,7 +147,7 @@ func (r *ReimbursementRepository) GetNextReimbursementNo(ctx context.Context, te
 	}
 	seq++
 
-	return fmt.Sprintf("%s%04d", prefix[:18], seq), nil
+	return fmt.Sprintf("%s%04d", prefix, seq), nil
 }
 
 // UpdateStatus updates the docstatus of a reimbursement.
