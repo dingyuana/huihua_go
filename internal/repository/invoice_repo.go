@@ -54,7 +54,7 @@ func (r *InvoiceRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID
 			s.tenant_id, s.posting_date, s.due_date, s.total_amount, s.tax_amount, s.net_amount, s.outstanding_amount,
 			s.status, s.tax_template_id, s.return_against, s.is_return, s.is_reversed, s.invoice_category, s.remark, s.source_red_invoice_no,
 			s.docstatus, s.created_by, s.invoice_kind, s.electronic_url, s.red_letter_info_id, s.red_letter_reason,
-			s.original_invoice_id, s.is_part_red, s.red_amount, s.tax_authority_code, s.confirm_status, s.confirm_date, s.created_at, COALESCE(p.name, '') AS customer_name
+			s.original_invoice_id, s.is_part_red, COALESCE(s.red_amount, 0) AS red_amount, s.tax_authority_code, COALESCE(s.confirm_status,'unconfirmed') AS confirm_status, COALESCE(s.confirm_date, CURRENT_DATE) AS confirm_date, s.created_at, COALESCE(p.name, '') AS customer_name
 		FROM sales_invoices s
 		LEFT JOIN parties p ON p.id = s.customer_id
 		WHERE s.tenant_id = $1`
@@ -127,7 +127,7 @@ func (r *InvoiceRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID)
 			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
 			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
 			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
-			original_invoice_id, is_part_red, red_amount, tax_authority_code, confirm_status, confirm_date, created_at
+			original_invoice_id, is_part_red, COALESCE(red_amount, 0) AS red_amount, tax_authority_code, COALESCE(confirm_status,'unconfirmed') AS confirm_status, COALESCE(confirm_date, CURRENT_DATE) AS confirm_date, created_at
 		FROM sales_invoices WHERE tenant_id = $1 AND id = $2`,
 		tenantID, id).
 		Scan(&inv.ID, &inv.InvoiceNo, &inv.InvoiceCode, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
