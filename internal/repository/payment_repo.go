@@ -30,15 +30,15 @@ func (r *PaymentEntryRepository) Create(ctx context.Context, tenantID uuid.UUID,
 	query := `
 		INSERT INTO payment_entries (
 			id, payment_no, payment_type, party_type, party_id, counterparty_name,
-			paid_from_id, paid_to_id, paid_amount, received_amount,
+			paid_from_id, paid_to_id, paid_amount, received_amount, unallocated_amount, currency, exchange_rate,
 			reference_no, reference_date, posting_date,
 			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, payment_method, created_by, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 		RETURNING created_at`
 
 	err := r.pool.QueryRow(ctx, query,
 		pe.ID, pe.PaymentNo, pe.PaymentType, pe.PartyType, pe.PartyID, pe.CounterpartyName,
-		pe.PaidFromID, pe.PaidToID, pe.PaidAmount, pe.ReceivedAmount,
+		pe.PaidFromID, pe.PaidToID, pe.PaidAmount, pe.ReceivedAmount, pe.UnallocatedAmount, pe.Currency, pe.ExchangeRate,
 		pe.ReferenceNo, pe.ReferenceDate, pe.PostingDate,
 		pe.CompanyID, pe.TenantID, pe.BankAccountID, pe.DocStatus, pe.VoucherID, pe.VoucherNo, pe.Description, pe.PaymentMethod, pe.CreatedBy, time.Now(),
 	).Scan(&pe.CreatedAt)
@@ -51,7 +51,7 @@ func (r *PaymentEntryRepository) Create(ctx context.Context, tenantID uuid.UUID,
 func (r *PaymentEntryRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*model.PaymentEntry, error) {
 	query := `
 		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
-			paid_from_id, paid_to_id, paid_amount, received_amount,
+			paid_from_id, paid_to_id, paid_amount, received_amount, unallocated_amount, currency, exchange_rate,
 			reference_no, reference_date, posting_date,
 			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, payment_method, created_by, created_at
 		FROM payment_entries
@@ -60,7 +60,7 @@ func (r *PaymentEntryRepository) GetByID(ctx context.Context, tenantID, id uuid.
 	pe := &model.PaymentEntry{}
 	err := r.pool.QueryRow(ctx, query, id, tenantID).Scan(
 		&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID, &pe.CounterpartyName,
-		&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount,
+		&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount, &pe.UnallocatedAmount, &pe.Currency, &pe.ExchangeRate,
 		&pe.ReferenceNo, &pe.ReferenceDate, &pe.PostingDate,
 		&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.VoucherID, &pe.VoucherNo, &pe.Description, &pe.PaymentMethod, &pe.CreatedBy, &pe.CreatedAt,
 	)
@@ -73,7 +73,7 @@ func (r *PaymentEntryRepository) GetByID(ctx context.Context, tenantID, id uuid.
 func (r *PaymentEntryRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, filters ...func(*pgxpool.Pool, uuid.UUID) ([]model.PaymentEntry, error)) ([]model.PaymentEntry, error) {
 	query := `
 		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
-			paid_from_id, paid_to_id, paid_amount, received_amount,
+			paid_from_id, paid_to_id, paid_amount, received_amount, unallocated_amount, currency, exchange_rate,
 			reference_no, reference_date, posting_date,
 			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, payment_method, created_by, created_at
 		FROM payment_entries
@@ -91,7 +91,7 @@ func (r *PaymentEntryRepository) ListByTenant(ctx context.Context, tenantID uuid
 		var pe model.PaymentEntry
 		if err := rows.Scan(
 			&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID, &pe.CounterpartyName,
-			&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount,
+			&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount, &pe.UnallocatedAmount, &pe.Currency, &pe.ExchangeRate,
 			&pe.ReferenceNo, &pe.ReferenceDate, &pe.PostingDate,
 			&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.VoucherID, &pe.VoucherNo, &pe.Description, &pe.PaymentMethod, &pe.CreatedBy, &pe.CreatedAt,
 		); err != nil {
@@ -105,7 +105,7 @@ func (r *PaymentEntryRepository) ListByTenant(ctx context.Context, tenantID uuid
 func (r *PaymentEntryRepository) ListByBankAccount(ctx context.Context, tenantID, bankAccountID uuid.UUID) ([]model.PaymentEntry, error) {
 	query := `
 		SELECT id, payment_no, payment_type, party_type, party_id, counterparty_name,
-			paid_from_id, paid_to_id, paid_amount, received_amount,
+			paid_from_id, paid_to_id, paid_amount, received_amount, unallocated_amount, currency, exchange_rate,
 			reference_no, reference_date, posting_date,
 			company_id, tenant_id, bank_account_id, docstatus, voucher_id, voucher_no, description, payment_method, created_by, created_at
 		FROM payment_entries
@@ -123,7 +123,7 @@ func (r *PaymentEntryRepository) ListByBankAccount(ctx context.Context, tenantID
 		var pe model.PaymentEntry
 		if err := rows.Scan(
 			&pe.ID, &pe.PaymentNo, &pe.PaymentType, &pe.PartyType, &pe.PartyID, &pe.CounterpartyName,
-			&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount,
+			&pe.PaidFromID, &pe.PaidToID, &pe.PaidAmount, &pe.ReceivedAmount, &pe.UnallocatedAmount, &pe.Currency, &pe.ExchangeRate,
 			&pe.ReferenceNo, &pe.ReferenceDate, &pe.PostingDate,
 			&pe.CompanyID, &pe.TenantID, &pe.BankAccountID, &pe.DocStatus, &pe.VoucherID, &pe.VoucherNo, &pe.Description, &pe.PaymentMethod, &pe.CreatedBy, &pe.CreatedAt,
 		); err != nil {
