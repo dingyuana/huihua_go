@@ -37,14 +37,15 @@ func NewReimbursementService(
 
 // CreateReimbursementRequest is the request body for creating a reimbursement.
 type CreateReimbursementRequest struct {
-	EmployeeName string  `json:"employee_name"`
-	Department   *string `json:"department,omitempty"`
-	ExpenseType  string  `json:"expense_type"`
-	Amount       string  `json:"amount"`
-	PostingDate  string  `json:"posting_date"`
+	EmployeeName   string  `json:"employee_name"`
+	Department     *string `json:"department,omitempty"`
+	ExpenseType    string  `json:"expense_type"`
+	SubExpenseType *string `json:"sub_expense_type,omitempty"`
+	Amount         string  `json:"amount"`
+	PostingDate    string  `json:"posting_date"`
 	Description *string `json:"description,omitempty"`
-	BankAccount *string `json:"bank_account,omitempty"`
-	CompanyID   string  `json:"company_id"`
+	BankAccount   *string `json:"bank_account,omitempty"`
+	CompanyID     string  `json:"company_id"`
 }
 
 // CreateReimbursement creates a new reimbursement (docstatus=0 draft).
@@ -75,6 +76,7 @@ func (s *ReimbursementService) CreateReimbursement(ctx context.Context, tenantID
 		EmployeeName:    req.EmployeeName,
 		Department:      req.Department,
 		ExpenseType:     req.ExpenseType,
+		SubExpenseType:  req.SubExpenseType,
 		Amount:          amount,
 		PostingDate:     postingDate,
 		Description:     req.Description,
@@ -184,6 +186,25 @@ func (s *ReimbursementService) Approve(ctx context.Context, tenantID uuid.UUID, 
 	return voucher, nil
 }
 
+// Reject rejects a submitted reimbursement: changes docstatus from 1 to 3 and stores reject reason.
+func (s *ReimbursementService) Reject(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, reason string) error {
+	reimb, err := s.reimbRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		return fmt.Errorf("get reimbursement: %w", err)
+	}
+	if reimb.DocStatus != 1 {
+		return errors.New("only submitted reimbursements can be rejected")
+	}
+
+	now := time.Now()
+	fields := map[string]interface{}{
+		"docstatus":     int16(3),
+		"reject_reason": reason,
+		"updated_at":    now,
+	}
+	return s.reimbRepo.UpdateFields(ctx, tenantID, id, fields)
+}
+
 // GenerateVoucher generates a journal voucher for a reimbursement.
 // Debit: expense account based on ExpenseType (6602.03/6602.04/6602.01/6602.05/6602.99)
 // Credit: 1002 银行存款
@@ -279,6 +300,12 @@ func (s *ReimbursementService) getExpenseAccountCode(expenseType string) string 
 		return "6602.01"
 	case model.ExpenseTypeTransport:
 		return "6602.05"
+	case model.ExpenseTypeCommunication:
+		return "6602.06"
+	case model.ExpenseTypeTraining:
+		return "6602.07"
+	case model.ExpenseTypeWelfare:
+		return "6602.08"
 	default:
 		return "6602.99"
 	}
