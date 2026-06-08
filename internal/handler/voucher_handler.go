@@ -382,9 +382,9 @@ func (h *VoucherHandler) PendingReview(c *fiber.Ctx) error {
 			"id":          t.JournalEntryID,
 			"voucher_no":  t.VoucherNo,
 			"date":        t.PostingDate,
-			"remark":      t.VoucherType,
+			"remark":      t.Remark,
 			"amount":      t.Amount.String(),
-			"creator":     "",
+			"creator":     t.SubmittedName,
 			"risk":        fiber.Map{"level": "low", "items": riskItems},
 			"approval_id": t.ID,
 		})

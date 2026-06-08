@@ -63,6 +63,7 @@ type ApprovalTaskWithVoucher struct {
 	VoucherNo     string `json:"voucher_no" db:"voucher_no"`
 	PostingDate   string `json:"posting_date" db:"posting_date"`
 	VoucherType   string `json:"voucher_type" db:"voucher_type"`
+	Remark        string `json:"remark,omitempty" db:"remark"`
 	CompanyName   string `json:"company_name,omitempty" db:"company_name"`
 	CurrentLevel  int    `json:"current_level" db:"current_level"`
 	TotalLevels   int    `json:"total_levels" db:"total_levels"`

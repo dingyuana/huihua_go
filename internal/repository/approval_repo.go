@@ -231,10 +231,13 @@ func (r *ApprovalRepository) ListPending(ctx context.Context, tenantID uuid.UUID
 		       at.status, at.comment, at.amount, at.tenant_id, at.created_by, at.created_at, at.updated_at, at.completed_at,
 		       je.voucher_no, TO_CHAR(je.posting_date, 'YYYY-MM-DD') as posting_date,
 		       COALESCE(je.voucher_type, '') as voucher_type,
+		       COALESCE(je.remark, '') as remark,
+		       COALESCE(je.created_by::text, '') as submitted_by,
+		       COALESCE((SELECT u.username FROM users u WHERE u.id = je.created_by), '系统') as submitted_name,
 		       (SELECT COUNT(*) FROM approval_tasks WHERE journal_entry_id = at.journal_entry_id AND tenant_id = $1) as total_levels
 		FROM approval_tasks at
 		JOIN journal_entries je ON je.id = at.journal_entry_id
-		WHERE (at.approver_id = $2 OR at.approver_id = $4) AND at.status = $3 AND at.tenant_id = $1
+		WHERE (at.approver_id = $2 OR at.approver_id = $4::uuid) AND at.status = $3 AND at.tenant_id = $1
 		ORDER BY at.created_at DESC`
 
 	// uuid.Nil = '00000000-0000-0000-0000-000000000000'
@@ -248,13 +251,17 @@ func (r *ApprovalRepository) ListPending(ctx context.Context, tenantID uuid.UUID
 	var tasks []model.ApprovalTaskWithVoucher
 	for rows.Next() {
 		var t model.ApprovalTaskWithVoucher
+		var remark, submittedBy, submittedName string
 		if err := rows.Scan(
 			&t.ID, &t.FlowID, &t.JournalEntryID, &t.ApproverID, &t.ApproverName, &t.Level,
 			&t.Status, &t.Comment, &t.Amount, &t.TenantID, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt, &t.CompletedAt,
-			&t.VoucherNo, &t.PostingDate, &t.VoucherType, &t.TotalLevels,
+			&t.VoucherNo, &t.PostingDate, &t.VoucherType, &remark, &submittedBy, &submittedName, &t.TotalLevels,
 		); err != nil {
 			return nil, fmt.Errorf("scan pending task: %w", err)
 		}
+		t.Remark = remark
+		t.SubmittedBy = submittedBy
+		t.SubmittedName = submittedName
 		tasks = append(tasks, t)
 	}
 
