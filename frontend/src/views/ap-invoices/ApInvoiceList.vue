@@ -20,6 +20,7 @@
         <el-form-item>
           <el-button type="primary" @click="loadData">查询</el-button>
           <el-button @click="resetFilter">重置</el-button>
+          <el-button type="success" @click="openCreateDialog">新建应付单</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -156,6 +157,28 @@
         </el-table>
       </template>
     </el-drawer>
+
+    <!-- 新建应付单 -->
+    <el-dialog v-model="createDialogVisible" title="新建应付单" width="520px">
+      <el-form :model="createForm" label-width="100px" size="small">
+        <el-form-item label="供应商 ID" required>
+          <el-input v-model="createForm.supplier_id" placeholder="供应商 UUID" />
+        </el-form-item>
+        <el-form-item label="金额" required>
+          <el-input v-model="createForm.amount" placeholder="例如 1000.00" />
+        </el-form-item>
+        <el-form-item label="到期日">
+          <el-date-picker v-model="createForm.due_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="createForm.remark" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="handleCreate">保存为草稿</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -163,7 +186,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { fetchApInvoices, type ApInvoice } from '@/api/modules/ap_invoice'
+import { fetchApInvoices, createApInvoice, type ApInvoice } from '@/api/modules/ap_invoice'
 import { listAdvanceAllocationsByTarget } from '@/api/modules/advance_allocation'
 
 const router = useRouter()
@@ -289,6 +312,47 @@ function sourceTypeLabel(s: string): string {
 function formatAmount(val: any): string {
   const n = Number(val) || 0
   return n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+// ---- Create dialog ----
+const createDialogVisible = ref(false)
+const creating = ref(false)
+const createForm = reactive({
+  supplier_id: '',
+  amount: '',
+  due_date: '',
+  remark: '',
+})
+
+function openCreateDialog() {
+  createDialogVisible.value = true
+}
+
+async function handleCreate() {
+  if (!createForm.supplier_id || !createForm.amount) {
+    ElMessage.warning('请填写供应商和金额')
+    return
+  }
+  creating.value = true
+  try {
+    await createApInvoice({
+      supplier_id: createForm.supplier_id,
+      amount: createForm.amount,
+      due_date: createForm.due_date || undefined,
+      remark: createForm.remark || undefined,
+    })
+    ElMessage.success('应付单创建成功')
+    createDialogVisible.value = false
+    createForm.supplier_id = ''
+    createForm.amount = ''
+    createForm.due_date = ''
+    createForm.remark = ''
+    loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '创建失败')
+  } finally {
+    creating.value = false
+  }
 }
 
 onMounted(loadData)

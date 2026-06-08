@@ -11,7 +11,21 @@ from typing import Dict, Any, Tuple, Optional
 
 # 配置
 BASE_URL = "http://localhost:8080"
-TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMTAxIiwidGVuYW50X2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwicm9sZSI6ImFkbWluIiwiaXNzIjoiaHVpaHVhLWZpbmFuY2UiLCJleHAiOjE3ODAzMjE5ODcsIm5iZiI6MTc4MDMyMDE4NywiaWF0IjoxNzgwMzIwMTg3fQ.P_4jOFT2mF0hd_2FfqwQUxrDc_4TDCFMq-UVrNonhUM"
+
+def _login() -> Optional[str]:
+    try:
+        r = requests.post(f"{BASE_URL}/api/v1/auth/login", json={"username": "admin", "password": "admin123"}, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            return data.get("token")
+        return None
+    except Exception:
+        return None
+
+TOKEN = _login()
+if not TOKEN:
+    print("[WARN] 登录失败，使用空 token（测试会 401 失败）")
+    TOKEN = "__INVALID__"
 
 HEADERS = {
     "Authorization": f"Bearer {TOKEN}",

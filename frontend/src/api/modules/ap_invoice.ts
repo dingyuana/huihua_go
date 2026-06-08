@@ -28,3 +28,13 @@ export function fetchApInvoices(params: {
 export function fetchApInvoiceById(id: string): Promise<ApiResponse<ApInvoice>> {
   return request.get(`/ap-invoices/${id}`)
 }
+
+export function createApInvoice(data: {
+  supplier_id: string
+  amount: string
+  due_date?: string
+  remark?: string
+  source_type?: string
+}): Promise<ApiResponse<ApInvoice>> {
+  return request.post('/ap-invoices', data)
+}

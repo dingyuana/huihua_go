@@ -27,6 +27,44 @@
       </el-form>
     </el-card>
 
+    <!-- 统计汇总 -->
+    <el-row :gutter="8" class="stat-row">
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card debit">
+          <div class="stat-summary">
+            <span class="stat-label">借方总额</span>
+            <span class="stat-amount">{{ formatAmount(stats.debitTotal) }} 元</span>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card credit">
+          <div class="stat-summary">
+            <span class="stat-label">贷方总额</span>
+            <span class="stat-amount">{{ formatAmount(stats.creditTotal) }} 元</span>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card balance">
+          <div class="stat-summary">
+            <span class="stat-label">借贷差额</span>
+            <span class="stat-amount" :class="stats.balance === 0 ? 'zero' : stats.balance > 0 ? 'debit' : 'credit'">
+              {{ formatAmount(stats.balance) }} 元
+            </span>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card total">
+          <div class="stat-summary">
+            <span class="stat-label">凭证总数</span>
+            <span class="stat-amount">{{ stats.count }} 张</span>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-card>
       <el-table :data="vouchers" border stripe size="small" @row-click="goDetail">
         <el-table-column prop="voucher_no" label="凭证号" width="150" />
@@ -63,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import request from '@/api/request'
 import DocStatusTag from '@/components/business/DocStatusTag.vue'
@@ -73,6 +111,27 @@ const router = useRouter()
 const filter = reactive({ type: '', status: null as number | null, dateRange: null as any })
 
 const vouchers = ref<any[]>([])
+
+const stats = computed(() => {
+  const list = vouchers.value
+  let debitTotal = 0
+  let creditTotal = 0
+  for (const v of list) {
+    debitTotal += Number(v.debit_total || 0)
+    creditTotal += Number(v.credit_total || 0)
+  }
+  return {
+    debitTotal,
+    creditTotal,
+    balance: debitTotal - creditTotal,
+    count: list.length,
+  }
+})
+
+function formatAmount(val: any): string {
+  const n = Number(val) || 0
+  return n.toLocaleString('en', { minimumFractionDigits: 2 })
+}
 
 async function fetchVouchers() {
   try {
@@ -98,4 +157,26 @@ function goDetail(row: any) {
 <style scoped>
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; h3 { font-size: 18px; } }
 .filter-card { margin-bottom: 16px; }
+.stat-row { margin-bottom: 12px; }
+.stat-card {
+  text-align: center;
+  .stat-summary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    line-height: 1;
+  }
+  .stat-label { font-size: 14px; font-weight: 500; color: #666; }
+  .stat-amount { font-size: 20px; font-weight: 700; }
+  &.debit .stat-amount { color: #096dd9; }
+  &.credit .stat-amount { color: #cf1322; }
+  &.balance {
+    .stat-amount.debit { color: #096dd9; }
+    .stat-amount.credit { color: #cf1322; }
+    .stat-amount.zero { color: #999; }
+  }
+  &.total .stat-amount { color: #333; }
+}
 </style>

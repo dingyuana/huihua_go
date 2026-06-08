@@ -7,12 +7,6 @@
     <!-- 筛选 -->
     <el-card class="filter-card">
       <el-form :inline="true" size="small">
-        <el-form-item label="单据类型">
-          <el-select v-model="filter.paymentType" placeholder="全部" style="width: 120px" clearable>
-            <el-option label="收款单" value="receive" />
-            <el-option label="付款单" value="pay" />
-          </el-select>
-        </el-form-item>
         <el-form-item label="日期">
           <el-date-picker v-model="filter.dateRange" type="daterange" range-separator="~"
             start-placeholder="开始" end-placeholder="结束" style="width: 240px" value-format="YYYY-MM-DD" />
@@ -27,67 +21,92 @@
       </el-form>
     </el-card>
 
-    <!-- 统计卡片 -->
-    <el-row :gutter="12" class="stat-row">
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
-          <p class="stat-num">{{ stats.total }}</p>
-          <p class="stat-label">单据总数</p>
-        </el-card>
-      </el-col>
+    <!-- 统计汇总 -->
+    <el-row :gutter="8" class="stat-row">
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card receive">
-          <p class="stat-num">{{ stats.receiveCount }}</p>
-          <p class="stat-label">收款单</p>
+          <div class="stat-summary">
+            <span class="stat-label">收款总额</span>
+            <span class="stat-amount">{{ formatAmount(stats.receiveAmount) }} 元</span>
+            <span class="stat-count">共 {{ stats.receiveCount }} 笔</span>
+          </div>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card pay">
-          <p class="stat-num">{{ stats.payCount }}</p>
-          <p class="stat-label">付款单</p>
+          <div class="stat-summary">
+            <span class="stat-label">付款总额</span>
+            <span class="stat-amount">{{ formatAmount(stats.payAmount) }} 元</span>
+            <span class="stat-count">共 {{ stats.payCount }} 笔</span>
+          </div>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover" class="stat-card">
-          <p class="stat-num">{{ stats.totalAmount }}</p>
-          <p class="stat-label">收付总额(元)</p>
+        <el-card shadow="hover" class="stat-card net">
+          <div class="stat-summary">
+            <span class="stat-label">总金额</span>
+            <span class="stat-amount" :class="stats.netAmount >= 0 ? 'receive' : 'pay'">{{ stats.netAmount >= 0 ? '+' : '' }}{{ formatAmount(stats.netAmount) }} 元</span>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card total">
+          <div class="stat-summary">
+            <span class="stat-label">总笔数</span>
+            <span class="stat-amount">{{ stats.total }} 笔</span>
+          </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 列表 -->
+    <!-- Tab 切换 + 列表 -->
     <el-card>
-      <el-table :data="payments" border stripe size="small" v-loading="loading">
-        <el-table-column prop="payment_no" label="单据号" width="160" />
-        <el-table-column label="类型" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.payment_type === 'receive' ? 'success' : 'danger'" size="small">
-              {{ row.payment_type === 'receive' ? '收款' : '付款' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="counterparty_name" label="对方单位" min-width="140" />
-        <el-table-column prop="paid_amount" label="金额" width="120" align="right">
-          <template #default="{ row }">
-            <span :class="row.payment_type === 'receive' ? 'amount-income' : 'amount-expense'">
-              {{ row.payment_type === 'receive' ? '+' : '-' }}{{ formatAmount(row.paid_amount) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="posting_date" label="日期" width="100" />
-        <el-table-column prop="reference_no" label="参考号" width="130" />
-        <el-table-column label="单据状态" width="90">
-          <template #default="{ row }">
-            <DocStatusTag :docstatus="row.docstatus" />
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="160" />
-        <el-table-column label="操作" width="80" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="showDetail(row)">详情</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <el-tabs v-model="activeTab" class="payment-tabs">
+        <el-tab-pane label="收款" name="receive">
+          <el-table :data="payments" border stripe size="small" v-loading="loading">
+            <el-table-column prop="payment_no" label="单据号" width="160" />
+            <el-table-column prop="counterparty_name" label="对方单位" min-width="140" />
+            <el-table-column prop="paid_amount" label="收款金额" width="120" align="right">
+              <template #default="{ row }">
+                <span class="amount-income">+{{ formatAmount(row.paid_amount) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="posting_date" label="日期" width="100" />
+            <el-table-column prop="reference_no" label="参考号" width="130" />
+            <el-table-column label="单据状态" width="90">
+              <template #default="{ row }"><DocStatusTag :docstatus="row.docstatus" /></template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" width="160" />
+            <el-table-column label="操作" width="80" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="showDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="付款" name="pay">
+          <el-table :data="payments" border stripe size="small" v-loading="loading">
+            <el-table-column prop="payment_no" label="单据号" width="160" />
+            <el-table-column prop="counterparty_name" label="对方单位" min-width="140" />
+            <el-table-column prop="paid_amount" label="付款金额" width="120" align="right">
+              <template #default="{ row }">
+                <span class="amount-expense">-{{ formatAmount(row.paid_amount) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="posting_date" label="日期" width="100" />
+            <el-table-column prop="reference_no" label="参考号" width="130" />
+            <el-table-column label="单据状态" width="90">
+              <template #default="{ row }"><DocStatusTag :docstatus="row.docstatus" /></template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" width="160" />
+            <el-table-column label="操作" width="80" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="showDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
 
       <el-pagination
         v-if="total > 0"
@@ -191,7 +210,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchPayments, fetchPaymentDetail, generateVoucherFromPayment, fetchUnmatchedInvoices, allocateInvoices } from '@/api/modules/payment'
 import { deleteVoucher } from '@/api/modules/voucher'
@@ -203,9 +222,9 @@ const payments = ref<PaymentEntry[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
+const activeTab = ref('receive')
 
 const filter = reactive({
-  paymentType: '',
   dateRange: null as [string, string] | null,
   keyword: '',
 })
@@ -220,8 +239,15 @@ const stats = computed(() => {
     total: all.length,
     receiveCount: receiveList.length,
     payCount: payList.length,
-    totalAmount: (totalReceive - totalPay).toLocaleString('en', { minimumFractionDigits: 2 }),
+    receiveAmount: totalReceive,
+    payAmount: totalPay,
+    netAmount: totalReceive - totalPay,
   }
+})
+
+watch(activeTab, () => {
+  page.value = 1
+  loadData()
 })
 
 const showDrawer = ref(false)
@@ -308,9 +334,10 @@ async function loadData() {
     const res: any = await fetchPayments({
       page: page.value,
       pageSize: pageSize.value,
-      payment_type: filter.paymentType || undefined,
+      payment_type: activeTab.value,
       start_date: startDate,
       end_date: endDate,
+      keyword: filter.keyword || undefined,
     })
     payments.value = res?.data?.list || res?.data || []
     total.value = res?.data?.total || (Array.isArray(payments.value) ? payments.value.length : 0)
@@ -323,7 +350,6 @@ async function loadData() {
 }
 
 function resetFilter() {
-  filter.paymentType = ''
   filter.dateRange = null
   filter.keyword = ''
   page.value = 1
@@ -366,11 +392,31 @@ onMounted(loadData)
 .stat-row { margin-bottom: 12px; }
 .stat-card {
   text-align: center;
-  .stat-num { font-size: 24px; font-weight: 700; margin-bottom: 4px; color: #333; }
-  .stat-label { font-size: 12px; color: #999; }
-  &.receive .stat-num { color: #389e0d; }
-  &.pay .stat-num { color: #cf1322; }
+  .stat-summary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    line-height: 1;
+  }
+  .stat-label { font-size: 14px; font-weight: 500; color: #666; }
+  .stat-amount { font-size: 20px; font-weight: 700; }
+  .stat-count { font-size: 20px; font-weight: 700; }
+  &.receive {
+    .stat-amount, .stat-count { color: #389e0d; }
+  }
+  &.pay {
+    .stat-amount, .stat-count { color: #cf1322; }
+  }
+  &.net {
+    .stat-amount { color: #096dd9; }
+  }
+  &.total {
+    .stat-amount { color: #333; }
+  }
 }
+.payment-tabs { margin-top: -16px; }
 .amount-income { color: #389e0d; font-weight: 600; }
 .amount-expense { color: #cf1322; font-weight: 600; }
 .allocation-section {

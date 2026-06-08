@@ -8,7 +8,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:3002',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -19,8 +19,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npx vite --port 3000 --strictPort',
-    url: 'http://localhost:3000',
+    command: 'npx vite --port 3002 --strictPort',
+    url: 'http://localhost:3002',
     reuseExistingServer: true,
     timeout: 30000,
   },
