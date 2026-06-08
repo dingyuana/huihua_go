@@ -183,18 +183,35 @@ function openRejectFromDrawer() {
   selectedIds.value = currentVoucher.value ? [currentVoucher.value.id] : []
 }
 
-function batchApprove() {
-  ElMessage.success(`已审核通过 ${selectedIds.value.length} 张凭证`)
-  pendingVouchers.value = pendingVouchers.value.filter(v => !selectedIds.value.includes(v.id))
-  pendingCount.value = pendingVouchers.value.length
-  selectedIds.value = []
+async function batchApprove() {
+  try {
+    for (const id of selectedIds.value) {
+      await request.post(`/approvals/${id}/approve`, { comment: '审核通过' })
+    }
+    ElMessage.success(`已审核通过 ${selectedIds.value.length} 张凭证`)
+    pendingVouchers.value = pendingVouchers.value.filter(v => !selectedIds.value.includes(v.id))
+    pendingCount.value = pendingVouchers.value.length
+    selectedIds.value = []
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || '审核失败')
+  }
 }
 
-function reject() {
+async function reject() {
   if (!rejectReason.value) { ElMessage.warning('请填写驳回原因'); return }
-  ElMessage.success(`已驳回 ${selectedIds.value.length} 张凭证`)
-  showRejectDialog.value = false
-  rejectReason.value = ''
+  try {
+    for (const id of selectedIds.value) {
+      await request.post(`/approvals/${id}/reject`, { reason: rejectReason.value })
+    }
+    ElMessage.success(`已驳回 ${selectedIds.value.length} 张凭证`)
+    showRejectDialog.value = false
+    rejectReason.value = ''
+    pendingVouchers.value = pendingVouchers.value.filter(v => !selectedIds.value.includes(v.id))
+    pendingCount.value = pendingVouchers.value.length
+    selectedIds.value = []
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || '驳回失败')
+  }
 }
 </script>
 

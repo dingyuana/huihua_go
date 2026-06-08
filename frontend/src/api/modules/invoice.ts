@@ -129,7 +129,7 @@ export function batchImportConfirm(data: InvoiceBatchConfirmRequest): Promise<Ap
 
 /** 确认销售发票（生成应收账款） */
 export function confirmSalesInvoice(invoiceID: string): Promise<ApiResponse<void>> {
-  return request.post(`/invoices/sales/${invoiceID}/confirm`)
+  return request.post('/invoices/sales/confirm', { invoice_id: invoiceID })
 }
 
 /** 整单红冲 */

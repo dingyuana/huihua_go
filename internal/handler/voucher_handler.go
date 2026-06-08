@@ -17,14 +17,16 @@ type VoucherHandler struct {
 	stateMachine *service.VoucherStateMachine
 	journalRepo  *repository.JournalRepository
 	voucherSvc   *service.VoucherService
+	approvalSvc  *service.ApprovalService
 }
 
 // NewVoucherHandler creates a new VoucherHandler.
-func NewVoucherHandler(stateMachine *service.VoucherStateMachine, journalRepo *repository.JournalRepository, voucherSvc *service.VoucherService) *VoucherHandler {
+func NewVoucherHandler(stateMachine *service.VoucherStateMachine, journalRepo *repository.JournalRepository, voucherSvc *service.VoucherService, approvalSvc *service.ApprovalService) *VoucherHandler {
 	return &VoucherHandler{
 		stateMachine: stateMachine,
 		journalRepo:  journalRepo,
 		voucherSvc:   voucherSvc,
+		approvalSvc:  approvalSvc,
 	}
 }
 
@@ -252,6 +254,64 @@ func (h *VoucherHandler) Reverse(c *fiber.Ctx) error {
 	})
 }
 
+// RevokeRequest is the request body for revoking a voucher.
+type RevokeRequest struct {
+	UserID   string `json:"user_id"`
+	UserName string `json:"user_name"`
+}
+
+// Revoke handles POST /api/v1/vouchers/:id/revoke
+func (h *VoucherHandler) Revoke(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	}
+
+	var req RevokeRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	if err := h.stateMachine.ExecuteTransition(c.Context(), tenantID, id, model.VoucherActionRevoke, userID, req.UserName, ""); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "voucher revoked successfully"})
+}
+
+// ResubmitRequest is the request body for resubmitting a voucher.
+type ResubmitRequest struct {
+	UserID   string `json:"user_id"`
+	UserName string `json:"user_name"`
+}
+
+// Resubmit handles POST /api/v1/vouchers/:id/resubmit
+func (h *VoucherHandler) Resubmit(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	}
+
+	var req ResubmitRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	if err := h.stateMachine.ExecuteTransition(c.Context(), tenantID, id, model.VoucherActionSubmit, userID, req.UserName, ""); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "voucher resubmitted successfully"})
+}
+
 // GetStatus handles GET /api/v1/vouchers/:id/status
 func (h *VoucherHandler) GetStatus(c *fiber.Ctx) error {
 	idStr := c.Params("id")
@@ -289,6 +349,48 @@ func (h *VoucherHandler) GetTransitions(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"transitions": transitions})
+}
+
+// PendingReview handles GET /api/v1/vouchers/pending-review
+// Returns list of vouchers waiting for approval by the current user.
+func (h *VoucherHandler) PendingReview(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	if h.approvalSvc == nil {
+		return c.JSON(fiber.Map{"list": []interface{}{}})
+	}
+
+	tasks, err := h.approvalSvc.GetPendingTasks(c.Context(), tenantID, userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Transform to frontend-expected format
+	list := make([]fiber.Map, 0, len(tasks))
+	for _, t := range tasks {
+		// Build risk items from task comment or default empty
+		riskItems := []fiber.Map{}
+		if t.Comment != nil && *t.Comment != "" {
+			riskItems = append(riskItems, fiber.Map{
+				"severity": "warning",
+				"message":  *t.Comment,
+			})
+		}
+
+		list = append(list, fiber.Map{
+			"id":          t.JournalEntryID,
+			"voucher_no":  t.VoucherNo,
+			"date":        t.PostingDate,
+			"remark":      t.VoucherType,
+			"amount":      t.Amount.String(),
+			"creator":     "",
+			"risk":        fiber.Map{"level": "low", "items": riskItems},
+			"approval_id": t.ID,
+		})
+	}
+
+	return c.JSON(fiber.Map{"list": list})
 }
 
 // ---- Manual Voucher CRUD methods ----

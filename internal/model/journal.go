@@ -15,6 +15,7 @@ const (
 	VoucherStatusPosted    VoucherStatus = "posted"    // 已过账/已提交审核
 	VoucherStatusVerified  VoucherStatus = "verified"  // 已审核/已核准
 	VoucherStatusCancelled VoucherStatus = "cancelled" // 已作废
+	VoucherStatusRejected  VoucherStatus = "rejected"  // 已驳回
 )
 
 // VoucherAction represents an action that triggers a status transition.
@@ -26,6 +27,7 @@ const (
 	VoucherActionReject  VoucherAction = "reject"  // 驳回
 	VoucherActionReverse VoucherAction = "reverse" // 红字冲销
 	VoucherActionCancel  VoucherAction = "cancel"  // 作废
+	VoucherActionRevoke  VoucherAction = "revoke"  // 撤回
 )
 
 // VoucherStateTransition records a state transition for audit purposes.

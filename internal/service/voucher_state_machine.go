@@ -54,7 +54,7 @@ func (s *VoucherStateMachine) InjectLockRepos(arInvoiceRepo *repository.ArInvoic
 
 // ValidateTransition checks if a state transition is legal.
 func (s *VoucherStateMachine) ValidateTransition(currentStatus int16, action model.VoucherAction) error {
-	// docstatus: 0=draft, 1=posted, 2=verified, 3=cancelled
+	// docstatus: 0=draft, 1=posted, 2=verified, 3=cancelled, 4=rejected
 	switch currentStatus {
 	case 0: // draft
 		switch action {
@@ -65,7 +65,14 @@ func (s *VoucherStateMachine) ValidateTransition(currentStatus int16, action mod
 		}
 	case 1: // posted
 		switch action {
-		case model.VoucherActionApprove, model.VoucherActionReject, model.VoucherActionReverse, model.VoucherActionCancel:
+		case model.VoucherActionApprove, model.VoucherActionReject, model.VoucherActionReverse, model.VoucherActionRevoke:
+			return nil
+		default:
+			return fmt.Errorf("invalid action %q for status %d", action, currentStatus)
+		}
+	case 4: // rejected
+		switch action {
+		case model.VoucherActionSubmit, model.VoucherActionCancel:
 			return nil
 		default:
 			return fmt.Errorf("invalid action %q for status %d", action, currentStatus)
@@ -102,13 +109,15 @@ func (s *VoucherStateMachine) ExecuteTransition(ctx context.Context, tenantID uu
 	var newStatus int16
 	switch action {
 	case model.VoucherActionSubmit:
-		newStatus = 1 // draft -> posted
+		newStatus = 1 // draft/rejected -> posted
 	case model.VoucherActionApprove:
 		newStatus = 2 // posted -> verified
 	case model.VoucherActionReject:
+		newStatus = 4 // posted -> rejected
+	case model.VoucherActionRevoke:
 		newStatus = 0 // posted -> draft
 	case model.VoucherActionCancel:
-		newStatus = 3 // draft -> cancelled
+		newStatus = 3 // draft/rejected -> cancelled
 	case model.VoucherActionReverse:
 		newStatus = 3 // posted/verified -> cancelled
 	}
@@ -219,6 +228,9 @@ func (s *VoucherStateMachine) postTransitionAction(ctx context.Context, tenantID
 		s.unlockSourceDoc(ctx, tenantID, je)
 	case model.VoucherActionReverse:
 		// Unlock original source doc
+		s.unlockSourceDoc(ctx, tenantID, je)
+	case model.VoucherActionRevoke:
+		// Unlock source doc (voucher returns to draft)
 		s.unlockSourceDoc(ctx, tenantID, je)
 	}
 }
@@ -407,6 +419,8 @@ func (s *VoucherStateMachine) ValidateTransitionStatusString(currentStatus strin
 		status = 2
 	case "cancelled":
 		status = 3
+	case "rejected":
+		status = 4
 	default:
 		return fmt.Errorf("unknown status: %s", currentStatus)
 	}
@@ -424,6 +438,8 @@ func DocStatusToVoucherStatus(docstatus int16) model.VoucherStatus {
 		return model.VoucherStatusVerified
 	case 3:
 		return model.VoucherStatusCancelled
+	case 4:
+		return model.VoucherStatusRejected
 	default:
 		return model.VoucherStatusDraft
 	}
@@ -440,6 +456,8 @@ func VoucherStatusToDocStatus(status model.VoucherStatus) int16 {
 		return 2
 	case model.VoucherStatusCancelled:
 		return 3
+	case model.VoucherStatusRejected:
+		return 4
 	default:
 		return 0
 	}

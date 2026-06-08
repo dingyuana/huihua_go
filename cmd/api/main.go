@@ -286,8 +286,13 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// InjectLockRepos called after reconRepo is created (see below)
 	paymentStateMachine := service.NewPaymentStateMachine(paymentRepo, invoiceRepo, auditRepo)
 	voucherSvc := service.NewVoucherService(journalRepo, voucherTemplateSvc, bankTransactionRepo, paymentRepo, accountRepo, classificationRuleSvc, paymentStateMachine, invoiceRepo)
-	voucherHandler := handler.NewVoucherHandler(stateMachine, journalRepo, voucherSvc)
+	// Approval workflow (initialized early so voucherHandler can use it)
+	approvalRepo := repository.NewApprovalRepository(db.GetPool())
+	approvalSvc := service.NewApprovalService(approvalRepo, journalRepo)
+
+	voucherHandler := handler.NewVoucherHandler(stateMachine, journalRepo, voucherSvc, approvalSvc)
 	api.Get("/vouchers", voucherHandler.List)
+	api.Get("/vouchers/pending-review", voucherHandler.PendingReview)
 	api.Post("/vouchers/suggest-accounts", voucherHandler.SuggestAccounts)
 	api.Post("/vouchers", voucherHandler.Create)
 	api.Get("/vouchers/:id", voucherHandler.GetByID)
@@ -300,6 +305,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/vouchers/:id/reject", voucherHandler.Reject)
 	api.Post("/vouchers/:id/cancel", voucherHandler.Cancel)
 	api.Post("/vouchers/:id/reverse", voucherHandler.Reverse)
+	api.Post("/vouchers/:id/revoke", voucherHandler.Revoke)
+	api.Post("/vouchers/:id/resubmit", voucherHandler.Resubmit)
 	api.Get("/vouchers/:id/status", voucherHandler.GetStatus)
 	api.Get("/vouchers/:id/transitions", voucherHandler.GetTransitions)
 
@@ -405,9 +412,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/reports/balance-sheet", reportHandler.GetBalanceSheet)
 	api.Get("/reports/cash-flow", reportHandler.GetCashFlowStatement)
 
-	// Approval workflow routes
-	approvalRepo := repository.NewApprovalRepository(db.GetPool())
-	approvalSvc := service.NewApprovalService(approvalRepo, journalRepo)
+	// Approval workflow routes (approvalSvc already initialized above)
 	approvalHandler := handler.NewApprovalHandler(approvalSvc)
 	api.Post("/approvals/submit", approvalHandler.SubmitForApproval)
 	api.Post("/approvals/:id/approve", approvalHandler.Approve)
@@ -494,6 +499,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Put("/payment-entries/:id", paymentHandler.Update)
 	api.Delete("/payment-entries/:id", paymentHandler.Delete)
 	api.Post("/payment-entries/:id/allocate", paymentHandler.Allocate)
+	api.Post("/payment-entries/:id/submit", paymentHandler.Submit)
 	api.Post("/payment-entries/:id/approve", paymentHandler.ApprovePaymentEntry)
 
 	// Dashboard stats aggregation

@@ -160,6 +160,15 @@ func (s *ApprovalService) Approve(ctx context.Context, tenantID uuid.UUID, taskI
 		return fmt.Errorf("get task: %w", err)
 	}
 
+	// Duty separation: maker-checker (制单人不能审核自己的凭证)
+	journal, err := s.journalRepo.GetByID(ctx, tenantID, task.JournalEntryID)
+	if err != nil {
+		return fmt.Errorf("get journal entry: %w", err)
+	}
+	if journal.CreatedBy == userID {
+		return errors.New("制单人不能审核自己的凭证")
+	}
+
 	// Verify approver
 	if task.ApproverID != userID {
 		return errors.New("unauthorized: not the assigned approver")
