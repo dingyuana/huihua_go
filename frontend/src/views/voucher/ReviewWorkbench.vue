@@ -5,6 +5,15 @@
       <el-tag type="warning" size="large">待审核: {{ pendingCount }} 张</el-tag>
     </div>
 
+    <el-card class="filter-card">
+      <el-form :inline="true" size="small">
+        <el-form-item label="日期">
+          <el-date-picker v-model="filterDateRange" type="daterange" range-separator="~" style="width: 220px" value-format="YYYY-MM-DD" />
+        </el-form-item>
+        <el-form-item><el-button type="primary" @click="fetchPending">查询</el-button></el-form-item>
+      </el-form>
+    </el-card>
+
     <el-card>
       <!-- 批量操作 -->
       <div class="batch-bar">
@@ -16,36 +25,33 @@
 
       <el-table :data="pendingVouchers" border stripe size="small" @selection-change="onSelection" @row-click="openDetail">
         <el-table-column type="selection" width="40" @click.stop />
-        <el-table-column prop="voucher_no" label="凭证号" width="140" />
-        <el-table-column prop="date" label="日期" width="80" />
-        <el-table-column prop="remark" label="摘要" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="amount" label="金额" width="120" align="right" />
-        <el-table-column prop="creator" label="制单人" width="80" />
-        <el-table-column label="AI 风控" width="100">
+        <el-table-column prop="voucher_no" label="凭证号" width="150" />
+        <el-table-column prop="date" label="日期" width="110">
+          <template #default="{ row }">{{ (row.date || '').slice(0, 10) }}</template>
+        </el-table-column>
+        <el-table-column label="对方名称" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.counterparty_name || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="科目" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
-            <el-popover trigger="hover" :width="280">
-              <template #reference>
-                <el-tag
-                  :type="row.risk.level === 'high' ? 'danger' : row.risk.level === 'low' ? 'success' : 'warning'"
-                  size="small"
-                  style="cursor:pointer"
-                >
-                  {{ row.risk.level === 'high' ? '高风险' : row.risk.level === 'low' ? '正常' : '关注' }}
-                </el-tag>
-              </template>
-              <div class="risk-card">
-                <h4>AI 风控详情</h4>
-                <ul>
-                  <li v-for="(item, i) in row.risk.items" :key="i" :class="'risk-' + item.severity">
-                    <el-tag :type="item.severity === 'error' ? 'danger' : 'warning'" size="small" style="margin-right:4px">
-                      {{ item.severity === 'error' ? '风险' : '提示' }}
-                    </el-tag>
-                    {{ item.message }}
-                  </li>
-                </ul>
-              </div>
-            </el-popover>
+            <span v-if="row.first_account_code">
+              <el-tag size="small" type="info">{{ row.first_account_code }}</el-tag>
+              {{ row.first_account_name }}
+            </span>
+            <span v-else>—</span>
           </template>
+        </el-table-column>
+        <el-table-column label="来源单据" width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-tag v-if="row.source_doc_no" size="small" type="success">{{ row.source_doc_no }}</el-tag>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="remark" label="摘要" min-width="200" show-overflow-tooltip />
+        <el-table-column label="借方合计" width="120" align="right"><template #default="{ row }">{{ row.debit_total || '0.00' }}</template></el-table-column>
+        <el-table-column label="贷方合计" width="120" align="right"><template #default="{ row }">{{ row.credit_total || '0.00' }}</template></el-table-column>
+        <el-table-column label="状态" width="80">
+          <template #default="{ row }"><DocStatusTag :docstatus="row.docstatus" /></template>
         </el-table-column>
       </el-table>
     </el-card>
@@ -119,6 +125,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
+import DocStatusTag from '@/components/business/DocStatusTag.vue'
 
 interface RiskItem {
   severity: 'error' | 'warning'
@@ -137,15 +144,24 @@ interface VoucherItem {
   lines?: { account: string; debit: string; credit: string }[]
 }
 
+const filterDateRange = ref<any>(null)
 const pendingCount = ref(0)
 const pendingVouchers = ref<VoucherItem[]>([])
-onMounted(async () => {
+
+async function fetchPending() {
   try {
-    const res: any = await request.get('/vouchers/pending-review')
-    const list = res?.data?.list || res?.data
+    const params: any = {}
+    if (filterDateRange.value && filterDateRange.value.length === 2) {
+      params.start_date = filterDateRange.value[0]
+      params.end_date = filterDateRange.value[1]
+    }
+    const res: any = await request.get('/vouchers/pending-review', { params })
+    const list = res?.list || res?.data?.list || res?.data
     if (Array.isArray(list)) { pendingVouchers.value = list; pendingCount.value = list.length }
   } catch { /* silent fail - show empty */ }
-})
+}
+
+onMounted(() => fetchPending())
 
 const selectAll = ref(false)
 const selectedIds = ref<string[]>([])
@@ -163,10 +179,35 @@ function onSelection(rows: any[]) {
 
 function toggleAll() { /* handled by el-table */ }
 
-function openDetail(row: VoucherItem) {
-  currentVoucher.value = row
+async function openDetail(row: VoucherItem) {
+  currentVoucher.value = { ...row }
   detailTab.value = 'voucher'
   showDetail.value = true
+  // Fetch full voucher detail including journal entry lines
+  try {
+    const res: any = await request.get(`/vouchers/${row.id}`)
+    const data = res?.data || res
+    if (data?.journal_entry_lines) {
+      currentVoucher.value = {
+        ...currentVoucher.value,
+        lines: data.journal_entry_lines.map((l: any) => ({
+          account: [l.account_code, l.account_name].filter(Boolean).join(' '),
+          debit: l.debit || '0.00',
+          credit: l.credit || '0.00',
+        })),
+      }
+    }
+    // Update basic fields from journal_entry if available
+    if (data?.journal_entry) {
+      const je = data.journal_entry
+      currentVoucher.value = {
+        ...currentVoucher.value,
+        date: je.posting_date || currentVoucher.value.date,
+        remark: je.remark || currentVoucher.value.remark,
+        amount: je.debit_total || je.credit_total || currentVoucher.value.amount,
+      }
+    }
+  } catch { /* silently use list data */ }
 }
 
 function approveCurrent() {
@@ -217,6 +258,7 @@ async function reject() {
 
 <style scoped>
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; h3 { font-size: 18px; } }
+.filter-card { margin-bottom: 16px; }
 .batch-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .selected-count { font-size: 13px; color: #666; }
 .section-title { font-size: 14px; font-weight: 600; margin: 16px 0 8px; }

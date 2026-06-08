@@ -58,14 +58,23 @@ func (h *BankReconciliationHandler) Reconcile(c *fiber.Ctx) error {
 		})
 	}
 
+	totalItems := result.AutoMatchedCount + len(result.PendingItems) + len(result.BankOnlyItems) + len(result.BookOnlyItems)
+	autoMatchRate := 0.0
+	if totalItems > 0 {
+		autoMatchRate = float64(result.AutoMatchedCount) / float64(totalItems) * 100
+	}
+
 	return c.JSON(fiber.Map{
-		"bank_balance":     result.BankBalance,
-		"book_balance":     result.BookBalance,
+		"total":          totalItems,
+		"autoMatched":    result.AutoMatchedCount,
+		"needConfirm":    len(result.PendingItems),
+		"unmatched":      len(result.BankOnlyItems) + len(result.BookOnlyItems),
+		"autoMatchRate":  autoMatchRate,
+		"matches":        result.MatchItems,
+		"bank_balance":   result.BankBalance,
+		"book_balance":   result.BookBalance,
 		"adjusted_balance": result.AdjustedBalance,
-		"bank_only_items":  result.BankOnlyItems,
-		"book_only_items":  result.BookOnlyItems,
-		"matched_count":    result.MatchedCount,
-		"total_matched":    result.TotalMatched,
+		"matched_count":  result.MatchedCount,
 	})
 }
 

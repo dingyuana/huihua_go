@@ -66,14 +66,14 @@ func (s *ApprovalService) SubmitForApproval(ctx context.Context, tenantID uuid.U
 		return fmt.Errorf("get journal lines: %w", err)
 	}
 
-	// Calculate total amount (use credit as proxy for amount for AR/AP style vouchers)
+	// Calculate total amount from journal entry lines (sum of all debits)
 	var totalAmount decimal.Decimal
 	for _, line := range lines {
-		if line.Credit.GreaterThan(decimal.Zero) {
-			totalAmount = totalAmount.Add(line.Credit)
-		} else {
-			totalAmount = totalAmount.Add(line.Debit)
-		}
+		totalAmount = totalAmount.Add(line.Debit)
+	}
+	// Fallback to journal entry DebitTotal if lines are empty
+	if totalAmount.IsZero() && !journal.DebitTotal.IsZero() {
+		totalAmount = journal.DebitTotal
 	}
 
 	// Determine required approval levels based on amount (DB thresholds, fallback to package defaults)

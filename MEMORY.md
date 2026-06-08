@@ -39,6 +39,23 @@
   - 新增迁移 036-038（counterparty_name, voucher_source_doc_link, bus_doc_mapping）
 - **Corresponding commit**: `a545f8eb feat: 业务单据凭证智能生成 + 科目映射配置 + 凭证关联显示`
 
+### 🔴 Major Change — 2026-06-08
+- **Change type**: bug fix / style alignment
+- **Summary**: 修复银行对账页面500错误 + 凭证审核金额显示为零 + 凭证审核页样式对齐
+- **Trigger**: 用户反馈 http://129.211.7.254:3002/bank-reconciliation/match 报500，http://129.211.7.254:3002/vouchers/review 金额显示0
+- **Impact**: 银行对账模块可用性修复，凭证审核金额正确显示
+- **Details**:
+  - **银行对账500**: `bank_accounts.clearing_account_id` 未配置，`ReconcileBankAccount` 中解引用 nil 指针 panic。添加了 nil guard 返回明确错误，并在数据库中设置了 `clearing_account_id = 'ef72ff1d-3cbd-4cd0-9ce2-18430106bd2e'`（科目1002银行存款）
+  - **凭证金额为零**: `approval_tasks.amount` 在旧版 `SubmitForApproval` 中计算错误，现有4条pending记录存储了 `0.0000`。使用 SQL `UPDATE ... SET amount = (SELECT SUM(jel.debit) FROM journal_entry_lines jel WHERE jel.journal_entry_id = at.journal_entry_id)` 修复存量数据。修正了 `journal_repo.go:GetByID` SQL（移除了不存在的 `debit_total, credit_total` 列）
+  - **构建验证**: 每次修改后跑 `go build ./...` + `go vet ./...` + `(cd frontend && pnpm exec vite build)` 三件套
+  - **关键排查技巧**: API 服务器的全局 ErrorHandler（`cmd/api/main.go`）将所有 handler 返回的错误统一包装为 `{"error":"internal server error"}`，导致真实错误信息被隐藏。排查时需查看服务器日志或直接调用 API 绕过中间件
+  - **dev server**: 运行中的 API 进程在 `/tmp/huihua-api`，源码修改后必须 `go build -o /tmp/huihua-api ./cmd/api && kill <pid> && /tmp/huihua-api` 才能生效
+  - **凭证审核页样式**: ReviewWorkbench.vue 对齐 VoucherList.vue 风格——添加 filter-card（日期范围选择器+查询按钮），保持相同的 `.page-header` + `.filter-card` CSS 类和表格式样
+  - **凭证审核页字段补齐**: ReviewWorkbench.vue 表格列从"凭证号/日期/摘要/金额/制单人/AI风控"改为"凭证号/日期/对方名称/科目/来源单据/摘要/借方合计/贷方合计/状态"，与凭证列表页完全一致
+    - 后端改动: `ApprovalTaskWithVoucher` 模型新增 7 个字段、`ListPending` SQL 增加 7 列子查询（含从 `journal_entry_lines` 汇总 `debit_total`/`credit_total` + 联表取首行 `first_account_code`/`first_account_name`）、`PendingReview` handler 透传字段
+    - `journal_entry_lines` 无 `line_no` 列，排序用 `id`
+- **Corresponding session**: Sisyphus 调试会话 2026-06-08
+
 ### 🔴 Major Change — 2026-05-30
 - **Change type**: documentation update / build fix / testing + assessment
 - **Summary**: 

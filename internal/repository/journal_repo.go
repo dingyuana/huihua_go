@@ -52,7 +52,8 @@ func (r *JournalRepository) GetByID(ctx context.Context, tenantID uuid.UUID, id 
 	query := `
 		SELECT id, voucher_no, voucher_type, posting_date, company_id, tenant_id, remark,
 		       docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by,
-		       created_at, updated_at, counterparty_name, source_doc_type, source_doc_id, source_doc_no,
+		       created_at, updated_at, counterparty_name,
+		       source_doc_type, source_doc_id, source_doc_no,
 		       source_type, source_id, source_invoice_id
 		FROM journal_entries
 		WHERE id = $1 AND tenant_id = $2`
@@ -62,7 +63,8 @@ func (r *JournalRepository) GetByID(ctx context.Context, tenantID uuid.UUID, id 
 		&je.ID, &je.VoucherNo, &je.VoucherType, &je.PostingDate, &je.CompanyID,
 		&je.TenantID, &je.Remark, &je.DocStatus, &je.ReversedID, &je.ReversalID,
 		&je.SubmittedBy, &je.SubmittedAt, &je.CreatedBy, &je.CreatedAt, &je.UpdatedAt,
-		&je.CounterpartyName, &je.SourceDocType, &je.SourceDocID, &je.SourceDocNo,
+		&je.CounterpartyName,
+		&je.SourceDocType, &je.SourceDocID, &je.SourceDocNo,
 		&je.SourceType, &je.SourceID, &je.SourceInvoiceID,
 	)
 	if err != nil {

@@ -62,16 +62,25 @@ type PendingConfirmItem struct {
 }
 
 // ReconciliationResult holds the result of a reconciliation operation.
+type MatchItemResult struct {
+	ID          uuid.UUID  `json:"id"`
+	Score       float64    `json:"score"`
+	BankTxnDesc string     `json:"bank_txn"`
+	GLEntryDesc string     `json:"gl_entry"`
+	NeedConfirm bool       `json:"needConfirm"`
+}
+
 type ReconciliationResult struct {
-	BankBalance      decimal.Decimal       `json:"bank_balance"`
-	BookBalance      decimal.Decimal       `json:"book_balance"`
-	AdjustedBalance  decimal.Decimal       `json:"adjusted_balance"`
-	BankOnlyItems    []UnreconciledItem    `json:"bank_only_items"`
-	BookOnlyItems    []UnreconciledItem    `json:"book_only_items"`
-	MatchedCount     int                   `json:"matched_count"`
-	TotalMatched     decimal.Decimal       `json:"total_matched"`
-	PendingItems     []PendingConfirmItem   `json:"pending_items"`
-	AutoMatchedCount int                   `json:"auto_matched_count"`
+	BankBalance       decimal.Decimal       `json:"bank_balance"`
+	BookBalance       decimal.Decimal       `json:"book_balance"`
+	AdjustedBalance   decimal.Decimal       `json:"adjusted_balance"`
+	BankOnlyItems     []UnreconciledItem    `json:"bank_only_items"`
+	BookOnlyItems     []UnreconciledItem    `json:"book_only_items"`
+	MatchedCount      int                   `json:"matched_count"`
+	TotalMatched      decimal.Decimal       `json:"total_matched"`
+	PendingItems      []PendingConfirmItem   `json:"pending_items"`
+	AutoMatchedCount  int                   `json:"auto_matched_count"`
+	MatchItems        []MatchItemResult      `json:"match_items"`
 }
 
 // UnreconciledItem represents an item that appears in one side but not the other.
@@ -275,6 +284,9 @@ func (s *BankReconciliationService) ReconcileBankAccount(ctx context.Context, te
 		return nil, fmt.Errorf("get bank account: %w", err)
 	}
 
+	if bankAccount.ClearingAccountID == nil {
+		return nil, fmt.Errorf("bank account %s has no clearing account configured", bankAccountID)
+	}
 	glEntries, err := s.glEntryRepo.GetByAccountAndPeriod(ctx, tenantID, *bankAccount.ClearingAccountID, startDate, endDate)
 	if err != nil {
 		return nil, fmt.Errorf("get GL entries: %w", err)
@@ -300,6 +312,7 @@ func (s *BankReconciliationService) ReconcileBankAccount(ctx context.Context, te
 	var bankOnlyItems []UnreconciledItem
 	var bookOnlyItems []UnreconciledItem
 	var totalMatched decimal.Decimal
+	var matchItems []MatchItemResult
 
 	// For each bank txn, find the best scoring GL entry
 	for _, txn := range bankTxns {
@@ -361,6 +374,13 @@ func (s *BankReconciliationService) ReconcileBankAccount(ctx context.Context, te
 				totalMatched = totalMatched.Add(matchedAmt)
 				// Update bank txn matched_gl_entry_id
 				s.bankTxnRepo.UpdateMatchedGLEntryID(ctx, txn.ID, bestGLEntry.ID)
+				matchItems = append(matchItems, MatchItemResult{
+					ID:          txn.ID,
+					Score:       bestScore.TotalScore,
+					BankTxnDesc: strValueOf(txn.Description),
+					GLEntryDesc: "", // Would need GL entry description lookup
+					NeedConfirm: false,
+				})
 			} else if bestScore.NeedConfirm {
 				// Pending confirmation
 				pendingItems = append(pendingItems, PendingConfirmItem{
@@ -371,6 +391,13 @@ func (s *BankReconciliationService) ReconcileBankAccount(ctx context.Context, te
 					GLEntryDesc: "", // Would need party lookup
 					GLEntryAmt:  bestGLEntry.Debit.Sub(bestGLEntry.Credit).Abs(),
 					Score:       *bestScore,
+				})
+				matchItems = append(matchItems, MatchItemResult{
+					ID:          txn.ID,
+					Score:       bestScore.TotalScore,
+					BankTxnDesc: strValueOf(txn.Description),
+					GLEntryDesc: "",
+					NeedConfirm: true,
 				})
 			} else {
 				// Score < 60: goes to unreconciled items (bank only)
@@ -391,6 +418,13 @@ func (s *BankReconciliationService) ReconcileBankAccount(ctx context.Context, te
 					Direction:   dir,
 					ItemType:    itemType,
 				})
+				matchItems = append(matchItems, MatchItemResult{
+					ID:          txn.ID,
+					Score:       bestScore.TotalScore,
+					BankTxnDesc: strValueOf(txn.Description),
+					GLEntryDesc: "",
+					NeedConfirm: false,
+				})
 			}
 		} else {
 			// No GL entry found → bank only
@@ -410,6 +444,13 @@ func (s *BankReconciliationService) ReconcileBankAccount(ctx context.Context, te
 				Amount:      bankAmt,
 				Direction:   dir,
 				ItemType:    itemType,
+			})
+			matchItems = append(matchItems, MatchItemResult{
+				ID:          txn.ID,
+				Score:       0,
+				BankTxnDesc: strValueOf(txn.Description),
+				GLEntryDesc: "",
+				NeedConfirm: false,
 			})
 		}
 	}
@@ -469,8 +510,9 @@ func (s *BankReconciliationService) ReconcileBankAccount(ctx context.Context, te
 		BookOnlyItems:   bookOnlyItems,
 		MatchedCount:    matchedCount,
 		TotalMatched:    totalMatched,
-		PendingItems:    pendingItems,
+		PendingItems:     pendingItems,
 		AutoMatchedCount: autoMatchedCount,
+		MatchItems:       matchItems,
 	}, nil
 }
 

@@ -71,7 +71,17 @@ func (h *VoucherHandler) Submit(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"message": "voucher submitted successfully"})
+	if h.approvalSvc != nil {
+		if err := h.approvalSvc.SubmitForApproval(c.Context(), tenantID, id, userID, nil); err != nil {
+			// Non-fatal: voucher already submitted, but approval task creation failed
+			return c.JSON(fiber.Map{
+				"message":   "voucher submitted, but approval setup failed",
+				"approval_error": err.Error(),
+			})
+		}
+	}
+
+	return c.JSON(fiber.Map{"message": "voucher submitted for approval"})
 }
 
 // Approve handles POST /api/v1/vouchers/:id/approve
@@ -130,6 +140,12 @@ func (h *VoucherHandler) runBatch(c *fiber.Ctx, action string) error {
 		if err := h.stateMachine.ExecuteTransition(c.Context(), tenantID, id, model.VoucherAction(action), userID, req.UserName, ""); err != nil {
 			failed = append(failed, batchFailure{ID: idStr, Reason: err.Error()})
 			continue
+		}
+		if action == "submit" && h.approvalSvc != nil {
+			if err := h.approvalSvc.SubmitForApproval(c.Context(), tenantID, id, userID, nil); err != nil {
+				failed = append(failed, batchFailure{ID: idStr, Reason: "submitted but approval setup failed: " + err.Error()})
+				continue
+			}
 		}
 		succeeded = append(succeeded, idStr)
 	}
@@ -379,14 +395,21 @@ func (h *VoucherHandler) PendingReview(c *fiber.Ctx) error {
 		}
 
 		list = append(list, fiber.Map{
-			"id":          t.JournalEntryID,
-			"voucher_no":  t.VoucherNo,
-			"date":        t.PostingDate,
-			"remark":      t.Remark,
-			"amount":      t.Amount.String(),
-			"creator":     t.SubmittedName,
-			"risk":        fiber.Map{"level": "low", "items": riskItems},
-			"approval_id": t.ID,
+			"id":               t.JournalEntryID,
+			"voucher_no":       t.VoucherNo,
+			"date":             t.PostingDate,
+			"remark":           t.Remark,
+			"amount":           t.Amount.String(),
+			"creator":          t.SubmittedName,
+			"risk":             fiber.Map{"level": "low", "items": riskItems},
+			"approval_id":      t.ID,
+			"counterparty_name": t.CounterpartyName,
+			"source_doc_no":    t.SourceDocNo,
+			"docstatus":        t.DocStatus,
+			"debit_total":      t.DebitTotal,
+			"credit_total":     t.CreditTotal,
+			"first_account_code": t.FirstAccountCode,
+			"first_account_name": t.FirstAccountName,
 		})
 	}
 

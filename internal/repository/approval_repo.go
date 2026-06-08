@@ -234,7 +234,14 @@ func (r *ApprovalRepository) ListPending(ctx context.Context, tenantID uuid.UUID
 		       COALESCE(je.remark, '') as remark,
 		       COALESCE(je.created_by::text, '') as submitted_by,
 		       COALESCE((SELECT u.username FROM users u WHERE u.id = je.created_by), '系统') as submitted_name,
-		       (SELECT COUNT(*) FROM approval_tasks WHERE journal_entry_id = at.journal_entry_id AND tenant_id = $1) as total_levels
+		       (SELECT COUNT(*) FROM approval_tasks WHERE journal_entry_id = at.journal_entry_id AND tenant_id = $1) as total_levels,
+		       je.counterparty_name,
+		       je.source_doc_no,
+		       je.docstatus,
+		       COALESCE((SELECT SUM(jel.debit)::text FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), '0.00') as debit_total,
+		       COALESCE((SELECT SUM(jel.credit)::text FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), '0.00') as credit_total,
+		       (SELECT a.code FROM journal_entry_lines jel2 JOIN accounts a ON a.id = jel2.account_id WHERE jel2.journal_entry_id = je.id ORDER BY jel2.id LIMIT 1) as first_account_code,
+		       (SELECT a.name FROM journal_entry_lines jel2 JOIN accounts a ON a.id = jel2.account_id WHERE jel2.journal_entry_id = je.id ORDER BY jel2.id LIMIT 1) as first_account_name
 		FROM approval_tasks at
 		JOIN journal_entries je ON je.id = at.journal_entry_id
 		WHERE (at.approver_id = $2 OR at.approver_id = $4::uuid) AND at.status = $3 AND at.tenant_id = $1
@@ -256,6 +263,8 @@ func (r *ApprovalRepository) ListPending(ctx context.Context, tenantID uuid.UUID
 			&t.ID, &t.FlowID, &t.JournalEntryID, &t.ApproverID, &t.ApproverName, &t.Level,
 			&t.Status, &t.Comment, &t.Amount, &t.TenantID, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt, &t.CompletedAt,
 			&t.VoucherNo, &t.PostingDate, &t.VoucherType, &remark, &submittedBy, &submittedName, &t.TotalLevels,
+			&t.CounterpartyName, &t.SourceDocNo, &t.DocStatus, &t.DebitTotal, &t.CreditTotal,
+			&t.FirstAccountCode, &t.FirstAccountName,
 		); err != nil {
 			return nil, fmt.Errorf("scan pending task: %w", err)
 		}

@@ -60,15 +60,22 @@ type ApprovalTask struct {
 // ApprovalTaskWithVoucher combines approval task info with voucher details.
 type ApprovalTaskWithVoucher struct {
 	ApprovalTask
-	VoucherNo     string `json:"voucher_no" db:"voucher_no"`
-	PostingDate   string `json:"posting_date" db:"posting_date"`
-	VoucherType   string `json:"voucher_type" db:"voucher_type"`
-	Remark        string `json:"remark,omitempty" db:"remark"`
-	CompanyName   string `json:"company_name,omitempty" db:"company_name"`
-	CurrentLevel  int    `json:"current_level" db:"current_level"`
-	TotalLevels   int    `json:"total_levels" db:"total_levels"`
-	SubmittedBy   string `json:"submitted_by,omitempty" db:"submitted_by"`
-	SubmittedName string `json:"submitted_name,omitempty" db:"submitted_name"`
+	VoucherNo        string  `json:"voucher_no" db:"voucher_no"`
+	PostingDate      string  `json:"posting_date" db:"posting_date"`
+	VoucherType      string  `json:"voucher_type" db:"voucher_type"`
+	Remark           string  `json:"remark,omitempty" db:"remark"`
+	CompanyName      string  `json:"company_name,omitempty" db:"company_name"`
+	CurrentLevel     int     `json:"current_level" db:"current_level"`
+	TotalLevels      int     `json:"total_levels" db:"total_levels"`
+	SubmittedBy      string  `json:"submitted_by,omitempty" db:"submitted_by"`
+	SubmittedName    string  `json:"submitted_name,omitempty" db:"submitted_name"`
+	CounterpartyName *string `json:"counterparty_name,omitempty" db:"counterparty_name"`
+	SourceDocNo      *string `json:"source_doc_no,omitempty" db:"source_doc_no"`
+	DocStatus        int16   `json:"docstatus" db:"docstatus"`
+	DebitTotal       string  `json:"debit_total,omitempty" db:"debit_total"`
+	CreditTotal      string  `json:"credit_total,omitempty" db:"credit_total"`
+	FirstAccountCode *string `json:"first_account_code,omitempty" db:"first_account_code"`
+	FirstAccountName *string `json:"first_account_name,omitempty" db:"first_account_name"`
 }
 
 // ApprovalHistory represents the history of all approval actions.
