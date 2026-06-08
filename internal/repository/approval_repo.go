@@ -224,6 +224,7 @@ func (r *ApprovalRepository) RejectTask(ctx context.Context, tenantID uuid.UUID,
 }
 
 // ListPending retrieves pending approval tasks for an approver.
+// Also returns tasks with approver_id = uuid.Nil (default/unassigned approvers).
 func (r *ApprovalRepository) ListPending(ctx context.Context, tenantID uuid.UUID, approverID uuid.UUID) ([]model.ApprovalTaskWithVoucher, error) {
 	query := `
 		SELECT at.id, at.flow_id, at.journal_entry_id, at.approver_id, at.approver_name, at.level,
@@ -233,10 +234,12 @@ func (r *ApprovalRepository) ListPending(ctx context.Context, tenantID uuid.UUID
 		       (SELECT COUNT(*) FROM approval_tasks WHERE journal_entry_id = at.journal_entry_id AND tenant_id = $1) as total_levels
 		FROM approval_tasks at
 		JOIN journal_entries je ON je.id = at.journal_entry_id
-		WHERE at.approver_id = $2 AND at.status = $3 AND at.tenant_id = $1
+		WHERE (at.approver_id = $2 OR at.approver_id = $4) AND at.status = $3 AND at.tenant_id = $1
 		ORDER BY at.created_at DESC`
 
-	rows, err := r.pool.Query(ctx, query, tenantID, approverID, model.ApprovalStatusPending)
+	// uuid.Nil = '00000000-0000-0000-0000-000000000000'
+	nilUUID := "00000000-0000-0000-0000-000000000000"
+	rows, err := r.pool.Query(ctx, query, tenantID, approverID, model.ApprovalStatusPending, nilUUID)
 	if err != nil {
 		return nil, fmt.Errorf("list pending tasks: %w", err)
 	}

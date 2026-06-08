@@ -408,6 +408,11 @@ func (s *VoucherAutoGenerateService) GenerateFromInvoice(ctx context.Context, te
 		return nil, fmt.Errorf("mark invoice docstatus: %w", err)
 	}
 
+	// Auto-submit and create approval tasks for the generated voucher
+	if s.approvalSvc != nil {
+		_ = s.approvalSvc.SubmitForApproval(ctx, tenantID, je.ID, createdBy, nil)
+	}
+
 	return je, nil
 }
 
@@ -422,8 +427,8 @@ func (s *VoucherAutoGenerateService) GenerateFromPaymentEntry(ctx context.Contex
 		return nil, fmt.Errorf("get payment entry: %w", err)
 	}
 
-	// Prevent duplicate voucher generation
-	if pe.DocStatus >= 1 {
+	// Prevent duplicate voucher generation (only block if DocStatus >= 2 approved, voucher already generated)
+	if pe.DocStatus >= 2 {
 		return nil, fmt.Errorf("payment entry %s already has a voucher (docstatus=%d), regenerate rejected", paymentID, pe.DocStatus)
 	}
 

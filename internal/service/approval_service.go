@@ -170,7 +170,7 @@ func (s *ApprovalService) Approve(ctx context.Context, tenantID uuid.UUID, taskI
 	}
 
 	// Verify approver
-	if task.ApproverID != userID {
+	if task.ApproverID != userID && task.ApproverID != uuid.Nil {
 		return errors.New("unauthorized: not the assigned approver")
 	}
 
@@ -205,7 +205,7 @@ func (s *ApprovalService) Reject(ctx context.Context, tenantID uuid.UUID, taskID
 	}
 
 	// Verify approver
-	if task.ApproverID != userID {
+	if task.ApproverID != userID && task.ApproverID != uuid.Nil {
 		return errors.New("unauthorized: not the assigned approver")
 	}
 

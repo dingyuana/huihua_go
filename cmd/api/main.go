@@ -499,7 +499,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Put("/payment-entries/:id", paymentHandler.Update)
 	api.Delete("/payment-entries/:id", paymentHandler.Delete)
 	api.Post("/payment-entries/:id/allocate", paymentHandler.Allocate)
-	api.Post("/payment-entries/:id/submit", paymentHandler.Submit)
+	// TODO: paymentHandler.Submit not yet implemented
+	// api.Post("/payment-entries/:id/submit", paymentHandler.Submit)
 	api.Post("/payment-entries/:id/approve", paymentHandler.ApprovePaymentEntry)
 
 	// Dashboard stats aggregation
