@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"huihua/finance/internal/config"
+	"huihua/finance/internal/event"
 	"huihua/finance/internal/handler"
 	"huihua/finance/internal/middleware"
 	"huihua/finance/internal/repository"
@@ -63,6 +64,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	authSvc := service.NewAuthService(userRepo, cfg)
 	authHandler := handler.NewAuthHandler(authSvc)
 	app.Post("/api/v1/auth/login", authHandler.Login)
+	app.Post("/api/v1/auth/logout", authHandler.Logout)
 
 	// Protected routes
 	api := app.Group("/api/v1", middleware.Auth(cfg))
@@ -80,6 +82,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	accountSvc := service.NewAccountService(accountRepo, db.GetPool())
 	accountHandler := handler.NewAccountHandler(accountSvc)
 	api.Get("/accounts/tree", accountHandler.GetTree)
+	api.Get("/accounts", accountHandler.List)
 	api.Post("/accounts/init-seed", accountHandler.InitFromSeed)
 
 	exchangeRateRepo := repository.NewExchangeRateRepository(db.GetPool())
@@ -282,9 +285,12 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Voucher state machine routes
 	auditRepo = repository.NewAuditRepository(db.GetPool())
 	bankJournalRepo := repository.NewBankJournalRepository(db.GetPool())
+	eventBus := event.NewInProcessBus()
+	eventBus.Subscribe(event.EventAuditLog, event.AuditLogSubscriber(auditRepo))
+	eventBus.Subscribe(event.EventSettlementLog, event.SettlementLogSubscriber())
 	stateMachine := service.NewVoucherStateMachineWithBankJournal(journalRepo, auditRepo, glEntryRepo, bankJournalRepo, bankRepo)
-	// InjectLockRepos called after reconRepo is created (see below)
 	paymentStateMachine := service.NewPaymentStateMachine(paymentRepo, invoiceRepo, auditRepo)
+	paymentStateMachine.InjectEventBus(eventBus)
 	voucherSvc := service.NewVoucherService(journalRepo, voucherTemplateSvc, bankTransactionRepo, paymentRepo, accountRepo, classificationRuleSvc, paymentStateMachine, invoiceRepo)
 	// Approval workflow (initialized early so voucherHandler can use it)
 	approvalRepo := repository.NewApprovalRepository(db.GetPool())
@@ -378,7 +384,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Reconciliation (核销) routes
 	reconRepo := repository.NewReconciliationRepository(db.GetPool())
 	stateMachine.InjectLockRepos(arInvoiceRepo, paymentRepo, reconRepo)
-	reconciliationSvc := service.NewReconciliationService(db.GetPool(), bankTransactionRepo, arInvoiceRepo, invoiceRepo, reconRepo, journalRepo)
+	reconciliationSvc := service.NewReconciliationService(db.GetPool(), bankTransactionRepo, paymentRepo, arInvoiceRepo, invoiceRepo, reconRepo, journalRepo)
 	reconciliationHandler := handler.NewReconciliationHandler(reconciliationSvc)
 	api.Post("/reconciliation/run", reconciliationHandler.Run)
 	api.Get("/reconciliation/pairs", reconciliationHandler.ListPairs)
@@ -386,6 +392,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/reconciliation/pairs/:id/unconfirm", reconciliationHandler.UnconfirmPair)
 	api.Get("/reconciliation/unmatched", reconciliationHandler.GetUnmatched)
 	api.Post("/reconciliation/manual", reconciliationHandler.ManualMatch)
+	api.Post("/reconciliation/precheck", reconciliationHandler.PreCheck)
 
 	// Bank reconciliation (银企对账) routes
 	bankReconciliationSvc := service.NewBankReconciliationService(bankTransactionRepo, journalRepo, bankRepo, glEntryRepo)
@@ -431,6 +438,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	advanceReceiptRepo := repository.NewAdvanceReceiptRepository(db.GetPool())
 	advancePaymentRepo := repository.NewAdvancePaymentRepository(db.GetPool())
 	advanceAllocationRepo := repository.NewAdvanceAllocationRepository(db.GetPool())
+	settlementLogRepo := repository.NewSettlementLogRepository(db.GetPool())
 	autoGenSvc := service.NewVoucherAutoGenerateService(
 		journalRepo, glEntryRepo, bankTransactionRepo,
 		bankRepo, invoiceRepo, arInvoiceRepo, apInvoiceRepo, paymentRepo, partyRepo, accountRepo, busDocMappingRepo,
@@ -441,6 +449,9 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	bankTxnHandler.InjectAutoGenSvc(autoGenSvc)
 	// Also inject into invoice service for ConfirmSalesInvoice
 	invoiceSvc.InjectAutoGenSvc(autoGenSvc)
+	// Inject settlement log repo for the pessimistic-locking + audit-log refactor (Phase 1)
+	invoiceSvc.InjectSettlementLogRepo(settlementLogRepo)
+	paymentStateMachine.InjectSettlementLogRepo(settlementLogRepo)
 
 	advanceReceiptSvc := service.NewAdvanceReceiptService(advanceReceiptRepo, partyRepo, autoGenSvc)
 	advancePaymentSvc := service.NewAdvancePaymentService(advancePaymentRepo, partyRepo, autoGenSvc)
@@ -448,6 +459,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 		advanceReceiptRepo, advancePaymentRepo, advanceAllocationRepo,
 		arInvoiceRepo, apInvoiceRepo, autoGenSvc,
 	)
+	advanceAllocationSvc.InjectSettlementLogRepo(settlementLogRepo)
 
 	creditControlSvc := service.NewCreditControlService(partyRepo)
 	agingSvc := service.NewAgingService(db.GetPool())
@@ -499,8 +511,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Put("/payment-entries/:id", paymentHandler.Update)
 	api.Delete("/payment-entries/:id", paymentHandler.Delete)
 	api.Post("/payment-entries/:id/allocate", paymentHandler.Allocate)
-	// TODO: paymentHandler.Submit not yet implemented
-	// api.Post("/payment-entries/:id/submit", paymentHandler.Submit)
+	api.Post("/payment-entries/:id/submit", paymentHandler.Submit)
 	api.Post("/payment-entries/:id/approve", paymentHandler.ApprovePaymentEntry)
 
 	// Dashboard stats aggregation

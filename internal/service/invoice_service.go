@@ -19,11 +19,12 @@ import (
 
 // InvoiceService handles invoice operations.
 type InvoiceService struct {
-	repo            *repository.InvoiceRepository
-	partyRepo       *repository.PartyRepository
-	arInvoiceRepo   *repository.ArInvoiceRepository
-	apInvoiceRepo   *repository.ApInvoiceRepository
-	voucherAutoSvc  *VoucherAutoGenerateService
+	repo              *repository.InvoiceRepository
+	partyRepo         *repository.PartyRepository
+	arInvoiceRepo     *repository.ArInvoiceRepository
+	apInvoiceRepo     *repository.ApInvoiceRepository
+	voucherAutoSvc    *VoucherAutoGenerateService
+	settlementLogRepo *repository.SettlementLogRepository
 }
 
 // NewInvoiceService creates a new InvoiceService.
@@ -1158,6 +1159,11 @@ func (s *InvoiceService) InjectAutoGenSvc(svc *VoucherAutoGenerateService) {
 	s.voucherAutoSvc = svc
 }
 
+// InjectSettlementLogRepo injects the settlement log repository (used by main.go after initialization).
+func (s *InvoiceService) InjectSettlementLogRepo(repo *repository.SettlementLogRepository) {
+	s.settlementLogRepo = repo
+}
+
 // ConfirmSalesInvoice confirms a sales invoice, generates an ArInvoice (confirmed),
 // triggers voucher auto-generation, and updates invoice status/docstatus.
 func (s *InvoiceService) ConfirmSalesInvoice(ctx context.Context, tenantID, invoiceID, userID uuid.UUID) error {
@@ -1386,18 +1392,20 @@ type AllocationRequest struct {
 
 // AllocateToPaymentEntry creates payment allocations and updates invoice outstanding amounts.
 //
+// Pessimistic locking (SELECT FOR UPDATE) prevents concurrent allocation from over-settling
+// the same invoice. All mutations and settlement logs happen inside a single DB transaction.
+//
 // Cash discount side effects (V1.0 §3.7):
 //   When a.DiscountAmount > 0, this method will:
 //     1) Call s.repo.CreateCashDiscount to insert a row in cash_discounts (audit trail).
 //     2) Call s.voucherAutoSvc.GenerateCashDiscountVoucher to auto-generate a
 //        discount voucher (借：应收/应付 / 贷：银行存款 + 财务费用).
 //
-// Errors from the cash-discount side are returned to the caller — voucher
-// generation failure is treated as a hard failure because the allocation row
-// is already in place and the system would be left in an inconsistent state
-// if the discount is recorded but the voucher is missing.
+// Cash discount side effects run after the main transaction commits, so a voucher
+// generation failure does NOT roll back the allocation (the allocation is the primary
+// operation; the voucher is a downstream side effect).
 func (s *InvoiceService) AllocateToPaymentEntry(ctx context.Context, tenantID uuid.UUID, paymentEntryID uuid.UUID, allocations []AllocationRequest) ([]model.PaymentAllocation, error) {
-	var result []model.PaymentAllocation
+	// Pre-validate allocations before opening a transaction.
 	for _, a := range allocations {
 		inv, err := s.repo.GetByID(ctx, tenantID, a.InvoiceID)
 		if err != nil {
@@ -1410,8 +1418,36 @@ func (s *InvoiceService) AllocateToPaymentEntry(ctx context.Context, tenantID uu
 			return nil, fmt.Errorf("allocation amount %s exceeds outstanding %s for invoice %s",
 				a.AllocatedAmount.String(), inv.OutstandingAmount.String(), a.InvoiceID)
 		}
+	}
 
-		invoiceType := "sale"
+	tx, err := s.repo.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var result []model.PaymentAllocation
+	invoiceType := "sale"
+
+	for _, a := range allocations {
+		// Lock the invoice row to prevent concurrent settlement.
+		if err := s.repo.LockInvoiceForUpdate(ctx, tx, tenantID, a.InvoiceID); err != nil {
+			return nil, err
+		}
+
+		// Re-read inside the transaction to get the latest outstanding amount.
+		inv, err := s.repo.GetByIDTx(ctx, tx, tenantID, a.InvoiceID)
+		if err != nil {
+			return nil, err
+		}
+		if inv == nil {
+			return nil, fmt.Errorf("invoice %s not found (tx)", a.InvoiceID)
+		}
+		if a.AllocatedAmount.GreaterThan(inv.OutstandingAmount) {
+			return nil, fmt.Errorf("allocation amount %s exceeds outstanding %s for invoice %s (concurrent update detected)",
+				a.AllocatedAmount.String(), inv.OutstandingAmount.String(), a.InvoiceID)
+		}
+
 		alloc := &model.PaymentAllocation{
 			PaymentEntryID:  paymentEntryID,
 			InvoiceID:       a.InvoiceID,
@@ -1421,42 +1457,67 @@ func (s *InvoiceService) AllocateToPaymentEntry(ctx context.Context, tenantID uu
 			TenantID:        tenantID,
 		}
 
-		if err := s.repo.CreateAllocation(ctx, alloc); err != nil {
-			return nil, err
+		if err := s.repo.CreateAllocationTx(ctx, tx, alloc); err != nil {
+			return nil, fmt.Errorf("create allocation (tx): %w", err)
 		}
+
 		newOutstanding := inv.OutstandingAmount.Sub(a.AllocatedAmount)
-		if err := s.repo.UpdateOutstandingAmount(ctx, tenantID, a.InvoiceID, newOutstanding.String()); err != nil {
-			return nil, err
+		if err := s.repo.UpdateOutstandingAmountTx(ctx, tx, tenantID, a.InvoiceID, newOutstanding.String()); err != nil {
+			return nil, fmt.Errorf("update outstanding (tx): %w", err)
 		}
+
+		// Write immutable settlement log inside the same transaction.
+		if s.settlementLogRepo != nil {
+			if err := repository.LogWriteOff(
+				ctx, tx, s.settlementLogRepo,
+				tenantID, alloc.ID, a.InvoiceID,
+				model.SettlementLogSourcePaymentAllocation,
+				model.SettlementLogDocSalesInvoice,
+				model.SettlementLogDirectionDebit,
+				a.AllocatedAmount,
+				inv.OutstandingAmount,
+				newOutstanding,
+				nil,
+			); err != nil {
+				return nil, fmt.Errorf("write settlement log: %w", err)
+			}
+		}
+
 		result = append(result, *alloc)
+	}
 
-		// Cash discount side effects (V1.0 §3.7) — only when discount > 0.
-		// Both steps are required for consistency: audit trail + voucher.
-		if a.DiscountAmount.GreaterThan(decimal.Zero) {
-			// 1) Insert cash_discounts trace row.
-			//    Discount rate = discount_amount / invoice_total_amount.
-			//    If inv.TotalAmount is zero (shouldn't happen in practice) we
-			//    skip the rate calc to avoid division-by-zero; the rate column
-			//    is nullable so a nil rate is acceptable.
-			var discountRate *decimal.Decimal
-			if inv.TotalAmount.GreaterThan(decimal.Zero) {
-				rate := a.DiscountAmount.Div(inv.TotalAmount)
-				discountRate = &rate
-			}
-			if err := s.repo.CreateCashDiscount(ctx, alloc, discountRate); err != nil {
-				return nil, fmt.Errorf("create cash discount (alloc=%s): %w", alloc.ID, err)
-			}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
 
-			// 2) Auto-generate cash discount voucher (借：应收/应付 / 贷：银行存款 + 财务费用).
-			//    Only attempt when the auto voucher service is wired in (may be nil
-			//    during early initialization in main.go).
-			if s.voucherAutoSvc != nil {
-				if _, err := s.voucherAutoSvc.GenerateCashDiscountVoucher(ctx, tenantID, alloc.ID, paymentEntryID, a.InvoiceID, invoiceType, a.DiscountAmount, a.AllocatedAmount); err != nil {
-					return nil, fmt.Errorf("generate cash discount voucher (alloc=%s): %w", alloc.ID, err)
-				}
+	// Cash discount side effects (V1.0 §3.7) — after the main transaction commits.
+	// These run outside the allocation transaction because voucher generation uses
+	// its own transactional boundaries. A failure here does NOT roll back the
+	// allocation — the allocation is already committed.
+	for i, a := range allocations {
+		if !a.DiscountAmount.GreaterThan(decimal.Zero) {
+			continue
+		}
+		alloc := result[i]
+		inv, err := s.repo.GetByID(ctx, tenantID, a.InvoiceID)
+		if err != nil || inv == nil {
+			continue // allocation is committed; best-effort on discount side effects
+		}
+		var discountRate *decimal.Decimal
+		if inv.TotalAmount.GreaterThan(decimal.Zero) {
+			rate := a.DiscountAmount.Div(inv.TotalAmount)
+			discountRate = &rate
+		}
+		if err := s.repo.CreateCashDiscount(ctx, &alloc, discountRate); err != nil {
+			return nil, fmt.Errorf("create cash discount (alloc=%s): %w", alloc.ID, err)
+		}
+		if s.voucherAutoSvc != nil {
+			if _, err := s.voucherAutoSvc.GenerateCashDiscountVoucher(ctx, tenantID, alloc.ID, paymentEntryID, a.InvoiceID, invoiceType, a.DiscountAmount, a.AllocatedAmount); err != nil {
+				return nil, fmt.Errorf("generate cash discount voucher (alloc=%s): %w", alloc.ID, err)
 			}
 		}
 	}
+
 	return result, nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
@@ -16,30 +17,33 @@ import (
 
 // ReconciliationService implements five-level matching between bank transactions and invoices.
 type ReconciliationService struct {
-	pool           *pgxpool.Pool
-	bankTxnRepo    *repository.BankTransactionRepository
-	arInvoiceRepo  *repository.ArInvoiceRepository
-	invoiceRepo    *repository.InvoiceRepository
-	reconRepo      *repository.ReconciliationRepository
-	journalRepo    *repository.JournalRepository
+	pool            *pgxpool.Pool
+	bankTxnRepo     *repository.BankTransactionRepository
+	paymentEntryRepo *repository.PaymentEntryRepository
+	arInvoiceRepo   *repository.ArInvoiceRepository
+	invoiceRepo     *repository.InvoiceRepository
+	reconRepo       *repository.ReconciliationRepository
+	journalRepo     *repository.JournalRepository
 }
 
 // NewReconciliationService creates a new ReconciliationService.
 func NewReconciliationService(
 	pool *pgxpool.Pool,
 	bankTxnRepo *repository.BankTransactionRepository,
+	paymentEntryRepo *repository.PaymentEntryRepository,
 	arInvoiceRepo *repository.ArInvoiceRepository,
 	invoiceRepo *repository.InvoiceRepository,
 	reconRepo *repository.ReconciliationRepository,
 	journalRepo *repository.JournalRepository,
 ) *ReconciliationService {
 	return &ReconciliationService{
-		pool:          pool,
-		bankTxnRepo:   bankTxnRepo,
-		arInvoiceRepo: arInvoiceRepo,
-		invoiceRepo:   invoiceRepo,
-		reconRepo:     reconRepo,
-		journalRepo:   journalRepo,
+		pool:            pool,
+		bankTxnRepo:     bankTxnRepo,
+		paymentEntryRepo: paymentEntryRepo,
+		arInvoiceRepo:   arInvoiceRepo,
+		invoiceRepo:     invoiceRepo,
+		reconRepo:       reconRepo,
+		journalRepo:     journalRepo,
 	}
 }
 
@@ -268,6 +272,148 @@ type ManualMatchRequest struct {
 type ManualAllocation struct {
 	InvoiceID uuid.UUID
 	Amount    decimal.Decimal
+}
+
+// PreCheck validates whether a bank transaction and invoice can be reconciled.
+// Returns a list of check items with status: passed / warning / blocked.
+func (s *ReconciliationService) PreCheck(ctx context.Context, tenantID, paymentID, invoiceID uuid.UUID) ([]model.PreCheckItem, error) {
+	checks := make([]model.PreCheckItem, 0, 5)
+
+	// 1. Check bank transaction (payment) exists and is valid
+	bankTxn, err := s.bankTxnRepo.GetByID(ctx, tenantID, paymentID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			bankTxn = nil
+		} else {
+			return nil, fmt.Errorf("get bank transaction: %w", err)
+		}
+	}
+	if bankTxn == nil {
+		checks = append(checks, model.PreCheckItem{
+			ID: "payment_exists", Name: "收款单有效",
+			Status: "blocked", Message: "收款单不存在",
+		})
+	} else {
+		if bankTxn.Matched {
+			checks = append(checks, model.PreCheckItem{
+				ID: "payment_exists", Name: "收款单有效",
+				Status: "blocked", Message: "该收款单已被核销，不可重复核销",
+			})
+		} else if bankTxn.Credit.IsZero() && bankTxn.Debit.IsZero() {
+			checks = append(checks, model.PreCheckItem{
+				ID: "payment_exists", Name: "收款单有效",
+				Status: "blocked", Message: "收款单金额为零，无法核销",
+			})
+		} else {
+			amt := bankTxn.Credit
+			if amt.IsZero() {
+				amt = bankTxn.Debit
+			}
+			checks = append(checks, model.PreCheckItem{
+				ID: "payment_exists", Name: "收款单有效",
+				Status: "passed", Message: "收款单可核销，金额: " + amt.StringFixed(2),
+			})
+		}
+	}
+
+	// 2. Check invoice exists and is valid
+	inv, err := s.invoiceRepo.GetByID(ctx, tenantID, invoiceID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			inv = nil
+		} else {
+			return nil, fmt.Errorf("get invoice: %w", err)
+		}
+	}
+	if inv == nil {
+		checks = append(checks, model.PreCheckItem{
+			ID: "invoice_exists", Name: "发票有效",
+			Status: "blocked", Message: "发票不存在",
+		})
+	} else {
+		if inv.IsReversed {
+			checks = append(checks, model.PreCheckItem{
+				ID: "invoice_exists", Name: "发票有效",
+				Status: "blocked", Message: "发票已被红冲，不可核销",
+			})
+		} else if inv.OutstandingAmount.IsZero() || inv.OutstandingAmount.IsNegative() {
+			checks = append(checks, model.PreCheckItem{
+				ID: "invoice_exists", Name: "发票有效",
+				Status: "blocked", Message: "发票已完全核销或金额异常",
+			})
+		} else if inv.Status == "reversed" {
+			checks = append(checks, model.PreCheckItem{
+				ID: "invoice_exists", Name: "发票有效",
+				Status: "blocked", Message: "发票状态为已红冲",
+			})
+		} else {
+			checks = append(checks, model.PreCheckItem{
+				ID: "invoice_exists", Name: "发票有效",
+				Status: "passed", Message: "发票可核销，未核销金额: " + inv.OutstandingAmount.StringFixed(2),
+			})
+		}
+	}
+
+	// 3. Customer/Party match check (only if both exist)
+	if bankTxn != nil && inv != nil {
+		bankCounterparty := ""
+		if bankTxn.CounterpartyName != nil {
+			bankCounterparty = *bankTxn.CounterpartyName
+		}
+		if bankCounterparty != "" && inv.CustomerName != "" &&
+			bankCounterparty != inv.CustomerName {
+			checks = append(checks, model.PreCheckItem{
+				ID: "customer_match", Name: "客商一致性",
+				Status: "warning", Message: "收款单对方(" + bankCounterparty + ") 与发票客户(" + inv.CustomerName + ") 不一致，请确认",
+			})
+		} else {
+			checks = append(checks, model.PreCheckItem{
+				ID: "customer_match", Name: "客商一致性",
+				Status: "passed", Message: "收款单与发票客商信息匹配",
+			})
+		}
+	}
+
+	// 4. Amount check (payment amount >= invoice outstanding)
+	if bankTxn != nil && inv != nil && !inv.OutstandingAmount.IsZero() && inv.OutstandingAmount.IsPositive() {
+		paymentAmt := bankTxn.Credit
+		if paymentAmt.IsZero() {
+			paymentAmt = bankTxn.Debit
+		}
+		if paymentAmt.LessThan(inv.OutstandingAmount) {
+			checks = append(checks, model.PreCheckItem{
+				ID: "amount_check", Name: "金额匹配",
+				Status: "warning",
+				Message: "收款金额(" + paymentAmt.StringFixed(2) + ") 小于发票未核销金额(" + inv.OutstandingAmount.StringFixed(2) + ")，可能只能部分核销",
+			})
+		} else {
+			checks = append(checks, model.PreCheckItem{
+				ID: "amount_check", Name: "金额匹配",
+				Status: "passed", Message: "收款金额充足，可全额核销",
+			})
+		}
+	}
+
+	// 5. Period check — warn if invoice is in a closed period
+	if inv != nil {
+		periodNo := inv.PostingDate.Year()*100 + int(inv.PostingDate.Month())
+		// Quick check: just warn if period seems old
+		now := time.Now()
+		currentPeriod := now.Year()*100 + int(now.Month())
+		if periodNo < currentPeriod-100 {
+			checks = append(checks, model.PreCheckItem{
+				ID: "period_check", Name: "期间检查",
+				Status: "warning", Message: "发票所属期间(" + fmt.Sprintf("%d", periodNo) + ")较早，请确认期间是否已关闭",
+			})
+		} else {
+			checks = append(checks, model.PreCheckItem{
+				ID: "period_check", Name: "期间检查",
+				Status: "passed", Message: "发票所属期间正常",
+			})
+		}
+	}
+
+	return checks, nil
 }
 
 func (s *ReconciliationService) ManualMatch(ctx context.Context, tenantID, userID uuid.UUID, req *ManualMatchRequest) ([]model.ReconciliationPair, error) {

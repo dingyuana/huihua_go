@@ -5,18 +5,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"huihua/finance/internal/event"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
 )
 
 // PaymentStateMachine handles payment entry status transitions.
 type PaymentStateMachine struct {
-	paymentRepo *repository.PaymentEntryRepository
-	invoiceRepo *repository.InvoiceRepository
-	auditRepo   *repository.AuditRepository
+	paymentRepo      *repository.PaymentEntryRepository
+	invoiceRepo      *repository.InvoiceRepository
+	auditRepo        *repository.AuditRepository
+	settlementLogRepo *repository.SettlementLogRepository
+	eventBus          event.Bus
 }
 
 // NewPaymentStateMachine creates a new PaymentStateMachine.
@@ -30,6 +34,18 @@ func NewPaymentStateMachine(
 		invoiceRepo: invoiceRepo,
 		auditRepo:   auditRepo,
 	}
+}
+
+// InjectSettlementLogRepo injects the settlement log repository.
+func (s *PaymentStateMachine) InjectSettlementLogRepo(repo *repository.SettlementLogRepository) {
+	s.settlementLogRepo = repo
+}
+
+// InjectEventBus injects the event bus. If non-nil, audit log writes inside
+// the state machine are also published as AuditLogEvent for any external
+// subscribers (notification, analytics, etc.).
+func (s *PaymentStateMachine) InjectEventBus(bus event.Bus) {
+	s.eventBus = bus
 }
 
 // ValidateTransition checks if a state transition is legal.
@@ -129,6 +145,22 @@ func (s *PaymentStateMachine) ExecuteTransition(
 			auditLog.Metadata = metadata
 		}
 		_ = s.auditRepo.Create(ctx, tenantID, auditLog)
+
+		// Also publish as an event for external subscribers (notification,
+		// analytics, etc.). The audit row was already written by the call above.
+		if s.eventBus != nil {
+			_ = s.eventBus.Publish(ctx, event.AuditLogEvent{
+				OccurredAt: time.Now(),
+				TenantID:   tenantID,
+				Action:     "payment_status_change",
+				ObjectType: "payment_entry",
+				ObjectID:   paymentID,
+				ActorID:    userID,
+				ActorName:  &userName,
+				OldValues:  map[string]interface{}{"docstatus": payment.DocStatus},
+				NewValues:  map[string]interface{}{"docstatus": newStatus},
+			})
+		}
 	}
 
 	return nil
@@ -219,7 +251,13 @@ func (s *PaymentStateMachine) rollbackInvoiceAllocationsTx(
 	}
 
 	for _, allocation := range allocations {
-		invoice, err := s.invoiceRepo.GetByID(ctx, tenantID, allocation.InvoiceID)
+		// Lock the invoice row first to prevent concurrent settlement from racing.
+		if err := s.invoiceRepo.LockInvoiceForUpdate(ctx, tx, tenantID, allocation.InvoiceID); err != nil {
+			return fmt.Errorf("lock invoice: %w", err)
+		}
+
+		// Re-read inside the transaction (and after the lock) to get fresh outstanding.
+		invoice, err := s.invoiceRepo.GetByIDTx(ctx, tx, tenantID, allocation.InvoiceID)
 		if err != nil || invoice == nil {
 			continue
 		}
@@ -245,8 +283,27 @@ func (s *PaymentStateMachine) rollbackInvoiceAllocationsTx(
 			}
 		}
 
-		if err := s.paymentRepo.DeleteAllocationTx(ctx, tx, tenantID, allocation.ID); err != nil {
-			return fmt.Errorf("delete allocation: %w", err)
+		// Mark allocation as reversed (soft delete via reversed_at column).
+		// This preserves the audit trail; the allocation row stays in the table.
+		if err := s.invoiceRepo.MarkAllocationReversed(ctx, tx, allocation.ID); err != nil {
+			return fmt.Errorf("mark allocation reversed: %w", err)
+		}
+
+		// Write immutable reversal settlement log capturing before/after balances.
+		if s.settlementLogRepo != nil {
+			if err := repository.LogWriteOff(
+				ctx, tx, s.settlementLogRepo,
+				tenantID, allocation.ID, allocation.InvoiceID,
+				model.SettlementLogSourcePaymentAllocation,
+				model.SettlementLogDocSalesInvoice,
+				model.SettlementLogDirectionDebit,
+				allocation.AllocatedAmount,
+				invoice.OutstandingAmount,
+				newOutstanding,
+				nil,
+			); err != nil {
+				return fmt.Errorf("write reversal settlement log: %w", err)
+			}
 		}
 	}
 

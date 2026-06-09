@@ -42,3 +42,13 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		"expires_at": result.ExpiresAt,
 	})
 }
+
+// Logout invalidates the current session.
+// As of the current JWT-only implementation, logout is a client-side concern
+// (the client discards the token). The server returns 200 to acknowledge.
+// A future Redis-backed token blacklist would replace this stub.
+func (h *AuthHandler) Logout(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{
+		"message": "logged out (client should discard token)",
+	})
+}

@@ -7,18 +7,20 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
 )
 
 type AdvanceAllocationService struct {
-	receiptRepo  *repository.AdvanceReceiptRepository
-	paymentRepo  *repository.AdvancePaymentRepository
-	allocRepo    *repository.AdvanceAllocationRepository
-	arRepo       *repository.ArInvoiceRepository
-	apRepo       *repository.ApInvoiceRepository
-	voucherSvc   *VoucherAutoGenerateService
+	receiptRepo      *repository.AdvanceReceiptRepository
+	paymentRepo      *repository.AdvancePaymentRepository
+	allocRepo        *repository.AdvanceAllocationRepository
+	arRepo           *repository.ArInvoiceRepository
+	apRepo           *repository.ApInvoiceRepository
+	voucherSvc       *VoucherAutoGenerateService
+	settlementLogRepo *repository.SettlementLogRepository
 }
 
 func NewAdvanceAllocationService(
@@ -35,6 +37,11 @@ func NewAdvanceAllocationService(
 	}
 }
 
+// InjectSettlementLogRepo injects the settlement log repository (used by main.go after initialization).
+func (s *AdvanceAllocationService) InjectSettlementLogRepo(repo *repository.SettlementLogRepository) {
+	s.settlementLogRepo = repo
+}
+
 type AllocateRequest struct {
 	AdvanceID      uuid.UUID       `json:"advance_id"`
 	AdvanceType    string          `json:"advance_type"`
@@ -45,24 +52,20 @@ type AllocateRequest struct {
 	Remark         *string         `json:"remark,omitempty"`
 }
 
+// Allocate performs an advance-to-invoice allocation with pessimistic locking.
+// The full mutation sequence runs inside a single DB transaction:
+//   1) Lock the advance row, then lock the target AR/AP row.
+//   2) Re-read both inside the transaction to get fresh balances.
+//   3) Insert advance_allocation row.
+//   4) Update balances + statuses.
+//   5) Write settlement_log for audit trail.
+//   6) Commit.
+//
+// Voucher generation runs after commit as a best-effort side effect.
+// A voucher failure does NOT roll back the allocation.
 func (s *AdvanceAllocationService) Allocate(ctx context.Context, tenantID, userID uuid.UUID, req *AllocateRequest) (*model.AdvanceAllocation, error) {
-	if req.AllocatedAmount.LessThanOrEqual(decimal.Zero) {
-		return nil, errors.New("allocated_amount must be positive")
-	}
-	if req.AdvanceID == uuid.Nil || req.TargetID == uuid.Nil {
-		return nil, errors.New("advance_id and target_id required")
-	}
-	if req.AdvanceType != "receipt" && req.AdvanceType != "payment" {
-		return nil, errors.New("advance_type must be 'receipt' or 'payment'")
-	}
-	if req.TargetType != "ar" && req.TargetType != "ap" {
-		return nil, errors.New("target_type must be 'ar' or 'ap'")
-	}
-	if req.AdvanceType == "receipt" && req.TargetType != "ar" {
-		return nil, errors.New("receipt advance can only offset ar target")
-	}
-	if req.AdvanceType == "payment" && req.TargetType != "ap" {
-		return nil, errors.New("payment advance can only offset ap target")
+	if err := s.validateAllocateRequest(req); err != nil {
+		return nil, err
 	}
 	if req.AllocationDate.IsZero() {
 		req.AllocationDate = time.Now()
@@ -132,6 +135,89 @@ func (s *AdvanceAllocationService) Allocate(ctx context.Context, tenantID, userI
 			req.AllocatedAmount.String(), targetAvail.String())
 	}
 
+	// Open transaction on the receipt or payment pool.
+	var tx pgx.Tx
+	if req.AdvanceType == "receipt" {
+		t, err := s.receiptRepo.BeginTx(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("begin tx: %w", err)
+		}
+		tx = t
+	} else {
+		t, err := s.paymentRepo.BeginTx(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("begin tx: %w", err)
+		}
+		tx = t
+	}
+	defer tx.Rollback(ctx)
+
+	if req.AdvanceType == "receipt" {
+		if err := s.receiptRepo.LockForUpdate(ctx, tx, tenantID, req.AdvanceID); err != nil {
+			return nil, fmt.Errorf("lock advance receipt: %w", err)
+		}
+	} else {
+		if err := s.paymentRepo.LockForUpdate(ctx, tx, tenantID, req.AdvanceID); err != nil {
+			return nil, fmt.Errorf("lock advance payment: %w", err)
+		}
+	}
+	if req.TargetType == "ar" {
+		if err := s.arRepo.LockForUpdate(ctx, tx, tenantID, req.TargetID); err != nil {
+			return nil, fmt.Errorf("lock ar invoice: %w", err)
+		}
+	} else {
+		if err := s.apRepo.LockForUpdate(ctx, tx, tenantID, req.TargetID); err != nil {
+			return nil, fmt.Errorf("lock ap invoice: %w", err)
+		}
+	}
+
+	// Re-read inside the transaction to get fresh outstanding balances.
+	var advanceOutAfter decimal.Decimal
+	if req.AdvanceType == "receipt" {
+		adv, err := s.receiptRepo.GetByID(ctx, tenantID, req.AdvanceID)
+		if err != nil {
+			return nil, fmt.Errorf("re-read advance receipt: %w", err)
+		}
+		if adv == nil || adv.OutstandingAmount.LessThan(req.AllocatedAmount) {
+			return nil, fmt.Errorf("allocated amount %s exceeds advance outstanding (concurrent update)",
+				req.AllocatedAmount.String())
+		}
+		advanceOutAfter = adv.OutstandingAmount.Sub(req.AllocatedAmount)
+	} else {
+		adv, err := s.paymentRepo.GetByID(ctx, tenantID, req.AdvanceID)
+		if err != nil {
+			return nil, fmt.Errorf("re-read advance payment: %w", err)
+		}
+		if adv == nil || adv.OutstandingAmount.LessThan(req.AllocatedAmount) {
+			return nil, fmt.Errorf("allocated amount %s exceeds advance outstanding (concurrent update)",
+				req.AllocatedAmount.String())
+		}
+		advanceOutAfter = adv.OutstandingAmount.Sub(req.AllocatedAmount)
+	}
+
+	var targetOutAfter decimal.Decimal
+	if req.TargetType == "ar" {
+		ar, err := s.arRepo.GetByID(ctx, tenantID, req.TargetID)
+		if err != nil {
+			return nil, fmt.Errorf("re-read ar invoice: %w", err)
+		}
+		if ar == nil || ar.OutstandingAmount.LessThan(req.AllocatedAmount) {
+			return nil, fmt.Errorf("allocated amount %s exceeds ar outstanding (concurrent update)",
+				req.AllocatedAmount.String())
+		}
+		targetOutAfter = ar.OutstandingAmount.Sub(req.AllocatedAmount)
+	} else {
+		ap, err := s.apRepo.GetByID(ctx, tenantID, req.TargetID)
+		if err != nil {
+			return nil, fmt.Errorf("re-read ap invoice: %w", err)
+		}
+		if ap == nil || ap.OutstandingAmount.LessThan(req.AllocatedAmount) {
+			return nil, fmt.Errorf("allocated amount %s exceeds ap outstanding (concurrent update)",
+				req.AllocatedAmount.String())
+		}
+		targetOutAfter = ap.OutstandingAmount.Sub(req.AllocatedAmount)
+	}
+
 	alloc := &model.AdvanceAllocation{
 		ID:              uuid.New(),
 		TenantID:        tenantID,
@@ -145,54 +231,110 @@ func (s *AdvanceAllocationService) Allocate(ctx context.Context, tenantID, userI
 		CreatedBy:       &userID,
 		CreatedAt:       time.Now(),
 	}
-	if err := s.allocRepo.Create(ctx, alloc); err != nil {
-		return nil, err
+	if err := s.allocRepo.CreateTx(ctx, tx, alloc); err != nil {
+		return nil, fmt.Errorf("create allocation: %w", err)
 	}
 
-	delta := req.AllocatedAmount.InexactFloat64()
-
+	delta := req.AllocatedAmount.String()
+	var newAdvanceStatus string
 	if req.AdvanceType == "receipt" {
-		if err := s.receiptRepo.IncrementAllocated(ctx, tenantID, req.AdvanceID, delta); err != nil {
-			return nil, fmt.Errorf("update advance receipt: %w", err)
+		if err := s.receiptRepo.IncrementAllocatedTx(ctx, tx, tenantID, req.AdvanceID, delta); err != nil {
+			return nil, fmt.Errorf("update advance receipt (tx): %w", err)
 		}
-		newStatus := string(model.AdvanceReceiptStatusFullyAllocated)
-		if advanceAvail.Sub(req.AllocatedAmount).IsPositive() {
-			newStatus = string(model.AdvanceReceiptStatusPartiallyAllocated)
+		newAdvanceStatus = string(model.AdvanceReceiptStatusFullyAllocated)
+		if advanceOutAfter.IsPositive() {
+			newAdvanceStatus = string(model.AdvanceReceiptStatusPartiallyAllocated)
 		}
-		if err := s.receiptRepo.UpdateStatus(ctx, tenantID, req.AdvanceID, newStatus); err != nil {
-			return nil, err
+		if _, err := tx.Exec(ctx, `UPDATE advance_receipts SET status = $3 WHERE tenant_id = $1 AND id = $2`,
+			tenantID, req.AdvanceID, newAdvanceStatus); err != nil {
+			return nil, fmt.Errorf("update advance receipt status (tx): %w", err)
 		}
 	} else {
-		if err := s.paymentRepo.IncrementAllocated(ctx, tenantID, req.AdvanceID, delta); err != nil {
-			return nil, fmt.Errorf("update advance payment: %w", err)
+		if err := s.paymentRepo.IncrementAllocatedTx(ctx, tx, tenantID, req.AdvanceID, delta); err != nil {
+			return nil, fmt.Errorf("update advance payment (tx): %w", err)
 		}
-		newStatus := string(model.AdvancePaymentStatusFullyAllocated)
-		if advanceAvail.Sub(req.AllocatedAmount).IsPositive() {
-			newStatus = string(model.AdvancePaymentStatusPartiallyAllocated)
+		newAdvanceStatus = string(model.AdvancePaymentStatusFullyAllocated)
+		if advanceOutAfter.IsPositive() {
+			newAdvanceStatus = string(model.AdvancePaymentStatusPartiallyAllocated)
 		}
-		if err := s.paymentRepo.UpdateStatus(ctx, tenantID, req.AdvanceID, newStatus); err != nil {
-			return nil, err
+		if _, err := tx.Exec(ctx, `UPDATE advance_payments SET status = $3 WHERE tenant_id = $1 AND id = $2`,
+			tenantID, req.AdvanceID, newAdvanceStatus); err != nil {
+			return nil, fmt.Errorf("update advance payment status (tx): %w", err)
 		}
 	}
 
 	if req.TargetType == "ar" {
 		newArStatus := string(model.ArInvoiceStatusPaid)
-		if targetAvail.Sub(req.AllocatedAmount).IsPositive() {
+		if targetOutAfter.IsPositive() {
 			newArStatus = string(model.ArInvoiceStatusPartiallyPaid)
 		}
-		if err := s.arRepo.IncrementPaid(ctx, tenantID, req.TargetID, req.AllocatedAmount, newArStatus); err != nil {
-			return nil, fmt.Errorf("update ar paid: %w", err)
+		if err := s.arRepo.UpdateOutstandingAmountTx(ctx, tx, tenantID, req.TargetID, targetOutAfter); err != nil {
+			return nil, fmt.Errorf("update ar outstanding (tx): %w", err)
+		}
+		if err := s.arRepo.UpdateStatusTx(ctx, tx, tenantID, req.TargetID, newArStatus); err != nil {
+			return nil, fmt.Errorf("update ar status (tx): %w", err)
 		}
 	} else {
 		newApStatus := string(model.ApInvoiceStatusPaid)
-		if targetAvail.Sub(req.AllocatedAmount).IsPositive() {
+		if targetOutAfter.IsPositive() {
 			newApStatus = string(model.ApInvoiceStatusPartiallyPaid)
 		}
-		if err := s.apRepo.IncrementPaid(ctx, tenantID, req.TargetID, req.AllocatedAmount, newApStatus); err != nil {
-			return nil, fmt.Errorf("update ap paid: %w", err)
+		if err := s.apRepo.UpdateOutstandingAmountTx(ctx, tx, tenantID, req.TargetID, targetOutAfter); err != nil {
+			return nil, fmt.Errorf("update ap outstanding (tx): %w", err)
+		}
+		if err := s.apRepo.UpdateStatusTx(ctx, tx, tenantID, req.TargetID, newApStatus); err != nil {
+			return nil, fmt.Errorf("update ap status (tx): %w", err)
 		}
 	}
 
+	if s.settlementLogRepo != nil {
+		var docType model.SettlementLogDocType
+		var direction model.SettlementLogDirection
+		if req.TargetType == "ar" {
+			docType = model.SettlementLogDocArInvoice
+			direction = model.SettlementLogDirectionDebit
+		} else {
+			docType = model.SettlementLogDocApInvoice
+			direction = model.SettlementLogDirectionCredit
+		}
+		if err := repository.LogWriteOff(
+			ctx, tx, s.settlementLogRepo,
+			tenantID, alloc.ID, req.TargetID,
+			model.SettlementLogSourceAdvanceAllocation,
+			docType, direction,
+			req.AllocatedAmount,
+			targetAvail, targetOutAfter,
+			&userID,
+		); err != nil {
+			return nil, fmt.Errorf("write settlement log (target): %w", err)
+		}
+		var advanceDocType model.SettlementLogDocType
+		var advDirection model.SettlementLogDirection
+		if req.AdvanceType == "receipt" {
+			advanceDocType = model.SettlementLogDocAdvanceReceipt
+			advDirection = model.SettlementLogDirectionCredit
+		} else {
+			advanceDocType = model.SettlementLogDocAdvancePayment
+			advDirection = model.SettlementLogDirectionDebit
+		}
+		if err := repository.LogWriteOff(
+			ctx, tx, s.settlementLogRepo,
+			tenantID, alloc.ID, req.AdvanceID,
+			model.SettlementLogSourceAdvanceAllocation,
+			advanceDocType, advDirection,
+			req.AllocatedAmount,
+			advanceAvail, advanceOutAfter,
+			&userID,
+		); err != nil {
+			return nil, fmt.Errorf("write settlement log (advance): %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+
+	// Voucher generation as a best-effort post-commit side effect.
 	if s.voucherSvc != nil {
 		if voucherNo, err := s.voucherSvc.GenerateFromAdvanceOffset(ctx, tenantID, req.AdvanceID, req.TargetID, req.AllocatedAmount, userID); err == nil {
 			_ = s.allocRepo.SetVoucher(ctx, alloc.ID, voucherNo)
@@ -201,6 +343,28 @@ func (s *AdvanceAllocationService) Allocate(ctx context.Context, tenantID, userI
 	}
 
 	return alloc, nil
+}
+
+func (s *AdvanceAllocationService) validateAllocateRequest(req *AllocateRequest) error {
+	if req.AllocatedAmount.LessThanOrEqual(decimal.Zero) {
+		return errors.New("allocated_amount must be positive")
+	}
+	if req.AdvanceID == uuid.Nil || req.TargetID == uuid.Nil {
+		return errors.New("advance_id and target_id required")
+	}
+	if req.AdvanceType != "receipt" && req.AdvanceType != "payment" {
+		return errors.New("advance_type must be 'receipt' or 'payment'")
+	}
+	if req.TargetType != "ar" && req.TargetType != "ap" {
+		return errors.New("target_type must be 'ar' or 'ap'")
+	}
+	if req.AdvanceType == "receipt" && req.TargetType != "ar" {
+		return errors.New("receipt advance can only offset ar target")
+	}
+	if req.AdvanceType == "payment" && req.TargetType != "ap" {
+		return errors.New("payment advance can only offset ap target")
+	}
+	return nil
 }
 
 func (s *AdvanceAllocationService) ListByAdvance(ctx context.Context, tenantID, advanceID uuid.UUID) ([]*model.AdvanceAllocation, error) {

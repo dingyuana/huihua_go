@@ -75,6 +75,37 @@ func (h *ReconciliationHandler) GetUnmatched(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": items})
 }
 
+// PreCheck handles POST /reconciliation/precheck.
+func (h *ReconciliationHandler) PreCheck(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req struct {
+		PaymentID string `json:"payment_id"`
+		InvoiceID string `json:"invoice_id"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if req.PaymentID == "" || req.InvoiceID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "payment_id and invoice_id are required"})
+	}
+	paymentID, err := uuid.Parse(req.PaymentID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid payment_id"})
+	}
+	invoiceID, err := uuid.Parse(req.InvoiceID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid invoice_id"})
+	}
+
+	checks, err := h.svc.PreCheck(c.Context(), tenantID, paymentID, invoiceID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"data": fiber.Map{"checks": checks}})
+}
+
 // ManualMatch handles POST /reconciliation/manual.
 func (h *ReconciliationHandler) ManualMatch(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)
