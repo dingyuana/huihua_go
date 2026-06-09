@@ -243,7 +243,7 @@ async function handleCalculateSocial() {
   socialResult.value = null
   try {
     const res: any = await calculatePeriodSocial(periodNo)
-    socialResult.value = res?.data || res
+    socialResult.value = res?.result || res
     ElMessage.success('社保计提完成')
   } catch (e: any) {
     ElMessage.error('社保计提失败：' + (e?.response?.data?.error || e?.message || e))
@@ -271,7 +271,7 @@ async function handleCalculateTax() {
   taxResult.value = null
   try {
     const res: any = await calculatePeriodTax(periodNo)
-    taxResult.value = res?.data || res
+    taxResult.value = res?.result || res
     ElMessage.success('个税计提完成')
   } catch (e: any) {
     ElMessage.error('个税计提失败：' + (e?.response?.data?.error || e?.message || e))
@@ -318,8 +318,8 @@ async function loadData() {
       status: filter.status || undefined,
       keyword: filter.keyword || undefined,
     })
-    payrolls.value = res?.data?.list || res?.data || []
-    total.value = res?.data?.total || payrolls.value.length
+    payrolls.value = res?.payrolls || []
+    total.value = res?.total || payrolls.value.length
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error || '加载失败')
     payrolls.value = []
