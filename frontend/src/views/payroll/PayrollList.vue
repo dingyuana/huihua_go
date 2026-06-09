@@ -3,9 +3,30 @@
     <div class="page-header">
       <h3>工资单</h3>
       <div class="header-actions">
+        <el-button @click="showGenerateDialog = true">生成薪资凭证</el-button>
         <el-button type="primary" @click="goCreate">新建工资单</el-button>
       </div>
     </div>
+
+    <!-- 生成薪资凭证对话框 -->
+    <el-dialog v-model="showGenerateDialog" title="生成薪资凭证" width="420px">
+      <el-form :model="generateForm" label-width="100px">
+        <el-form-item label="会计年份" required>
+          <el-select v-model="generateForm.year" placeholder="选择年份" style="width: 100%">
+            <el-option v-for="y in availableYears" :key="y" :label="`${y}年`" :value="y" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="会计月份" required>
+          <el-select v-model="generateForm.month" placeholder="选择月份" style="width: 100%">
+            <el-option v-for="m in 12" :key="m" :label="`${m}月`" :value="m" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showGenerateDialog = false">取消</el-button>
+        <el-button type="primary" :loading="generating" @click="handleGeneratePeriodVouchers">确认生成</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 筛选 -->
     <el-card class="filter-card">
@@ -81,10 +102,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { fetchPayrollList, deletePayroll } from '@/api/modules/payroll'
+import { fetchPayrollList, deletePayroll, generatePeriodVouchers } from '@/api/modules/payroll'
 import DocStatusTag from '@/components/business/DocStatusTag.vue'
 import type { Payroll } from '@/types/models/payroll'
 
@@ -100,6 +121,37 @@ const filter = reactive({
   status: '',
   keyword: '',
 })
+
+// 生成薪资凭证对话框
+const showGenerateDialog = ref(false)
+const generating = ref(false)
+const generateForm = reactive({
+  year: new Date().getFullYear(),
+  month: new Date().getMonth() + 1,
+})
+const availableYears = computed(() => {
+  const y = new Date().getFullYear()
+  return [y - 2, y - 1, y, y + 1]
+})
+
+async function handleGeneratePeriodVouchers() {
+  if (!generateForm.year || !generateForm.month) {
+    ElMessage.warning('请选择会计年份和月份')
+    return
+  }
+  const periodNo = generateForm.year * 100 + generateForm.month
+  generating.value = true
+  try {
+    const res: any = await generatePeriodVouchers(periodNo)
+    const vouchers = res?.vouchers || []
+    ElMessage.success(`已生成 ${vouchers.length} 张凭证：${vouchers.map((v: any) => v.voucher_no).join('、')}`)
+    showGenerateDialog.value = false
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || '生成失败')
+  } finally {
+    generating.value = false
+  }
+}
 
 function calcDeductions(row: Payroll): string {
   return (parseFloat(row.individual_tax || '0') +

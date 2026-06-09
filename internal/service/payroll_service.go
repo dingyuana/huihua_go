@@ -176,6 +176,172 @@ func (s *PayrollService) Approve(ctx context.Context, tenantID uuid.UUID, id uui
 	return voucher, nil
 }
 
+// GeneratePeriodVouchersRequest request body
+type GeneratePeriodVouchersRequest struct {
+	PeriodNo int `json:"period_no"`
+}
+
+// GeneratePeriodVouchers generates 3 accrual vouchers for a payroll period.
+//  1. 工资计提: Dr 5601(管理费用-工资) / Cr 2211(应付职工薪酬-工资) = sum(gross_salary)
+//  2. 社保计提: Dr 5601(管理费用-社保) / Cr 2211(应付职工薪酬-社保) = sum(social_security + housing_fund)
+//  3. 个税计提: Dr 2211(应付职工薪酬-个税) / Cr 2221(应交税费-个人所得税) = sum(individual_tax)
+//
+// All vouchers created with docstatus=1 (submitted for review).
+func (s *PayrollService) GeneratePeriodVouchers(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID, req *GeneratePeriodVouchersRequest) ([]*model.JournalEntry, error) {
+	// 1. List all payroll records for the period
+	records, err := s.payrollRepo.ListByPeriod(ctx, tenantID, req.PeriodNo)
+	if err != nil {
+		return nil, fmt.Errorf("list payroll by period: %w", err)
+	}
+	if len(records) == 0 {
+		return nil, errors.New("no payroll records found for the period")
+	}
+
+	// 2. Aggregate totals
+	var totalGross, totalSocial, totalTax decimal.Decimal
+	for _, r := range records {
+		totalGross = totalGross.Add(r.GrossSalary)
+		totalSocial = totalSocial.Add(r.SocialSecurity).Add(r.HousingFund)
+		totalTax = totalTax.Add(r.IndividualTax)
+	}
+
+	// 3. Lookup accounts
+	account5601, err := s.accountRepo.GetByCode(ctx, tenantID, "5601")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 5601: %w", err)
+	}
+	account2211, err := s.accountRepo.GetByCode(ctx, tenantID, "2211")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 2211: %w", err)
+	}
+	account2221, err := s.accountRepo.GetByCode(ctx, tenantID, "2221")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 2221: %w", err)
+	}
+
+	// 4. Build period description
+	periodDesc := fmt.Sprintf("%d年%d月薪资计提", req.PeriodNo/100, req.PeriodNo%100)
+
+	// Use the first record's company and posting date
+	companyID := records[0].CompanyID
+	postingDate := records[0].PaymentDate
+
+	// Helper to create a voucher
+	createVoucher := func(desc string, lines []model.JournalEntryLine) (*model.JournalEntry, error) {
+		voucherResp, err := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+		voucherNo := ""
+		if err == nil && voucherResp != nil {
+			voucherNo = voucherResp.VoucherNumber
+		}
+		if voucherNo == "" {
+			voucherNo = fmt.Sprintf("PY-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano()%1000000)
+		}
+
+		remark := periodDesc + " — " + desc
+		je := &model.JournalEntry{
+			ID:            uuid.New(),
+			VoucherNo:     voucherNo,
+			VoucherType:   ptr("Payroll"),
+			PostingDate:   postingDate,
+			CompanyID:     companyID,
+			TenantID:      tenantID,
+			DocStatus:     1,
+			CreatedBy:     userID,
+			SourceDocType: ptr("payroll"),
+			Remark:        &remark,
+		}
+
+		je, err = s.journalRepo.Create(ctx, tenantID, je)
+		if err != nil {
+			return nil, fmt.Errorf("create journal entry: %w", err)
+		}
+
+		_, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, lines)
+		if err != nil {
+			return nil, fmt.Errorf("add journal entry lines: %w", err)
+		}
+
+		return je, nil
+	}
+
+	// Voucher 1 - 工资计提: Dr 5601 / Cr 2211 = totalGross
+	je1, err := createVoucher("工资计提", []model.JournalEntryLine{
+		{
+			ID:          uuid.New(),
+			AccountID:   account5601.ID,
+			Debit:       totalGross,
+			Credit:      decimal.Zero,
+			AccountCode: account5601.Code,
+			AccountName: account5601.Name,
+			TenantID:    tenantID,
+		},
+		{
+			ID:          uuid.New(),
+			AccountID:   account2211.ID,
+			Debit:       decimal.Zero,
+			Credit:      totalGross,
+			AccountCode: account2211.Code,
+			AccountName: account2211.Name,
+			TenantID:    tenantID,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("工资计提 voucher: %w", err)
+	}
+
+	// Voucher 2 - 社保计提: Dr 5601 / Cr 2211 = totalSocial
+	je2, err := createVoucher("社保计提", []model.JournalEntryLine{
+		{
+			ID:          uuid.New(),
+			AccountID:   account5601.ID,
+			Debit:       totalSocial,
+			Credit:      decimal.Zero,
+			AccountCode: account5601.Code,
+			AccountName: account5601.Name,
+			TenantID:    tenantID,
+		},
+		{
+			ID:          uuid.New(),
+			AccountID:   account2211.ID,
+			Debit:       decimal.Zero,
+			Credit:      totalSocial,
+			AccountCode: account2211.Code,
+			AccountName: account2211.Name,
+			TenantID:    tenantID,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("社保计提 voucher: %w", err)
+	}
+
+	// Voucher 3 - 个税计提: Dr 2211 / Cr 2221 = totalTax
+	je3, err := createVoucher("个税计提", []model.JournalEntryLine{
+		{
+			ID:          uuid.New(),
+			AccountID:   account2211.ID,
+			Debit:       totalTax,
+			Credit:      decimal.Zero,
+			AccountCode: account2211.Code,
+			AccountName: account2211.Name,
+			TenantID:    tenantID,
+		},
+		{
+			ID:          uuid.New(),
+			AccountID:   account2221.ID,
+			Debit:       decimal.Zero,
+			Credit:      totalTax,
+			AccountCode: account2221.Code,
+			AccountName: account2221.Name,
+			TenantID:    tenantID,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("个税计提 voucher: %w", err)
+	}
+
+	return []*model.JournalEntry{je1, je2, je3}, nil
+}
+
 // GenerateVoucherFromPayroll generates a journal voucher from a payroll record.
 // Voucher entries:
 //   - Debit: 6602 应付职工薪酬 — 工资        (gross_salary)
