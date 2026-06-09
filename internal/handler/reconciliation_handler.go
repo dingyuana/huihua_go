@@ -194,3 +194,34 @@ func (h *ReconciliationHandler) ReversePair(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"status": "reversed"})
 }
+
+// ForcePass handles POST /reconciliation/precheck/force-pass.
+func (h *ReconciliationHandler) ForcePass(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req struct {
+		PaymentID string `json:"payment_id"`
+		InvoiceID string `json:"invoice_id"`
+		Reason    string `json:"reason,omitempty"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if req.PaymentID == "" || req.InvoiceID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "payment_id and invoice_id are required"})
+	}
+	paymentID, err := uuid.Parse(req.PaymentID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid payment_id"})
+	}
+	invoiceID, err := uuid.Parse(req.InvoiceID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid invoice_id"})
+	}
+
+	pair, err := h.svc.ForcePass(c.Context(), tenantID, paymentID, invoiceID, req.Reason)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(201).JSON(fiber.Map{"data": pair})
+}

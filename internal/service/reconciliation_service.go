@@ -673,6 +673,46 @@ func (s *ReconciliationService) ReversePair(ctx context.Context, tenantID, pairI
 	return tx.Commit(ctx)
 }
 
+// ForcePass creates a confirmed reconciliation pair, bypassing precheck warnings.
+// Calls PreCheck first — if any check is "blocked", force-pass is denied.
+// If only "warning" checks exist, creates a confirmed pair with the override reason.
+func (s *ReconciliationService) ForcePass(ctx context.Context, tenantID, paymentID, invoiceID uuid.UUID, reason string) (*model.ReconciliationPair, error) {
+	// 1. Run PreCheck
+	checks, err := s.PreCheck(ctx, tenantID, paymentID, invoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("precheck failed: %w", err)
+	}
+
+	// 2. Check for blocked items — blocked = cannot force-pass
+	for _, c := range checks {
+		if c.Status == "blocked" {
+			return nil, fmt.Errorf("cannot force-pass: check '%s' is blocked: %s", c.Name, c.Message)
+		}
+	}
+
+	// 3. Determine allocation amount from the matching payment/bank_txn
+	bankTxn, err := s.bankTxnRepo.GetByID(ctx, tenantID, paymentID)
+	if err != nil {
+		return nil, fmt.Errorf("get payment: %w", err)
+	}
+	amt := bankTxn.Credit
+	if amt.IsZero() {
+		amt = bankTxn.Debit
+	}
+
+	// 4. Create a confirmed pair
+	now := time.Now()
+	pair := s.makePair(tenantID, "bank_txn", paymentID, "invoice", invoiceID, amt, "manual")
+	pair.MatchedAt = &now
+	pair.ConfirmedAt = &now
+	pair.Status = "confirmed"
+	if err := s.reconRepo.Create(ctx, &pair); err != nil {
+		return nil, fmt.Errorf("create pair: %w", err)
+	}
+
+	return &pair, nil
+}
+
 // ListPairs returns all pairs.
 func (s *ReconciliationService) ListPairs(ctx context.Context, tenantID uuid.UUID, status string) ([]model.ReconciliationPair, error) {
 	return s.reconRepo.ListByTenant(ctx, tenantID, status)

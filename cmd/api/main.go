@@ -394,6 +394,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/reconciliation/unmatched", reconciliationHandler.GetUnmatched)
 	api.Post("/reconciliation/manual", reconciliationHandler.ManualMatch)
 	api.Post("/reconciliation/precheck", reconciliationHandler.PreCheck)
+	api.Post("/reconciliation/precheck/force-pass", reconciliationHandler.ForcePass)
 	api.Post("/reconciliation/execute", reconciliationHandler.ExecutePairs)
 
 	// Bank reconciliation (银企对账) routes
