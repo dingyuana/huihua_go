@@ -93,44 +93,100 @@
     </el-card>
 
     <!-- 详情抽屉：分屏审核 -->
-    <el-drawer v-model="showDetail" :title="`审核凭证: ${currentVoucher?.voucher_no}`" size="600px">
+    <el-drawer v-model="showDetail" :title="`审核凭证: ${currentVoucher?.voucher_no}`" size="80%" :before-close="onDrawerClose">
       <template v-if="currentVoucher">
-        <el-tabs v-model="detailTab">
-          <el-tab-pane label="凭证信息" name="voucher">
-            <el-descriptions :column="2" border size="small">
-              <el-descriptions-item label="凭证号">{{ currentVoucher.voucher_no }}</el-descriptions-item>
-              <el-descriptions-item label="日期">{{ currentVoucher.date }}</el-descriptions-item>
-              <el-descriptions-item label="摘要" :span="2">{{ currentVoucher.remark }}</el-descriptions-item>
-              <el-descriptions-item label="制单人">{{ currentVoucher.creator }}</el-descriptions-item>
-              <el-descriptions-item label="金额">{{ currentVoucher.amount }}</el-descriptions-item>
-            </el-descriptions>
-
-            <h4 class="section-title">分录明细</h4>
-            <el-table :data="currentVoucher.lines || []" size="small" border>
-              <el-table-column prop="account" label="科目" min-width="160" />
-              <el-table-column prop="debit" label="借方" width="120" align="right" />
-              <el-table-column prop="credit" label="贷方" width="120" align="right" />
-            </el-table>
-
-            <!-- AI 风险详情 -->
-            <h4 class="section-title">AI 风控分析</h4>
-            <el-card v-if="currentVoucher.risk.items.length" shadow="never" class="risk-detail-card">
-              <div v-for="(item, i) in currentVoucher.risk.items" :key="i" class="risk-item">
-                <el-tag :type="item.severity === 'error' ? 'danger' : 'warning'" size="small">
-                  {{ item.severity === 'error' ? '⚠️ 风险' : '💡 提示' }}
-                </el-tag>
-                <span class="risk-msg">{{ item.message }}</span>
-                <p v-if="item.suggestion" class="risk-suggestion">{{ item.suggestion }}</p>
+        <div class="split-pane" :class="{ 'split-collapsed': splitCollapsed }">
+          <!-- 左侧面板：原始单据/附件 -->
+          <div class="split-left" :style="{ width: splitCollapsed ? '0' : '40%' }">
+            <div v-show="!splitCollapsed" class="split-left-inner">
+              <div class="split-header">
+                <h4>原始单据</h4>
+                <el-button size="small" circle @click="splitCollapsed = true" title="收起左侧">
+                  <el-icon><Fold /></el-icon>
+                </el-button>
               </div>
-            </el-card>
-            <el-empty v-else description="AI 风控未发现异常" :image-size="60" />
-          </el-tab-pane>
+              <div v-if="currentVoucher.source_doc_no" class="source-doc-card">
+                <el-descriptions :column="1" border size="small">
+                  <el-descriptions-item label="单据编号">{{ currentVoucher.source_doc_no }}</el-descriptions-item>
+                  <el-descriptions-item label="单据类型">{{ currentVoucher.source_doc_type || '—' }}</el-descriptions-item>
+                  <el-descriptions-item label="对方名称">{{ currentVoucher.counterparty_name || '—' }}</el-descriptions-item>
+                  <el-descriptions-item label="金额">{{ currentVoucher.amount || '0.00' }}</el-descriptions-item>
+                </el-descriptions>
+                <!-- 附件缩略图预览（预留） -->
+                <div class="attachment-section">
+                  <h5>附件</h5>
+                  <el-empty v-if="!currentVoucher.attachments?.length" description="暂无附件" :image-size="50" />
+                  <div v-else class="attachment-grid">
+                    <div v-for="(att, i) in currentVoucher.attachments" :key="i" class="attachment-item">
+                      <el-image :src="att.url" :preview-src-list="[att.url]" fit="cover" style="width: 100%; height: 100px; border-radius: 4px;" />
+                      <span class="attachment-name">{{ att.name }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <el-empty v-else description="无原始单据" :image-size="60" />
+            </div>
+            <!-- 左侧折叠后显示展开按钮 -->
+          </div>
 
-          <el-tab-pane label="原始单据" name="source">
-            <el-empty description="关联原始单据（待对接）" :image-size="60" />
-            <p class="source-hint">审核时可联查银行流水/发票等原始单据</p>
-          </el-tab-pane>
-        </el-tabs>
+          <!-- 可拖动分隔条 -->
+          <div v-show="!splitCollapsed" class="split-divider" @mousedown="startResize">
+            <div class="divider-handle" />
+          </div>
+
+          <!-- 右侧面板：凭证编辑区域 -->
+          <div class="split-right" :style="{ width: splitCollapsed ? '100%' : '60%' }">
+            <div class="split-header">
+              <el-button v-if="splitCollapsed" size="small" circle @click="splitCollapsed = false" title="展开左侧">
+                <el-icon><Expand /></el-icon>
+              </el-button>
+              <el-tabs v-model="detailTab" style="flex:1;">
+                <el-tab-pane label="凭证信息" name="voucher">
+                  <el-descriptions :column="2" border size="small">
+                    <el-descriptions-item label="凭证号">{{ currentVoucher.voucher_no }}</el-descriptions-item>
+                    <el-descriptions-item label="日期">{{ currentVoucher.date }}</el-descriptions-item>
+                    <el-descriptions-item label="摘要" :span="2">{{ currentVoucher.remark }}</el-descriptions-item>
+                    <el-descriptions-item label="制单人">{{ currentVoucher.creator }}</el-descriptions-item>
+                    <el-descriptions-item label="金额">{{ currentVoucher.amount }}</el-descriptions-item>
+                  </el-descriptions>
+
+                  <h4 class="section-title">分录明细</h4>
+                  <el-table :data="currentVoucher.lines || []" size="small" border>
+                    <el-table-column prop="account" label="科目" min-width="160" />
+                    <el-table-column prop="debit" label="借方" width="120" align="right" />
+                    <el-table-column prop="credit" label="贷方" width="120" align="right" />
+                  </el-table>
+
+                  <!-- AI 风险详情 -->
+                  <h4 class="section-title">AI 风控分析</h4>
+                  <el-card v-if="currentVoucher.risk?.items?.length" shadow="never" class="risk-detail-card">
+                    <div v-for="(item, i) in currentVoucher.risk.items" :key="i" class="risk-item">
+                      <el-tag :type="item.severity === 'error' ? 'danger' : 'warning'" size="small">
+                        {{ item.severity === 'error' ? '⚠️ 风险' : '💡 提示' }}
+                      </el-tag>
+                      <span class="risk-msg">{{ item.message }}</span>
+                      <p v-if="item.suggestion" class="risk-suggestion">{{ item.suggestion }}</p>
+                    </div>
+                  </el-card>
+                  <el-empty v-else description="AI 风控未发现异常" :image-size="60" />
+                </el-tab-pane>
+
+                <el-tab-pane label="原始单据" name="source">
+                  <el-empty v-if="!currentVoucher.source_doc_no" description="关联原始单据（待对接）" :image-size="60" />
+                  <div v-else class="source-doc-card">
+                    <el-descriptions :column="1" border size="small">
+                      <el-descriptions-item label="单据编号">{{ currentVoucher.source_doc_no }}</el-descriptions-item>
+                      <el-descriptions-item label="单据类型">{{ currentVoucher.source_doc_type || '—' }}</el-descriptions-item>
+                      <el-descriptions-item label="对方名称">{{ currentVoucher.counterparty_name || '—' }}</el-descriptions-item>
+                      <el-descriptions-item label="金额">{{ currentVoucher.amount || '0.00' }}</el-descriptions-item>
+                    </el-descriptions>
+                  </div>
+                  <p class="source-hint">审核时可联查银行流水/发票等原始单据</p>
+                </el-tab-pane>
+              </el-tabs>
+            </div>
+          </div>
+        </div>
       </template>
 
       <template #footer>
@@ -158,8 +214,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Fold, Expand } from '@element-plus/icons-vue'
 import request from '@/api/request'
 import DocStatusTag from '@/components/business/DocStatusTag.vue'
 
@@ -185,6 +242,9 @@ interface VoucherItem {
   first_account_code?: string
   first_account_name?: string
   source_doc_no?: string
+  source_doc_type?: string
+  source_doc_id?: string
+  attachments?: { url: string; name: string }[]
 }
 
 const filterDateRange = ref<any>(null)
@@ -236,6 +296,46 @@ const rejectReason = ref('')
 const showDetail = ref(false)
 const detailTab = ref('voucher')
 const currentVoucher = ref<VoucherItem | null>(null)
+
+// 分屏状态
+const splitCollapsed = ref(false)
+let isResizing = false
+
+function startResize(e: MouseEvent) {
+  isResizing = true
+  document.addEventListener('mousemove', onResize)
+  document.addEventListener('mouseup', stopResize)
+  e.preventDefault()
+}
+
+function onResize(e: MouseEvent) {
+  if (!isResizing) return
+  const drawer = document.querySelector('.el-drawer__body') as HTMLElement
+  if (!drawer) return
+  const rect = drawer.getBoundingClientRect()
+  let pct = ((e.clientX - rect.left) / rect.width) * 100
+  if (pct < 20) pct = 20
+  if (pct > 60) pct = 60
+  const leftPanel = drawer.querySelector('.split-left') as HTMLElement
+  const rightPanel = drawer.querySelector('.split-right') as HTMLElement
+  if (leftPanel) leftPanel.style.width = pct + '%'
+  if (rightPanel) rightPanel.style.width = (100 - pct - 1) + '%' // 1% for divider
+}
+
+function stopResize() {
+  isResizing = false
+  document.removeEventListener('mousemove', onResize)
+  document.removeEventListener('mouseup', stopResize)
+}
+
+function onDrawerClose() {
+  showDetail.value = false
+}
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousemove', onResize)
+  document.removeEventListener('mouseup', stopResize)
+})
 
 function onSelection(rows: any[]) {
   selectedIds.value = rows.map((r: any) => r.id)
@@ -350,4 +450,99 @@ async function reject() {
 .risk-suggestion { color: #999; font-size: 12px; margin-top: 4px; padding-left: 4px; }
 .source-hint { color: #999; font-size: 13px; text-align: center; margin-top: 8px; }
 .drawer-actions { display: flex; justify-content: flex-end; gap: 12px; }
+
+/* 分屏布局 */
+.split-pane {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+.split-left {
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid #e8e8e8;
+  transition: width 0.2s ease;
+}
+.split-left-inner {
+  padding: 8px;
+  height: 100%;
+}
+.split-right {
+  flex: 1;
+  overflow-y: auto;
+  transition: width 0.2s ease;
+}
+.split-divider {
+  width: 6px;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+  flex-shrink: 0;
+  user-select: none;
+}
+.split-divider:hover {
+  background: #e6f7ff;
+}
+.divider-handle {
+  width: 3px;
+  height: 40px;
+  background: #d9d9d9;
+  border-radius: 2px;
+}
+.split-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.split-header h4 {
+  margin: 0;
+  font-size: 15px;
+}
+.split-right .split-header {
+  margin-bottom: 0;
+}
+.source-doc-card {
+  margin-bottom: 12px;
+}
+.attachment-section {
+  margin-top: 16px;
+}
+.attachment-section h5 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.attachment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.attachment-item {
+  text-align: center;
+}
+.attachment-name {
+  display: block;
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 窄屏适配 */
+@media (max-width: 768px) {
+  .split-pane .split-left {
+    display: none;
+  }
+  .split-pane .split-divider {
+    display: none;
+  }
+  .split-pane .split-right {
+    width: 100% !important;
+  }
+}
 </style>

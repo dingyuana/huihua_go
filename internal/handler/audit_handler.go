@@ -201,7 +201,7 @@ func (h *AuditWorkbenchHandler) GetAuditTasks(c *fiber.Ctx) error {
 
 	// Voucher drafts (docstatus=0) using ListVouchers
 	docStatusZero := int16(0)
-	vouchers, err := h.journalRepo.ListVouchers(ctx, tenantID, nil, nil, nil, &docStatusZero, nil, 50, 0)
+	vouchers, err := h.journalRepo.ListVouchers(ctx, tenantID, nil, nil, nil, &docStatusZero, nil, nil, nil, nil, 50, 0)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}

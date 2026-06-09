@@ -23,6 +23,29 @@
         <el-form-item label="日期">
           <el-date-picker v-model="filter.dateRange" type="daterange" range-separator="~" style="width: 220px" value-format="YYYY-MM-DD" />
         </el-form-item>
+        <el-form-item label="科目">
+          <el-cascader
+            v-model="filter.accountId"
+            :options="accountTree"
+            :props="{ value: 'id', label: 'name', children: 'children', checkStrictly: true, emitPath: false }"
+            placeholder="全部科目"
+            style="width: 200px"
+            clearable
+            filterable
+          />
+        </el-form-item>
+        <el-form-item label="金额">
+          <el-input-number v-model="filter.amountMin" :precision="2" :min="0" placeholder="最小金额" style="width: 130px" controls-position="right">
+            <template #prefix>¥</template>
+          </el-input-number>
+          <span style="margin: 0 6px; color: #999;">~</span>
+          <el-input-number v-model="filter.amountMax" :precision="2" :min="0" placeholder="最大金额" style="width: 130px" controls-position="right">
+            <template #prefix>¥</template>
+          </el-input-number>
+        </el-form-item>
+        <el-form-item label="摘要">
+          <el-input v-model="filter.keyword" placeholder="输入摘要关键词搜索" style="width: 180px" clearable />
+        </el-form-item>
         <el-form-item><el-button type="primary" @click="fetchVouchers">查询</el-button></el-form-item>
       </el-form>
     </el-card>
@@ -108,9 +131,17 @@ import DocStatusTag from '@/components/business/DocStatusTag.vue'
 
 const router = useRouter()
 
-const filter = reactive({ type: '', status: null as number | null, dateRange: null as any })
+const filter = reactive({ type: '', status: null as number | null, dateRange: null as any, accountId: null as string | null, amountMin: null as number | null, amountMax: null as number | null, keyword: '' })
 
 const vouchers = ref<any[]>([])
+const accountTree = ref<any[]>([])
+
+async function fetchAccountTree() {
+  try {
+    const res: any = await request.get('/accounts/tree')
+    accountTree.value = Array.isArray(res) ? res : res?.data || []
+  } catch { /* no tree data */ }
+}
 
 const stats = computed(() => {
   const list = vouchers.value
@@ -142,13 +173,17 @@ async function fetchVouchers() {
       params.start_date = filter.dateRange[0]
       params.end_date = filter.dateRange[1]
     }
+    if (filter.accountId) params.account_id = filter.accountId
+    if (filter.amountMin !== null && filter.amountMin !== undefined) params.amount_min = filter.amountMin
+    if (filter.amountMax !== null && filter.amountMax !== undefined) params.amount_max = filter.amountMax
+    if (filter.keyword) params.keyword = filter.keyword
     const res: any = await request.get('/vouchers', { params })
     const list = res?.vouchers || res?.data?.list || res?.data
     if (Array.isArray(list)) { vouchers.value = list }
   } catch { /* no data */ }
 }
 
-onMounted(() => fetchVouchers())
+onMounted(() => { fetchVouchers(); fetchAccountTree() })
 
 function goDetail(row: any) {
   router.push(`/vouchers/${row.id}`)
