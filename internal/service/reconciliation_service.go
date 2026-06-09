@@ -510,16 +510,19 @@ func (s *ReconciliationService) ExecutePairs(ctx context.Context, tenantID uuid.
 			continue
 		}
 
-		// 3. INSERT payment_allocations
-		_, err = tx.Exec(ctx, `
-			INSERT INTO payment_allocations (id, payment_entry_id, invoice_id, invoice_type, allocated_amount, tenant_id, created_at)
-			VALUES ($1, $2, $3, 'ar_invoice', $4, $5, $6)`,
-			allocID, pair.SourceID, pair.TargetID, pair.Amount.String(), tenantID, now,
-		)
-		if err != nil {
-			result.FailedIDs = append(result.FailedIDs, pairID)
-			result.Errors = append(result.Errors, fmt.Sprintf("insert allocation for %s: %v", pairID, err))
-			continue
+		// 3. INSERT payment_allocations (only for payment_entry sources; bank_txn pairs
+		//    use the reconciliation_pair itself as the allocation record)
+		if pair.SourceType != "bank_txn" {
+			_, err = tx.Exec(ctx, `
+				INSERT INTO payment_allocations (id, payment_entry_id, invoice_id, invoice_type, allocated_amount, tenant_id, created_at)
+				VALUES ($1, $2, $3, 'ar_invoice', $4, $5, $6)`,
+				allocID, pair.SourceID, pair.TargetID, pair.Amount.String(), tenantID, now,
+			)
+			if err != nil {
+				result.FailedIDs = append(result.FailedIDs, pairID)
+				result.Errors = append(result.Errors, fmt.Sprintf("insert allocation for %s: %v", pairID, err))
+				continue
+			}
 		}
 
 		// 4. UPDATE ar_invoices paid_amount, outstanding_amount, and status
