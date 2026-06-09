@@ -4,6 +4,7 @@
       <h3>工资单</h3>
       <div class="header-actions">
         <el-button @click="showGenerateDialog = true">生成薪资凭证</el-button>
+        <el-button @click="showSocialDialog = true">社保计提</el-button>
         <el-button type="primary" @click="goCreate">新建工资单</el-button>
       </div>
     </div>
@@ -25,6 +26,32 @@
       <template #footer>
         <el-button @click="showGenerateDialog = false">取消</el-button>
         <el-button type="primary" :loading="generating" @click="handleGeneratePeriodVouchers">确认生成</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 社保计提对话框 -->
+    <el-dialog v-model="showSocialDialog" title="社保计提" width="420px">
+      <el-form :model="socialForm" label-width="100px">
+        <el-form-item label="会计年份" required>
+          <el-select v-model="socialForm.year" placeholder="选择年份" style="width: 100%">
+            <el-option v-for="y in availableYears" :key="y" :label="`${y}年`" :value="y" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="会计月份" required>
+          <el-select v-model="socialForm.month" placeholder="选择月份" style="width: 100%">
+            <el-option v-for="m in 12" :key="m" :label="`${m}月`" :value="m" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <div v-if="socialResult" style="margin: 0 0 16px 20px; padding: 12px; background: #f5f7fa; border-radius: 6px; line-height: 2;">
+        <div>养老保险（单位）：<b>¥{{ socialResult.total_social }}</b></div>
+        <div>住房公积金（单位）：<b>¥{{ socialResult.total_housing }}</b></div>
+        <div>单位合计：<b>¥{{ socialResult.total_employer }}</b></div>
+        <div v-if="socialResult.voucher">凭证号：<b>{{ socialResult.voucher.voucher_no }}</b></div>
+      </div>
+      <template #footer>
+        <el-button @click="showSocialDialog = false">取消</el-button>
+        <el-button type="primary" :loading="socialCalculating" @click="handleCalculateSocial">确认计提</el-button>
       </template>
     </el-dialog>
 
@@ -105,7 +132,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { fetchPayrollList, deletePayroll, generatePeriodVouchers } from '@/api/modules/payroll'
+import { fetchPayrollList, deletePayroll, generatePeriodVouchers, calculatePeriodSocial } from '@/api/modules/payroll'
 import DocStatusTag from '@/components/business/DocStatusTag.vue'
 import type { Payroll } from '@/types/models/payroll'
 
@@ -150,6 +177,34 @@ async function handleGeneratePeriodVouchers() {
     ElMessage.error(e?.response?.data?.error || '生成失败')
   } finally {
     generating.value = false
+  }
+}
+
+// 社保计提对话框
+const showSocialDialog = ref(false)
+const socialCalculating = ref(false)
+const socialResult = ref<any>(null)
+const socialForm = reactive({
+  year: new Date().getFullYear(),
+  month: new Date().getMonth() + 1,
+})
+
+async function handleCalculateSocial() {
+  if (!socialForm.year || !socialForm.month) {
+    ElMessage.warning('请选择会计年份和月份')
+    return
+  }
+  const periodNo = socialForm.year * 100 + socialForm.month
+  socialCalculating.value = true
+  socialResult.value = null
+  try {
+    const res: any = await calculatePeriodSocial(periodNo)
+    socialResult.value = res?.data || res
+    ElMessage.success('社保计提完成')
+  } catch (e: any) {
+    ElMessage.error('社保计提失败：' + (e?.response?.data?.error || e?.message || e))
+  } finally {
+    socialCalculating.value = false
   }
 }
 

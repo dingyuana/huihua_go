@@ -52,3 +52,23 @@ export function generateVoucherFromPayroll(id: string): Promise<ApiResponse<{ vo
 export function generatePeriodVouchers(periodNo: number): Promise<ApiResponse<{ vouchers: any[] }>> {
   return request.post('/payroll/generate-period-vouchers', { period_no: periodNo })
 }
+
+/** 社保计提计算 */
+export function calculatePeriodSocial(periodNo: number): Promise<ApiResponse<{
+  total_social: string
+  total_housing: string
+  total_employer: string
+  voucher: any
+}>> {
+  return request.post('/payroll/calculate-period-social', { period_no: periodNo })
+}
+
+/** 查询社保配置列表 */
+export function fetchSocialConfig(): Promise<ApiResponse<{ configs: any[] }>> {
+  return request.get('/payroll/social-config')
+}
+
+/** 更新社保配置 */
+export function updateSocialConfig(id: string, data: { company_rate?: string; personal_rate?: string; is_active?: boolean }): Promise<ApiResponse<void>> {
+  return request.put(`/payroll/social-config/${id}`, data)
+}
