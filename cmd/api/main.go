@@ -394,6 +394,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/reconciliation/pairs/:id/unconfirm", reconciliationHandler.UnconfirmPair)
 	api.Post("/reconciliation/pairs/:id/reverse", reconciliationHandler.ReversePair)
 	api.Get("/reconciliation/unmatched", reconciliationHandler.GetUnmatched)
+	api.Get("/reconciliation/unmatched-summary", reconciliationHandler.GetUnmatchedSummary)
 	api.Post("/reconciliation/manual", reconciliationHandler.ManualMatch)
 	api.Post("/reconciliation/precheck", reconciliationHandler.PreCheck)
 	api.Post("/reconciliation/precheck/force-pass", reconciliationHandler.ForcePass)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -25,6 +26,26 @@ type ReconciliationService struct {
 	invoiceRepo     *repository.InvoiceRepository
 	reconRepo       *repository.ReconciliationRepository
 	journalRepo     *repository.JournalRepository
+}
+
+// UnmatchedSummary contains the summary of unmatched items grouped by counterparty.
+type UnmatchedSummary struct {
+	TotalUnmatchedAmount decimal.Decimal       `json:"total_unmatched_amount"`
+	ByCounterparty       []CounterpartySummary `json:"by_counterparty"`
+}
+
+// CounterpartySummary aggregates unmatched amounts for a single counterparty.
+type CounterpartySummary struct {
+	CounterpartyID   uuid.UUID       `json:"counterparty_id"`
+	CounterpartyName string          `json:"counterparty_name"`
+	Amount           decimal.Decimal `json:"amount"`
+	Count            int             `json:"count"`
+}
+
+// ToleranceConfig configures the tolerance for L5 amount matching.
+type ToleranceConfig struct {
+	Percent decimal.Decimal `json:"percent"` // percentage tolerance, default 10
+	Enabled bool            `json:"enabled"`
 }
 
 // NewReconciliationService creates a new ReconciliationService.
@@ -51,7 +72,7 @@ func NewReconciliationService(
 }
 
 // Reconcile runs the five-level matching strategy.
-func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUID, periodNo int) (*model.ReconciliationResult, error) {
+func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUID, periodNo int, tolerance ToleranceConfig) (*model.ReconciliationResult, error) {
 	bankTxns, err := s.bankTxnRepo.GetUnmatched(ctx, tenantID, uuid.Nil)
 	if err != nil {
 		return nil, err
@@ -186,7 +207,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 		}
 	}
 
-	// L5: partial amount (≤10% difference, split match)
+	// L5: partial amount (≤tolerance% difference, split match)
 	for _, txn := range bankTxns {
 		if matchedBank[txn.ID.String()] {
 			continue
@@ -205,8 +226,12 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 				smaller, larger = inv.TotalAmount, txnAmt
 			}
 			diff := larger.Sub(smaller)
-			threshold := larger.Div(decimal.NewFromInt(10))
-			if diff.LessThanOrEqual(threshold) && smaller.GreaterThan(decimal.Zero) {
+			threshold := decimal.NewFromInt(10)
+			if tolerance.Enabled && tolerance.Percent.GreaterThan(decimal.Zero) {
+				threshold = tolerance.Percent
+			}
+			thresholdAmt := larger.Mul(threshold).Div(decimal.NewFromInt(100))
+			if diff.LessThanOrEqual(thresholdAmt) && smaller.GreaterThan(decimal.Zero) {
 				pair := s.makePair(tenantID, "bank_txn", txn.ID, "invoice", inv.ID, smaller, "L5")
 				if err := s.reconRepo.Create(ctx, &pair); err == nil {
 					result.Pairs = append(result.Pairs, pair)
@@ -807,6 +832,142 @@ func (s *ReconciliationService) GetUnmatched(ctx context.Context, tenantID uuid.
 		})
 	}
 	return items, nil
+}
+
+// GetUnmatchedSummary returns unmatched amounts grouped by counterparty.
+func (s *ReconciliationService) GetUnmatchedSummary(ctx context.Context, tenantID uuid.UUID) (*UnmatchedSummary, error) {
+	// 1. Read unmatched bank transactions
+	bankTxns, err := s.bankTxnRepo.ListUnmatched(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list unmatched bank txns: %w", err)
+	}
+
+	// 2. Read AR invoices with outstanding > 0
+	arRows, err := s.pool.Query(ctx, `
+		SELECT id, customer_id, amount, paid_amount, outstanding_amount
+		FROM ar_invoices
+		WHERE tenant_id = $1 AND outstanding_amount > 0
+		ORDER BY created_at DESC`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("query ar invoices: %w", err)
+	}
+	defer arRows.Close()
+
+	type arInv struct {
+		ID                uuid.UUID
+		CustomerID        uuid.UUID
+		Amount           decimal.Decimal
+		PaidAmount       decimal.Decimal
+		OutstandingAmount decimal.Decimal
+	}
+
+	var arInvoices []arInv
+	for arRows.Next() {
+		var inv arInv
+		if err := arRows.Scan(&inv.ID, &inv.CustomerID, &inv.Amount, &inv.PaidAmount, &inv.OutstandingAmount); err != nil {
+			return nil, err
+		}
+		arInvoices = append(arInvoices, inv)
+	}
+	if err := arRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 3. Read AP invoices with outstanding > 0
+	apInvoices, err := s.apInvoiceRepo.ListOutstanding(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list outstanding ap invoices: %w", err)
+	}
+
+	// 4. Aggregate by counterparty
+	type cpMapKey struct {
+		id   string
+		name string
+	}
+
+	summaryMap := make(map[cpMapKey]*CounterpartySummary)
+	total := decimal.Zero
+
+	// Process bank transactions — keyed by counterparty_name
+	for _, txn := range bankTxns {
+		name := ""
+		if txn.CounterpartyName != nil {
+			name = *txn.CounterpartyName
+		}
+		amt := txn.Debit
+		if amt.IsZero() {
+			amt = txn.Credit
+		}
+		key := cpMapKey{id: name, name: name}
+		if existing, ok := summaryMap[key]; ok {
+			existing.Amount = existing.Amount.Add(amt)
+			existing.Count++
+		} else {
+			summaryMap[key] = &CounterpartySummary{
+				CounterpartyID:   uuid.Nil,
+				CounterpartyName: name,
+				Amount:           amt,
+				Count:            1,
+			}
+		}
+		total = total.Add(amt)
+	}
+
+	// Process AR invoices — keyed by customer_id
+	for _, inv := range arInvoices {
+		if inv.OutstandingAmount.GreaterThan(decimal.Zero) {
+			idStr := inv.CustomerID.String()
+			key := cpMapKey{id: "ar:" + idStr, name: idStr}
+			if existing, ok := summaryMap[key]; ok {
+				existing.Amount = existing.Amount.Add(inv.OutstandingAmount)
+				existing.Count++
+			} else {
+				summaryMap[key] = &CounterpartySummary{
+					CounterpartyID:   inv.CustomerID,
+					CounterpartyName: "",
+					Amount:           inv.OutstandingAmount,
+					Count:            1,
+				}
+			}
+			total = total.Add(inv.OutstandingAmount)
+		}
+	}
+
+	// Process AP invoices — keyed by supplier_id
+	for _, inv := range apInvoices {
+		if inv.OutstandingAmount.GreaterThan(decimal.Zero) {
+			idStr := inv.SupplierID.String()
+			key := cpMapKey{id: "ap:" + idStr, name: idStr}
+			if existing, ok := summaryMap[key]; ok {
+				existing.Amount = existing.Amount.Add(inv.OutstandingAmount)
+				existing.Count++
+			} else {
+				summaryMap[key] = &CounterpartySummary{
+					CounterpartyID:   inv.SupplierID,
+					CounterpartyName: "",
+					Amount:           inv.OutstandingAmount,
+					Count:            1,
+				}
+			}
+			total = total.Add(inv.OutstandingAmount)
+		}
+	}
+
+	// Convert map to slice
+	byCP := make([]CounterpartySummary, 0, len(summaryMap))
+	for _, v := range summaryMap {
+		byCP = append(byCP, *v)
+	}
+
+	// Sort by amount descending
+	sort.Slice(byCP, func(i, j int) bool {
+		return byCP[i].Amount.GreaterThan(byCP[j].Amount)
+	})
+
+	return &UnmatchedSummary{
+		TotalUnmatchedAmount: total,
+		ByCounterparty:       byCP,
+	}, nil
 }
 
 func withinDays(a, b time.Time, days int) bool {

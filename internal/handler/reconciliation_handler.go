@@ -21,7 +21,19 @@ func NewReconciliationHandler(svc *service.ReconciliationService) *Reconciliatio
 func (h *ReconciliationHandler) Run(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)
 	periodNo := c.QueryInt("period_no", 0)
-	result, err := h.svc.Reconcile(c.Context(), tenantID, periodNo)
+	tolerance := service.ToleranceConfig{
+		Percent: decimal.NewFromInt(10),
+		Enabled: true,
+	}
+	if t := c.Query("tolerance_percent"); t != "" {
+		if p, err := decimal.NewFromString(t); err == nil && p.GreaterThan(decimal.Zero) {
+			tolerance.Percent = p
+		}
+	}
+	if t := c.Query("tolerance_enabled"); t == "false" {
+		tolerance.Enabled = false
+	}
+	result, err := h.svc.Reconcile(c.Context(), tenantID, periodNo, tolerance)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -73,6 +85,16 @@ func (h *ReconciliationHandler) GetUnmatched(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"data": items})
+}
+
+// GetUnmatchedSummary returns unmatched amounts grouped by counterparty.
+func (h *ReconciliationHandler) GetUnmatchedSummary(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	summary, err := h.svc.GetUnmatchedSummary(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": summary})
 }
 
 // PreCheck handles POST /reconciliation/precheck.
