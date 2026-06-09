@@ -386,7 +386,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	// Reconciliation (核销) routes
 	reconRepo := repository.NewReconciliationRepository(db.GetPool())
 	stateMachine.InjectLockRepos(arInvoiceRepo, paymentRepo, reconRepo)
-	reconciliationSvc := service.NewReconciliationService(db.GetPool(), bankTransactionRepo, paymentRepo, arInvoiceRepo, invoiceRepo, reconRepo, journalRepo)
+	reconciliationSvc := service.NewReconciliationService(db.GetPool(), bankTransactionRepo, paymentRepo, arInvoiceRepo, apInvoiceRepo, invoiceRepo, reconRepo, journalRepo)
 	reconciliationHandler := handler.NewReconciliationHandler(reconciliationSvc)
 	api.Post("/reconciliation/run", reconciliationHandler.Run)
 	api.Get("/reconciliation/pairs", reconciliationHandler.ListPairs)
