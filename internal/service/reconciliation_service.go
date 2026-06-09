@@ -683,39 +683,65 @@ func (s *ReconciliationService) ReversePair(ctx context.Context, tenantID, pairI
 		return fmt.Errorf("cannot reverse: invoice %s has %d subsequent allocation(s) after this pair", pair.TargetID, subsequentCount)
 	}
 
-	// 3. Lock ar_invoice FOR UPDATE
-	if err := s.arInvoiceRepo.LockForUpdate(ctx, tx, tenantID, pair.TargetID); err != nil {
-		return fmt.Errorf("lock invoice %s: %w", pair.TargetID, err)
+	// 3. Lock invoice FOR UPDATE (ar_invoice or ap_invoice)
+	if pair.TargetType == "ap_invoice" {
+		if err := s.apInvoiceRepo.LockForUpdate(ctx, tx, tenantID, pair.TargetID); err != nil {
+			return fmt.Errorf("lock ap_invoice %s: %w", pair.TargetID, err)
+		}
+	} else {
+		if err := s.arInvoiceRepo.LockForUpdate(ctx, tx, tenantID, pair.TargetID); err != nil {
+			return fmt.Errorf("lock ar_invoice %s: %w", pair.TargetID, err)
+		}
 	}
 
 	// 4. Mark payment_allocations as reversed
+	invoiceType := "ar_invoice"
+	if pair.TargetType == "ap_invoice" {
+		invoiceType = "ap_invoice"
+	}
 	_, err = tx.Exec(ctx, `
 		UPDATE payment_allocations
 		SET reversed_at = NOW()
 		WHERE payment_entry_id = $1
 		  AND invoice_id = $2
-		  AND invoice_type = 'ar_invoice'
+		  AND invoice_type = $3
 		  AND reversed_at IS NULL`,
-		pair.SourceID, pair.TargetID,
+		pair.SourceID, pair.TargetID, invoiceType,
 	)
 	if err != nil {
 		return fmt.Errorf("reverse payment allocations: %w", err)
 	}
 
-	// 5. Revert ar_invoices paid_amount, outstanding_amount, status
-	_, err = tx.Exec(ctx, `
-		UPDATE ar_invoices
-		SET paid_amount = GREATEST(paid_amount - $3, 0),
-		    outstanding_amount = outstanding_amount + $3,
-		    last_allocation_at = NOW(),
-		    status = CASE
-		        WHEN outstanding_amount + $3 >= amount THEN 'verified'
-		        WHEN outstanding_amount + $3 > 0 THEN 'partially_paid'
-		        ELSE 'verified'
-		    END
-		WHERE tenant_id = $1 AND id = $2`,
-		tenantID, pair.TargetID, pair.Amount.String(),
-	)
+	// 5. Revert invoice paid_amount, outstanding_amount, status
+	if pair.TargetType == "ap_invoice" {
+		_, err = tx.Exec(ctx, `
+			UPDATE ap_invoices
+			SET paid_amount = GREATEST(paid_amount - $3, 0),
+			    outstanding_amount = outstanding_amount + $3,
+			    last_allocation_at = NOW(),
+			    status = CASE
+			        WHEN outstanding_amount + $3 >= amount THEN 'confirmed'
+			        WHEN outstanding_amount + $3 > 0 THEN 'partially_paid'
+			        ELSE 'confirmed'
+			    END
+			WHERE tenant_id = $1 AND id = $2`,
+			tenantID, pair.TargetID, pair.Amount.String(),
+		)
+	} else {
+		_, err = tx.Exec(ctx, `
+			UPDATE ar_invoices
+			SET paid_amount = GREATEST(paid_amount - $3, 0),
+			    outstanding_amount = outstanding_amount + $3,
+			    last_allocation_at = NOW(),
+			    status = CASE
+			        WHEN outstanding_amount + $3 >= amount THEN 'verified'
+			        WHEN outstanding_amount + $3 > 0 THEN 'partially_paid'
+			        ELSE 'verified'
+			    END
+			WHERE tenant_id = $1 AND id = $2`,
+			tenantID, pair.TargetID, pair.Amount.String(),
+		)
+	}
 	if err != nil {
 		return fmt.Errorf("revert invoice %s: %w", pair.TargetID, err)
 	}
