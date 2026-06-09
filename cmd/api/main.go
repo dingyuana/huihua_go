@@ -358,6 +358,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/payroll", payrollHandler.Create)
 	api.Post("/payroll/generate-period-vouchers", payrollHandler.GeneratePeriodVouchers)
 	api.Post("/payroll/calculate-period-social", payrollHandler.CalculatePeriodSocial)
+	api.Post("/payroll/calculate-period-tax", payrollHandler.CalculatePeriodTax)
 	api.Get("/payroll/:id", payrollHandler.GetByID)
 	api.Post("/payroll/:id/submit", payrollHandler.Submit)
 	api.Post("/payroll/:id/approve", payrollHandler.Approve)

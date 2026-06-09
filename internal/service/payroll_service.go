@@ -528,6 +528,306 @@ func (s *PayrollService) GenerateSocialVoucher(ctx context.Context, tenantID uui
 	return je, nil
 }
 
+// Tax rate table for cumulative withholding method (累计预扣法)
+var taxRateTable = []struct {
+	threshold    decimal.Decimal
+	rate         decimal.Decimal
+	quickDeduct  decimal.Decimal
+}{
+	{decimal.NewFromInt(36000), decimal.NewFromFloat(0.03), decimal.NewFromInt(0)},
+	{decimal.NewFromInt(144000), decimal.NewFromFloat(0.10), decimal.NewFromInt(2520)},
+	{decimal.NewFromInt(300000), decimal.NewFromFloat(0.20), decimal.NewFromInt(16920)},
+	{decimal.NewFromInt(420000), decimal.NewFromFloat(0.25), decimal.NewFromInt(31920)},
+	{decimal.NewFromInt(660000), decimal.NewFromFloat(0.30), decimal.NewFromInt(52920)},
+	{decimal.NewFromInt(960000), decimal.NewFromFloat(0.35), decimal.NewFromInt(85920)},
+}
+
+// calculateCumulativeTax computes tax using the progressive tax rate table.
+// For cumulative taxable income > 960000, rate = 45%, quick deduction = 181920.
+func calculateCumulativeTax(cumulativeTaxableIncome decimal.Decimal) (rate, quickDeduct, tax decimal.Decimal) {
+	if cumulativeTaxableIncome.LessThanOrEqual(decimal.Zero) {
+		return decimal.Zero, decimal.Zero, decimal.Zero
+	}
+
+	// Default to highest bracket (45%) for income > 960000
+	rate = decimal.NewFromFloat(0.45)
+	quickDeduct = decimal.NewFromInt(181920)
+
+	for _, bracket := range taxRateTable {
+		if cumulativeTaxableIncome.LessThanOrEqual(bracket.threshold) {
+			rate = bracket.rate
+			quickDeduct = bracket.quickDeduct
+			break
+		}
+	}
+
+	tax = cumulativeTaxableIncome.Mul(rate).Sub(quickDeduct)
+	if tax.LessThan(decimal.Zero) {
+		tax = decimal.Zero
+	}
+	return rate, quickDeduct, tax
+}
+
+// CalculatePeriodTaxRequest request body for period tax calculation.
+type CalculatePeriodTaxRequest struct {
+	PeriodNo int `json:"period_no"`
+}
+
+// TaxDetail holds per-employee tax calculation details.
+type TaxDetail struct {
+	EmployeeName        string          `json:"employee_name"`
+	GrossSalary         decimal.Decimal `json:"gross_salary"`
+	SocialSecurity      decimal.Decimal `json:"social_security"`
+	HousingFund         decimal.Decimal `json:"housing_fund"`
+	CumulativeIncome    decimal.Decimal `json:"cumulative_income"`
+	CumulativeDeduction decimal.Decimal `json:"cumulative_deduction"`
+	TaxableIncome       decimal.Decimal `json:"taxable_income"`
+	TaxRate             decimal.Decimal `json:"tax_rate"`
+	QuickDeduction      decimal.Decimal `json:"quick_deduction"`
+	TaxThisPeriod       decimal.Decimal `json:"tax_this_period"`
+	TaxAlreadyPaid      decimal.Decimal `json:"tax_already_paid"`
+}
+
+// CalculatePeriodTaxResult response body for period tax calculation.
+type CalculatePeriodTaxResult struct {
+	TotalEmployees int                  `json:"total_employees"`
+	TotalTax       decimal.Decimal      `json:"total_tax"`
+	Details        []TaxDetail          `json:"details"`
+	Voucher        *model.JournalEntry  `json:"voucher,omitempty"`
+}
+
+// CalculatePeriodTax calculates individual income tax for each employee in the
+// given period using the cumulative withholding method (累计预扣法), updates the
+// payroll_records, and generates an accrual voucher.
+//
+// Calculation formula per employee:
+//
+//	累计应纳税所得额 = 累计收入 - 累计专项扣除(社保+公积金) - 累计减除费用(5000×月数)
+//	累计应纳税额 = 累计应纳税所得额 × 税率 - 速算扣除数
+//	当月应补(退)个税 = 累计应纳税额 - 已预缴税额
+func (s *PayrollService) CalculatePeriodTax(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID, req *CalculatePeriodTaxRequest) (*CalculatePeriodTaxResult, error) {
+	// 1. List all payroll records for the period
+	records, err := s.payrollRepo.ListByPeriod(ctx, tenantID, req.PeriodNo)
+	if err != nil {
+		return nil, fmt.Errorf("list payroll by period: %w", err)
+	}
+	if len(records) == 0 {
+		return nil, errors.New("no payroll records found for the period")
+	}
+
+	// 2. Derive year and month from periodNo (e.g. 202606 → year=2026, month=6)
+	year := req.PeriodNo / 100
+	month := req.PeriodNo % 100
+	if month < 1 || month > 12 {
+		return nil, fmt.Errorf("invalid period_no: %d (month must be 1-12)", req.PeriodNo)
+	}
+
+	// 3. Group by employee and calculate tax for each
+	type empKey struct {
+		name    string
+		company uuid.UUID
+	}
+	empRecords := make(map[empKey][]model.Payroll)
+	for _, r := range records {
+		key := empKey{name: r.EmployeeName, company: r.CompanyID}
+		empRecords[key] = append(empRecords[key], r)
+	}
+
+	var totalTax decimal.Decimal
+	var details []TaxDetail
+
+	for key, periodRecords := range empRecords {
+		// a. Get all year records for cumulative calculation
+		yearRecords, err := s.payrollRepo.ListByEmployeeAndYear(ctx, tenantID, key.name, year)
+		if err != nil {
+			return nil, fmt.Errorf("list employee %s year records: %w", key.name, err)
+		}
+
+		// b. Compute cumulative income and deductions up to current period
+		var cumulativeIncome, cumulativeSpecialDeduction, taxAlreadyPaid decimal.Decimal
+		monthsCount := 0
+		for _, yr := range yearRecords {
+			if yr.PeriodNo <= req.PeriodNo {
+				cumulativeIncome = cumulativeIncome.Add(yr.GrossSalary)
+				cumulativeSpecialDeduction = cumulativeSpecialDeduction.Add(yr.SocialSecurity).Add(yr.HousingFund)
+				monthsCount++
+			}
+			if yr.PeriodNo < req.PeriodNo {
+				taxAlreadyPaid = taxAlreadyPaid.Add(yr.IndividualTax)
+			}
+		}
+
+		// If no year records were found up to this period, use current period records
+		if monthsCount == 0 {
+			for _, pr := range periodRecords {
+				cumulativeIncome = cumulativeIncome.Add(pr.GrossSalary)
+				cumulativeSpecialDeduction = cumulativeSpecialDeduction.Add(pr.SocialSecurity).Add(pr.HousingFund)
+			}
+			monthsCount = month
+		}
+
+		// d. 累计减除费用 = 5000 × 月数
+		cumulativeBasicDeduction := decimal.NewFromInt(5000).Mul(decimal.NewFromInt(int64(monthsCount)))
+
+		// e. 应纳税所得额
+		cumulativeDeduction := cumulativeSpecialDeduction.Add(cumulativeBasicDeduction)
+		taxableIncome := cumulativeIncome.Sub(cumulativeDeduction)
+		if taxableIncome.LessThan(decimal.Zero) {
+			taxableIncome = decimal.Zero
+		}
+
+		// f. 查税率表
+		rate, quickDeduct, cumulativeTax := calculateCumulativeTax(taxableIncome)
+
+		// g. 当月应补个税
+		taxThisPeriod := cumulativeTax.Sub(taxAlreadyPaid)
+		if taxThisPeriod.LessThan(decimal.Zero) {
+			taxThisPeriod = decimal.Zero
+		}
+
+		// For a period that appears in the year records, the employee may appear multiple
+		// times in the same period (unlikely but handle gracefully).
+		// Distribute tax proportionally across the period records for this employee.
+		totalGrossForPeriod := cumulativeIncome
+		if monthsCount > 1 {
+			// Subtract previous periods' gross to get this period's total
+			var prevGross decimal.Decimal
+			for _, yr := range yearRecords {
+				if yr.PeriodNo < req.PeriodNo {
+					prevGross = prevGross.Add(yr.GrossSalary)
+				}
+			}
+			totalGrossForPeriod = cumulativeIncome.Sub(prevGross)
+		}
+		if totalGrossForPeriod.IsZero() {
+			continue
+		}
+
+		// Update each period record for this employee with proportional tax
+		for _, pr := range periodRecords {
+			ratio := pr.GrossSalary.Div(totalGrossForPeriod)
+			taxShare := taxThisPeriod.Mul(ratio).Round(2)
+			// Distribute rounding remainder to the first record
+			_ = s.payrollRepo.UpdateIndividualTax(ctx, tenantID, pr.ID, taxShare)
+		}
+
+		// Collect detail for the first record (representative)
+		firstRecord := periodRecords[0]
+		detail := TaxDetail{
+			EmployeeName:        key.name,
+			GrossSalary:         firstRecord.GrossSalary,
+			SocialSecurity:      firstRecord.SocialSecurity,
+			HousingFund:         firstRecord.HousingFund,
+			CumulativeIncome:    cumulativeIncome,
+			CumulativeDeduction: cumulativeDeduction,
+			TaxableIncome:       taxableIncome,
+			TaxRate:             rate,
+			QuickDeduction:      quickDeduct,
+			TaxThisPeriod:       taxThisPeriod,
+			TaxAlreadyPaid:      taxAlreadyPaid,
+		}
+		details = append(details, detail)
+		totalTax = totalTax.Add(taxThisPeriod)
+	}
+
+	// 4. Generate accrual voucher
+	companyID := records[0].CompanyID
+	postingDate := records[0].PaymentDate
+
+	voucher, err := s.generateTaxVoucher(ctx, tenantID, userID, req.PeriodNo, totalTax, companyID, postingDate)
+	if err != nil {
+		return nil, fmt.Errorf("generate tax voucher: %w", err)
+	}
+
+	return &CalculatePeriodTaxResult{
+		TotalEmployees: len(details),
+		TotalTax:       totalTax,
+		Details:        details,
+		Voucher:        voucher,
+	}, nil
+}
+
+// generateTaxVoucher creates a journal voucher for individual income tax accrual.
+//
+//	Dr: 2211(应付职工薪酬-个税) = totalTax
+//	Cr: 2221(应交税费-个人所得税) = totalTax
+func (s *PayrollService) generateTaxVoucher(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID, periodNo int, totalTax decimal.Decimal, companyID uuid.UUID, postingDate time.Time) (*model.JournalEntry, error) {
+	if totalTax.IsZero() {
+		return nil, nil
+	}
+
+	// Lookup accounts
+	account2211, err := s.accountRepo.GetByCode(ctx, tenantID, "2211")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 2211: %w", err)
+	}
+	account2221, err := s.accountRepo.GetByCode(ctx, tenantID, "2221")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 2221: %w", err)
+	}
+
+	// Generate voucher number
+	voucherResp, err := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+	voucherNo := ""
+	if err == nil && voucherResp != nil {
+		voucherNo = voucherResp.VoucherNumber
+	}
+	if voucherNo == "" {
+		voucherNo = fmt.Sprintf("PY-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano()%1000000)
+	}
+
+	// Build period description
+	remark := fmt.Sprintf("%d年%d月个税计提", periodNo/100, periodNo%100)
+
+	// Create journal entry
+	je := &model.JournalEntry{
+		ID:            uuid.New(),
+		VoucherNo:     voucherNo,
+		VoucherType:   ptr("Payroll"),
+		PostingDate:   postingDate,
+		CompanyID:     companyID,
+		TenantID:      tenantID,
+		DocStatus:     1,
+		CreatedBy:     userID,
+		SourceDocType: ptr("payroll"),
+		Remark:        &remark,
+	}
+
+	je, err = s.journalRepo.Create(ctx, tenantID, je)
+	if err != nil {
+		return nil, fmt.Errorf("create journal entry: %w", err)
+	}
+
+	// Build lines: Dr 2211 / Cr 2221
+	lines := []model.JournalEntryLine{
+		{
+			ID:          uuid.New(),
+			AccountID:   account2211.ID,
+			Debit:       totalTax,
+			Credit:      decimal.Zero,
+			AccountCode: account2211.Code,
+			AccountName: account2211.Name + "-个税",
+			TenantID:    tenantID,
+		},
+		{
+			ID:          uuid.New(),
+			AccountID:   account2221.ID,
+			Debit:       decimal.Zero,
+			Credit:      totalTax,
+			AccountCode: account2221.Code,
+			AccountName: account2221.Name,
+			TenantID:    tenantID,
+		},
+	}
+
+	_, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, lines)
+	if err != nil {
+		return nil, fmt.Errorf("add journal entry lines: %w", err)
+	}
+
+	return je, nil
+}
+
 // GenerateVoucherFromPayroll generates a journal voucher from a payroll record.
 // Voucher entries:
 //   - Debit: 6602 应付职工薪酬 — 工资        (gross_salary)
