@@ -224,8 +224,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCloseFilled, CircleCheckFilled } from '@element-plus/icons-vue'
-import { fetchPreCloseCheck, fetchCloseCheckSummary, closePeriod, unclosePeriod } from '@/api/modules/period'
-import type { RiskWarning, KeyIndicator, PendingAccrual, BaseCheckItem } from '@/api/modules/period'
+import { fetchPreCloseCheck, fetchCloseCheckSummary, closePeriod, unclosePeriod, previewClosing as apiPreviewClosing, executeClosing as apiExecuteClosing } from '@/api/modules/period'
+import type { RiskWarning, KeyIndicator, PendingAccrual, BaseCheckItem, ClosingPreviewResult } from '@/api/modules/period'
 import CheckResultPanel from '@/components/check/CheckResultPanel.vue'
 import CheckSummaryCard from '@/components/check/CheckSummaryCard.vue'
 import type { CheckItem, CheckSummary } from '@/types/check'
@@ -431,21 +431,38 @@ function saveCount() {
 }
 
 // ─── 损益结转 ───
-function previewClosing() {
-  ElMessage.success('已生成结转预览：收入¥150,000  费用¥120,000  利润¥30,000')
-  profitLoss.income = '150,000.00'
-  profitLoss.expense = '120,000.00'
-  profitLoss.profit = '30,000.00'
+async function previewClosing() {
+  const [year, month] = period.value.split('-').map(Number)
+  const periodNo = year * 100 + month
+  try {
+    const res = await apiPreviewClosing(periodNo)
+    const data = (res as any).data as ClosingPreviewResult
+    const fmt = (n: string) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(parseFloat(n))
+    profitLoss.income = fmt(data.total_income)
+    profitLoss.expense = fmt(data.total_expense)
+    profitLoss.profit = fmt(data.net_income)
+    ElMessage.success(`已生成结转预览：收入¥${fmt(data.total_income)}  费用¥${fmt(data.total_expense)}  利润¥${fmt(data.net_income)}`)
+  } catch (e: any) {
+    ElMessage.error('预览结转分录失败：' + (e?.message || e))
+  }
 }
 
-function executeClosing() {
-  ElMessage.success('已生成损益结转凭证 CLOSE-202605-001')
-  profitLoss.done = true
-  const item = baseChecks.value.find(c => c.id === 'b3')
-  if (item) {
-    item.status = 'passed'
-    item.message = '已结转'
-    item.action = undefined
+async function executeClosing() {
+  const [year, month] = period.value.split('-').map(Number)
+  const periodNo = year * 100 + month
+  try {
+    const res = await apiExecuteClosing(periodNo, 'system', '系统管理员')
+    const data = (res as any).data as ClosingPreviewResult
+    profitLoss.done = true
+    ElMessage.success(`已生成损益结转凭证 ${data.voucher_no || ('CLOSE-' + periodNo)}`)
+    const item = baseChecks.value.find(c => c.id === 'b3')
+    if (item) {
+      item.status = 'passed'
+      item.message = '已结转'
+      item.action = undefined
+    }
+  } catch (e: any) {
+    ElMessage.error('结转损益失败：' + (e?.message || e))
   }
 }
 

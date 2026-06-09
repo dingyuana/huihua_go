@@ -288,6 +288,149 @@ func (s *PeriodService) generateClosingEntries(ctx context.Context, tenantID uui
 	return nil
 }
 
+// ClosingPreview represents a preview of closing entries.
+type ClosingPreview struct {
+	TotalIncome  decimal.Decimal `json:"total_income"`
+	TotalExpense decimal.Decimal `json:"total_expense"`
+	NetIncome    decimal.Decimal `json:"net_income"`
+	VoucherNo    string          `json:"voucher_no,omitempty"`
+	EntryCount   int             `json:"entry_count,omitempty"`
+}
+
+// PreviewClosing calculates income/expense totals for the closing preview without writing entries.
+func (s *PeriodService) PreviewClosing(ctx context.Context, tenantID uuid.UUID, periodNo int) (*ClosingPreview, error) {
+	// Get period to determine date range
+	periods, err := s.periodRepo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list periods: %w", err)
+	}
+	var period *model.AccountingPeriod
+	for _, p := range periods {
+		if p.PeriodNo == periodNo {
+			period = &p
+			break
+		}
+	}
+	if period == nil {
+		return nil, errors.New("period not found")
+	}
+
+	startDate := period.StartDate
+	endDate := period.EndDate
+
+	// Find income and expense accounts
+	incomeAccts, err := s.accountRepo.ListByType(ctx, tenantID, "income")
+	if err != nil {
+		return nil, fmt.Errorf("list income accounts: %w", err)
+	}
+	expenseAccts, err := s.accountRepo.ListByType(ctx, tenantID, "expense")
+	if err != nil {
+		return nil, fmt.Errorf("list expense accounts: %w", err)
+	}
+
+	// Sum income
+	var totalIncome decimal.Decimal
+	incomeEntryCount := 0
+	for _, acct := range incomeAccts {
+		entries, err := s.glEntryRepo.GetByAccountAndPeriod(ctx, tenantID, acct.ID, startDate, endDate)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsCancelled {
+				totalIncome = totalIncome.Add(e.Credit.Sub(e.Debit))
+				if !e.Credit.Sub(e.Debit).IsZero() {
+					incomeEntryCount++
+				}
+			}
+		}
+	}
+
+	// Sum expenses
+	var totalExpense decimal.Decimal
+	expenseEntryCount := 0
+	for _, acct := range expenseAccts {
+		entries, err := s.glEntryRepo.GetByAccountAndPeriod(ctx, tenantID, acct.ID, startDate, endDate)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsCancelled {
+				totalExpense = totalExpense.Add(e.Debit.Sub(e.Credit))
+				if !e.Debit.Sub(e.Credit).IsZero() {
+					expenseEntryCount++
+				}
+			}
+		}
+	}
+
+	voucherNo := fmt.Sprintf("CLOSE-%d", periodNo)
+	return &ClosingPreview{
+		TotalIncome:  totalIncome,
+		TotalExpense: totalExpense,
+		NetIncome:    totalIncome.Sub(totalExpense),
+		VoucherNo:    voucherNo,
+		EntryCount:   incomeEntryCount + expenseEntryCount + 1, // +1 for retained earnings
+	}, nil
+}
+
+// ExecuteClosing generates closing entries for the period without closing the period.
+// Returns the closing journal entry voucher info.
+func (s *PeriodService) ExecuteClosing(ctx context.Context, tenantID uuid.UUID, periodNo int, userID, userName string) (*ClosingPreview, error) {
+	// Get period
+	periods, err := s.periodRepo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list periods: %w", err)
+	}
+	var period *model.AccountingPeriod
+	for _, p := range periods {
+		if p.PeriodNo == periodNo {
+			period = &p
+			break
+		}
+	}
+	if period == nil {
+		return nil, errors.New("period not found")
+	}
+
+	// Generate closing entries using the existing private method
+	if err := s.generateClosingEntries(ctx, tenantID, *period, userID, userName); err != nil {
+		return nil, fmt.Errorf("generate closing entries: %w", err)
+	}
+
+	// Build preview for response
+	incomeAccts, _ := s.accountRepo.ListByType(ctx, tenantID, "income")
+	expenseAccts, _ := s.accountRepo.ListByType(ctx, tenantID, "expense")
+
+	startDate, endDate := period.StartDate, period.EndDate
+
+	var totalIncome, totalExpense decimal.Decimal
+	for _, acct := range incomeAccts {
+		entries, _ := s.glEntryRepo.GetByAccountAndPeriod(ctx, tenantID, acct.ID, startDate, endDate)
+		for _, e := range entries {
+			if !e.IsCancelled {
+				totalIncome = totalIncome.Add(e.Credit.Sub(e.Debit))
+			}
+		}
+	}
+	for _, acct := range expenseAccts {
+		entries, _ := s.glEntryRepo.GetByAccountAndPeriod(ctx, tenantID, acct.ID, startDate, endDate)
+		for _, e := range entries {
+			if !e.IsCancelled {
+				totalExpense = totalExpense.Add(e.Debit.Sub(e.Credit))
+			}
+		}
+	}
+
+	voucherNo := fmt.Sprintf("CLOSE-%d", periodNo)
+	return &ClosingPreview{
+		TotalIncome:  totalIncome,
+		TotalExpense: totalExpense,
+		NetIncome:    totalIncome.Sub(totalExpense),
+		VoucherNo:    voucherNo,
+	}, nil
+}
+
 // ListPeriods returns all accounting periods.
 func (s *PeriodService) ListPeriods(ctx context.Context, tenantID uuid.UUID) ([]model.AccountingPeriod, error) {
 	return s.periodRepo.ListByTenant(ctx, tenantID)

@@ -380,6 +380,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Get("/periods/close-check-summary", periodHandler.CloseCheckSummary)
 	api.Post("/periods/:period_no/close", periodHandler.Close)
 	api.Post("/periods/:period_no/unclose", periodHandler.Unclose)
+	api.Post("/periods/preview-closing", periodHandler.PreviewClosing)
+	api.Post("/periods/execute-closing", periodHandler.ExecuteClosing)
 
 	// Reconciliation (核销) routes
 	reconRepo := repository.NewReconciliationRepository(db.GetPool())
