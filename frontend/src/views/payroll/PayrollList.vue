@@ -6,6 +6,8 @@
         <el-button @click="showGenerateDialog = true">生成薪资凭证</el-button>
         <el-button @click="showSocialDialog = true">社保计提</el-button>
         <el-button @click="showTaxDialog = true">个税计提</el-button>
+        <el-button @click="handleExportSalary">导出工资单</el-button>
+        <el-button @click="handleExportTax">导出一个税明细</el-button>
         <el-button type="primary" @click="goCreate">新建工资单</el-button>
       </div>
     </div>
@@ -174,7 +176,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { fetchPayrollList, deletePayroll, generatePeriodVouchers, calculatePeriodSocial, calculatePeriodTax } from '@/api/modules/payroll'
+import { fetchPayrollList, deletePayroll, generatePeriodVouchers, calculatePeriodSocial, calculatePeriodTax, exportSalaryExcel, exportTaxExcel } from '@/api/modules/payroll'
 import DocStatusTag from '@/components/business/DocStatusTag.vue'
 import type { Payroll } from '@/types/models/payroll'
 
@@ -276,6 +278,22 @@ async function handleCalculateTax() {
   } finally {
     taxCalculating.value = false
   }
+}
+
+function getPeriodNo(): number {
+  if (filter.periodNo) {
+    return parseInt(filter.periodNo, 10)
+  }
+  const now = new Date()
+  return now.getFullYear() * 100 + (now.getMonth() + 1)
+}
+
+function handleExportSalary() {
+  exportSalaryExcel(getPeriodNo())
+}
+
+function handleExportTax() {
+  exportTaxExcel(getPeriodNo())
 }
 
 function calcDeductions(row: Payroll): string {

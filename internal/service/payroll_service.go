@@ -8,16 +8,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"github.com/xuri/excelize/v2"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
 )
 
 // PayrollService handles payroll business logic.
 type PayrollService struct {
-	payrollRepo     *repository.PayrollRepository
-	journalRepo     *repository.JournalRepository
-	accountRepo     *repository.AccountRepository
-	templateSvc     *VoucherTemplateService
+	payrollRepo      *repository.PayrollRepository
+	journalRepo      *repository.JournalRepository
+	accountRepo      *repository.AccountRepository
+	templateSvc      *VoucherTemplateService
 	socialConfigRepo *repository.SocialConfigRepository
 }
 
@@ -123,8 +124,8 @@ func (s *PayrollService) CreatePayroll(ctx context.Context, tenantID uuid.UUID, 
 		BankAccountNo:   req.BankAccountNo,
 		Status:          "draft",
 		DocStatus:       0,
-		Source:         source,
-		Remark:         req.Remark,
+		Source:          source,
+		Remark:          req.Remark,
 		CreatedBy:       &userID,
 	}
 
@@ -530,9 +531,9 @@ func (s *PayrollService) GenerateSocialVoucher(ctx context.Context, tenantID uui
 
 // Tax rate table for cumulative withholding method (累计预扣法)
 var taxRateTable = []struct {
-	threshold    decimal.Decimal
-	rate         decimal.Decimal
-	quickDeduct  decimal.Decimal
+	threshold   decimal.Decimal
+	rate        decimal.Decimal
+	quickDeduct decimal.Decimal
 }{
 	{decimal.NewFromInt(36000), decimal.NewFromFloat(0.03), decimal.NewFromInt(0)},
 	{decimal.NewFromInt(144000), decimal.NewFromFloat(0.10), decimal.NewFromInt(2520)},
@@ -590,10 +591,10 @@ type TaxDetail struct {
 
 // CalculatePeriodTaxResult response body for period tax calculation.
 type CalculatePeriodTaxResult struct {
-	TotalEmployees int                  `json:"total_employees"`
-	TotalTax       decimal.Decimal      `json:"total_tax"`
-	Details        []TaxDetail          `json:"details"`
-	Voucher        *model.JournalEntry  `json:"voucher,omitempty"`
+	TotalEmployees int                 `json:"total_employees"`
+	TotalTax       decimal.Decimal     `json:"total_tax"`
+	Details        []TaxDetail         `json:"details"`
+	Voucher        *model.JournalEntry `json:"voucher,omitempty"`
 }
 
 // CalculatePeriodTax calculates individual income tax for each employee in the
@@ -957,4 +958,209 @@ func (s *PayrollService) GenerateVoucherFromPayroll(ctx context.Context, tenantI
 	}
 
 	return je, nil
+}
+
+// taxCalcResult holds per-employee tax calculation details for export.
+type taxCalcResult struct {
+	EmployeeName   string
+	GrossSalary    decimal.Decimal
+	SocialSecurity decimal.Decimal
+	HousingFund    decimal.Decimal
+	TaxableIncome  decimal.Decimal
+	TaxRate        decimal.Decimal
+	QuickDeduction decimal.Decimal
+	TaxThisPeriod  decimal.Decimal
+}
+
+// computeTaxDetailsForPeriod computes per-employee tax details for a given period
+// using the cumulative withholding method (累计预扣法).
+func (s *PayrollService) computeTaxDetailsForPeriod(ctx context.Context, tenantID uuid.UUID, periodNo int) ([]taxCalcResult, error) {
+	records, err := s.payrollRepo.ListByPeriod(ctx, tenantID, periodNo)
+	if err != nil {
+		return nil, fmt.Errorf("list payroll by period: %w", err)
+	}
+	if len(records) == 0 {
+		return nil, errors.New("no payroll records found for the period")
+	}
+
+	year := periodNo / 100
+	month := periodNo % 100
+	if month < 1 || month > 12 {
+		return nil, fmt.Errorf("invalid period_no: %d (month must be 1-12)", periodNo)
+	}
+
+	// Group by employee
+	type empKey struct {
+		name    string
+		company uuid.UUID
+	}
+	empRecords := make(map[empKey][]model.Payroll)
+	for _, r := range records {
+		key := empKey{name: r.EmployeeName, company: r.CompanyID}
+		empRecords[key] = append(empRecords[key], r)
+	}
+
+	var results []taxCalcResult
+	for key, periodRecords := range empRecords {
+		// Get all year records for cumulative calculation
+		yearRecords, err := s.payrollRepo.ListByEmployeeAndYear(ctx, tenantID, key.name, year)
+		if err != nil {
+			return nil, fmt.Errorf("list employee %s year records: %w", key.name, err)
+		}
+
+		var cumulativeIncome, cumulativeSpecialDeduction, taxAlreadyPaid decimal.Decimal
+		monthsCount := 0
+		for _, yr := range yearRecords {
+			if yr.PeriodNo <= periodNo {
+				cumulativeIncome = cumulativeIncome.Add(yr.GrossSalary)
+				cumulativeSpecialDeduction = cumulativeSpecialDeduction.Add(yr.SocialSecurity).Add(yr.HousingFund)
+				monthsCount++
+			}
+			if yr.PeriodNo < periodNo {
+				taxAlreadyPaid = taxAlreadyPaid.Add(yr.IndividualTax)
+			}
+		}
+
+		if monthsCount == 0 {
+			for _, pr := range periodRecords {
+				cumulativeIncome = cumulativeIncome.Add(pr.GrossSalary)
+				cumulativeSpecialDeduction = cumulativeSpecialDeduction.Add(pr.SocialSecurity).Add(pr.HousingFund)
+			}
+			monthsCount = month
+		}
+
+		cumulativeBasicDeduction := decimal.NewFromInt(5000).Mul(decimal.NewFromInt(int64(monthsCount)))
+		cumulativeDeduction := cumulativeSpecialDeduction.Add(cumulativeBasicDeduction)
+		taxableIncome := cumulativeIncome.Sub(cumulativeDeduction)
+		if taxableIncome.LessThan(decimal.Zero) {
+			taxableIncome = decimal.Zero
+		}
+
+		rate, quickDeduct, cumulativeTax := calculateCumulativeTax(taxableIncome)
+		taxThisPeriod := cumulativeTax.Sub(taxAlreadyPaid)
+		if taxThisPeriod.LessThan(decimal.Zero) {
+			taxThisPeriod = decimal.Zero
+		}
+
+		firstRecord := periodRecords[0]
+		results = append(results, taxCalcResult{
+			EmployeeName:   key.name,
+			GrossSalary:    firstRecord.GrossSalary,
+			SocialSecurity: firstRecord.SocialSecurity,
+			HousingFund:    firstRecord.HousingFund,
+			TaxableIncome:  taxableIncome,
+			TaxRate:        rate,
+			QuickDeduction: quickDeduct,
+			TaxThisPeriod:  taxThisPeriod,
+		})
+	}
+
+	return results, nil
+}
+
+// ExportSalaryExcel generates a salary Excel workbook for a given period.
+func (s *PayrollService) ExportSalaryExcel(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID, periodNo int) ([]byte, error) {
+	records, err := s.payrollRepo.ListByPeriod(ctx, tenantID, periodNo)
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, errors.New("no records for this period")
+	}
+
+	f := excelize.NewFile()
+	defer f.Close()
+
+	// 表头
+	headers := []string{"序号", "姓名", "部门", "应发合计", "社保个人", "公积金个人", "个税", "其他扣款", "实发工资"}
+	for i, h := range headers {
+		col, _ := excelize.ColumnNumberToName(i + 1)
+		_ = f.SetCellValue("Sheet1", col+"1", h)
+	}
+
+	// 样式
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"E0E0E0"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
+	_ = f.SetCellStyle("Sheet1", "A1", "I1", headerStyle)
+
+	// 数据行
+	for j, r := range records {
+		row := j + 2
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("A%d", row), j+1)
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("B%d", row), r.EmployeeName)
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("C%d", row), r.DepartmentName)
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("D%d", row), r.GrossSalary.InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("E%d", row), r.SocialSecurity.InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("F%d", row), r.HousingFund.InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("G%d", row), r.IndividualTax.InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("H%d", row), r.OtherDeductions.InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("I%d", row), r.NetSalary.InexactFloat64())
+	}
+
+	// 列宽
+	_ = f.SetColWidth("Sheet1", "A", "I", 16)
+
+	// 设置工作表名
+	_ = f.SetSheetName("Sheet1", fmt.Sprintf("工资单_%d", periodNo))
+
+	buf, err := f.WriteToBuffer()
+	if err != nil {
+		return nil, fmt.Errorf("write excel buffer: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// ExportTaxExcel generates a tax detail Excel workbook for a given period.
+func (s *PayrollService) ExportTaxExcel(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID, periodNo int) ([]byte, error) {
+	details, err := s.computeTaxDetailsForPeriod(ctx, tenantID, periodNo)
+	if err != nil {
+		return nil, err
+	}
+
+	f := excelize.NewFile()
+	defer f.Close()
+
+	// 表头
+	headers := []string{"序号", "姓名", "税前工资", "社保个人", "公积金个人", "应纳税所得额", "税率", "速算扣除数", "应缴个税"}
+	for i, h := range headers {
+		col, _ := excelize.ColumnNumberToName(i + 1)
+		_ = f.SetCellValue("Sheet1", col+"1", h)
+	}
+
+	// 样式
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"E0E0E0"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
+	_ = f.SetCellStyle("Sheet1", "A1", "I1", headerStyle)
+
+	// 数据行
+	for j, d := range details {
+		row := j + 2
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("A%d", row), j+1)
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("B%d", row), d.EmployeeName)
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("C%d", row), d.GrossSalary.InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("D%d", row), d.SocialSecurity.InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("E%d", row), d.HousingFund.InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("F%d", row), d.TaxableIncome.InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("G%d", row), d.TaxRate.Mul(decimal.NewFromInt(100)).InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("H%d", row), d.QuickDeduction.InexactFloat64())
+		_ = f.SetCellValue("Sheet1", fmt.Sprintf("I%d", row), d.TaxThisPeriod.InexactFloat64())
+	}
+
+	// 列宽
+	_ = f.SetColWidth("Sheet1", "A", "I", 16)
+
+	// 设置工作表名
+	_ = f.SetSheetName("Sheet1", fmt.Sprintf("个税明细_%d", periodNo))
+
+	buf, err := f.WriteToBuffer()
+	if err != nil {
+		return nil, fmt.Errorf("write excel buffer: %w", err)
+	}
+	return buf.Bytes(), nil
 }

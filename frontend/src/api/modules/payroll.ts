@@ -82,3 +82,33 @@ export function fetchSocialConfig(): Promise<ApiResponse<{ configs: any[] }>> {
 export function updateSocialConfig(id: string, data: { company_rate?: string; personal_rate?: string; is_active?: boolean }): Promise<ApiResponse<void>> {
   return request.put(`/payroll/social-config/${id}`, data)
 }
+
+/** 导出工资单Excel */
+export async function exportSalaryExcel(periodNo: number): Promise<void> {
+  const token = localStorage.getItem('huihua_token')
+  const response = await fetch(`/api/v1/payroll/export-salary?period_no=${periodNo}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `salary_${periodNo}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** 导出一个税明细Excel */
+export async function exportTaxExcel(periodNo: number): Promise<void> {
+  const token = localStorage.getItem('huihua_token')
+  const response = await fetch(`/api/v1/payroll/export-tax?period_no=${periodNo}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `tax_${periodNo}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}

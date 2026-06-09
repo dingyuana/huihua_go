@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"fmt"
+	"strconv"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"huihua/finance/internal/service"
@@ -228,4 +231,42 @@ func (h *PayrollHandler) GenerateVoucher(c *fiber.Ctx) error {
 		"voucher_id": voucher.ID,
 		"voucher_no": voucher.VoucherNo,
 	})
+}
+
+// ExportSalary handles GET /api/v1/payroll/export-salary
+func (h *PayrollHandler) ExportSalary(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+	periodNo, err := strconv.Atoi(c.Query("period_no"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "period_no is required"})
+	}
+
+	data, err := h.svc.ExportSalaryExcel(c.Context(), tenantID, userID, periodNo)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="salary_%d.xlsx"`, periodNo))
+	return c.Send(data)
+}
+
+// ExportTax handles GET /api/v1/payroll/export-tax
+func (h *PayrollHandler) ExportTax(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+	periodNo, err := strconv.Atoi(c.Query("period_no"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "period_no is required"})
+	}
+
+	data, err := h.svc.ExportTaxExcel(c.Context(), tenantID, userID, periodNo)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="tax_%d.xlsx"`, periodNo))
+	return c.Send(data)
 }
