@@ -30,6 +30,32 @@ func (h *AccountHandler) GetTree(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": tree})
 }
 
+// List returns accounts for the current tenant with optional pagination.
+// Query params: limit (default 100, max 1000), offset (default 0), parent_id (optional filter).
+// Account code is searchable via `?code=1001` exact match.
+func (h *AccountHandler) List(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	limit := c.QueryInt("limit", 100)
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	offset := c.QueryInt("offset", 0)
+	if offset < 0 {
+		offset = 0
+	}
+	code := c.Query("code")
+	accounts, total, err := h.svc.List(c.Context(), tenantID, limit, offset, code)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{
+		"data":  accounts,
+		"total": total,
+		"page":  offset/limit + 1,
+		"page_size": limit,
+	})
+}
+
 // InitFromSeed initializes accounts from the standard seed.
 func (h *AccountHandler) InitFromSeed(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)

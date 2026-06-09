@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
@@ -26,6 +28,46 @@ type SupplierAdvanceSummary struct {
 
 func NewAdvancePaymentRepository(pool *pgxpool.Pool) *AdvancePaymentRepository {
 	return &AdvancePaymentRepository{pool: pool}
+}
+
+// BeginTx starts a new transaction.
+func (r *AdvancePaymentRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return r.pool.Begin(ctx)
+}
+
+// LockForUpdate locks an advance_payments row with SELECT FOR UPDATE.
+func (r *AdvancePaymentRepository) LockForUpdate(ctx context.Context, tx pgx.Tx, tenantID, id uuid.UUID) error {
+	_, err := tx.Exec(ctx, `
+		SELECT id FROM advance_payments
+		WHERE tenant_id = $1 AND id = $2
+		FOR UPDATE`,
+		tenantID, id)
+	return err
+}
+
+// IncrementAllocatedTx atomically increases allocated_amount within a transaction.
+func (r *AdvancePaymentRepository) IncrementAllocatedTx(ctx context.Context, tx pgx.Tx, tenantID, id uuid.UUID, delta string) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE advance_payments
+		SET allocated_amount = allocated_amount + $3,
+			outstanding_amount = amount - (allocated_amount + $3)
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, delta)
+	return err
+}
+
+// UpdateOutstandingAmountTx updates the outstanding_amount directly within a transaction.
+func (r *AdvancePaymentRepository) UpdateOutstandingAmountTx(ctx context.Context, tx pgx.Tx, tenantID, id uuid.UUID, outstanding string) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE advance_payments
+		SET outstanding_amount = $3,
+			allocated_amount = amount - $3
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, outstanding)
+	if err != nil {
+		return fmt.Errorf("update advance payment outstanding (tx): %w", err)
+	}
+	return nil
 }
 
 func (r *AdvancePaymentRepository) Create(ctx context.Context, a *model.AdvancePayment) error {

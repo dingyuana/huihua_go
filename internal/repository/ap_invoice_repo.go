@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
@@ -17,6 +18,46 @@ type ApInvoiceRepository struct {
 
 func NewApInvoiceRepository(pool *pgxpool.Pool) *ApInvoiceRepository {
 	return &ApInvoiceRepository{pool: pool}
+}
+
+// BeginTx starts a new transaction.
+func (r *ApInvoiceRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return r.pool.Begin(ctx)
+}
+
+// LockForUpdate locks an ap_invoices row with SELECT FOR UPDATE.
+func (r *ApInvoiceRepository) LockForUpdate(ctx context.Context, tx pgx.Tx, tenantID, id uuid.UUID) error {
+	_, err := tx.Exec(ctx, `
+		SELECT id FROM ap_invoices
+		WHERE tenant_id = $1 AND id = $2
+		FOR UPDATE`,
+		tenantID, id)
+	return err
+}
+
+// UpdateOutstandingAmountTx updates outstanding_amount within a transaction.
+func (r *ApInvoiceRepository) UpdateOutstandingAmountTx(ctx context.Context, tx pgx.Tx, tenantID, id uuid.UUID, outstanding decimal.Decimal) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE ap_invoices
+		SET outstanding_amount = $3,
+			last_allocation_at = NOW(),
+			status = CASE
+				WHEN $3 <= 0 THEN 'paid'
+				WHEN $3 < amount THEN 'partially_paid'
+				ELSE status
+			END
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, outstanding.String())
+	return err
+}
+
+// UpdateStatusTx updates the status within a transaction.
+func (r *ApInvoiceRepository) UpdateStatusTx(ctx context.Context, tx pgx.Tx, tenantID, id uuid.UUID, status string) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE ap_invoices SET status = $3
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, status)
+	return err
 }
 
 func (r *ApInvoiceRepository) Create(ctx context.Context, ap *model.ApInvoice) error {

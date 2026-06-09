@@ -745,17 +745,18 @@ func (h *InvoiceHandler) MatchToBank(c *fiber.Ctx) error {
 	})
 }
 
-// ConfirmInvoice confirms an invoice (updates confirm_status).
+// ConfirmInvoice confirms an invoice (creates ar_invoice + updates confirm_status).
 // POST /api/v1/invoices/sales/:id/confirm
 func (h *InvoiceHandler) ConfirmInvoice(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
 
 	invoiceID, err := uuid.Parse(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid invoice id"})
 	}
 
-	if err := h.svc.ConfirmSalesInvoiceV2(c.Context(), tenantID, invoiceID); err != nil {
+	if err := h.svc.ConfirmSalesInvoice(c.Context(), tenantID, invoiceID, userID); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 

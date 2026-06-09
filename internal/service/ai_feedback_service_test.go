@@ -185,7 +185,17 @@ func seedBankTxnWithAIFields(ctx context.Context, pool *pgxpool.Pool, t *testing
 	companyID := uuid.MustParse("3586c914-5eb4-426a-9d20-f297a10b147c")
 	desc := "ai test txn " + id.String()
 
+	// Ensure bank_account row exists before referencing it
 	_, err := pool.Exec(ctx, `
+		INSERT INTO bank_accounts (id, bank_name, account_number, company_id, tenant_id)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (id) DO NOTHING
+	`, bankAccountID, "测试银行", "TEST-0003", s.tenantID, s.tenantID)
+	if err != nil {
+		t.Fatalf("seed bank_account: %v", err)
+	}
+
+	_, err = pool.Exec(ctx, `
 		INSERT INTO bank_transactions
 			(id, tenant_id, bank_account_id, company_id, txn_date, description,
 			 debit, credit, direction, classification, status,

@@ -19,6 +19,16 @@ func newTestReportService(t *testing.T) *ReportService {
 	}
 	t.Cleanup(func() { pool.Close() })
 
+	// Ensure period 202605 exists for report tests
+	_, err = pool.Exec(testCtx, `
+		INSERT INTO accounting_periods (tenant_id, period_no, period_name, start_date, end_date, status)
+		VALUES ('00000000-0000-0000-0000-000000000001', 202605, '2026年5月', '2026-05-01', '2026-05-31', 'open')
+		ON CONFLICT (tenant_id, period_no) DO NOTHING
+	`)
+	if err != nil {
+		t.Fatalf("seed period 202605: %v", err)
+	}
+
 	return NewReportService(
 		repository.NewGLEntryRepository(pool),
 		repository.NewOpeningBalanceRepository(pool),

@@ -129,6 +129,7 @@ type BankTransaction struct {
 	CompanyID             uuid.UUID       `json:"company_id" db:"company_id"`
 	TenantID              uuid.UUID       `json:"tenant_id" db:"tenant_id"`
 	CreatedAt             time.Time       `json:"created_at" db:"created_at"`
+	Version               int64           `json:"version" db:"version"`
 }
 
 // BankReconciliationDetail represents the bank_reconciliation_details table.

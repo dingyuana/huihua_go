@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"huihua/finance/internal/model"
 )
@@ -15,6 +16,39 @@ type AdvanceAllocationRepository struct {
 
 func NewAdvanceAllocationRepository(pool *pgxpool.Pool) *AdvanceAllocationRepository {
 	return &AdvanceAllocationRepository{pool: pool}
+}
+
+// BeginTx starts a new transaction.
+func (r *AdvanceAllocationRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return r.pool.Begin(ctx)
+}
+
+// CreateTx inserts an advance allocation record within a transaction.
+func (r *AdvanceAllocationRepository) CreateTx(ctx context.Context, tx pgx.Tx, a *model.AdvanceAllocation) error {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now()
+	}
+	_, err := tx.Exec(ctx, `
+		INSERT INTO advance_allocations (id, tenant_id, advance_id, advance_type, target_id,
+			target_type, allocated_amount, allocation_date, voucher_id, voucher_no, remark,
+			created_by, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		a.ID, a.TenantID, a.AdvanceID, a.AdvanceType, a.TargetID, a.TargetType,
+		a.AllocatedAmount.String(), a.AllocationDate, a.VoucherID, a.VoucherNo, a.Remark,
+		a.CreatedBy, a.CreatedAt)
+	return err
+}
+
+// MarkAllocationReversed sets reversed_at on an advance allocation.
+func (r *AdvanceAllocationRepository) MarkAllocationReversed(ctx context.Context, tx pgx.Tx, allocationID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE advance_allocations SET reversed_at = NOW()
+		WHERE id = $1`,
+		allocationID)
+	return err
 }
 
 func (r *AdvanceAllocationRepository) SetVoucher(ctx context.Context, id uuid.UUID, voucherNo string) error {

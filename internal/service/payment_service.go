@@ -223,6 +223,19 @@ type ApproveResult struct {
 }
 
 // Approve submits and approves a payment entry, generating a voucher and triggering reconciliation.
+// Submit transitions a payment entry from draft to submitted (docstatus 0 → 1).
+// Validates current status before transitioning to prevent double-submit.
+func (s *PaymentEntryService) Submit(ctx context.Context, tenantID, paymentID, userID uuid.UUID) error {
+	pe, err := s.repo.GetByID(ctx, tenantID, paymentID)
+	if err != nil {
+		return fmt.Errorf("load payment entry: %w", err)
+	}
+	if pe.DocStatus != 0 {
+		return fmt.Errorf("payment entry must be in draft status (docstatus=0), got %d", pe.DocStatus)
+	}
+	return s.repo.UpdateStatus(ctx, tenantID, paymentID, 1)
+}
+
 func (s *PaymentEntryService) Approve(ctx context.Context, tenantID, paymentID, userID uuid.UUID) (*ApproveResult, error) {
 	// 1. Load PaymentEntry, verify DocStatus == 1 (submitted)
 	pe, err := s.repo.GetByID(ctx, tenantID, paymentID)

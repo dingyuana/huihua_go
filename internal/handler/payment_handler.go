@@ -261,6 +261,31 @@ func (h *PaymentEntryHandler) Delete(c *fiber.Ctx) error {
 	})
 }
 
+// Submit handles POST /api/v1/payment-entries/:id/submit
+// Transitions the payment entry from draft to submitted.
+func (h *PaymentEntryHandler) Submit(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid id",
+		})
+	}
+
+	if err := h.svc.Submit(c.Context(), tenantID, id, userID); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "payment entry submitted",
+	})
+}
+
 // ApprovePaymentEntry handles POST /api/v1/payment-entries/:id/approve
 func (h *PaymentEntryHandler) ApprovePaymentEntry(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)

@@ -75,4 +75,5 @@ type PaymentAllocation struct {
 	DiscountAmount decimal.Decimal `json:"discount_amount" db:"discount_amount"`
 	TenantID       uuid.UUID       `json:"tenant_id" db:"tenant_id"`
 	CreatedAt      time.Time       `json:"created_at" db:"created_at"`
+	ReversedAt     *time.Time      `json:"reversed_at,omitempty" db:"reversed_at"`
 }

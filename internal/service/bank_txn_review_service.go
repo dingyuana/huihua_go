@@ -181,13 +181,13 @@ func (s *BankTxnReviewService) SubmitReview(
 }
 
 // RejectManual moves one or more transactions back to manual_pending status (AC7).
-func (s *BankTxnReviewService) RejectManual(ctx context.Context, txnIDs []string) error {
+func (s *BankTxnReviewService) RejectManual(ctx context.Context, tenantID uuid.UUID, txnIDs []string) error {
 	for _, txnIDStr := range txnIDs {
 		txnID, err := uuid.Parse(txnIDStr)
 		if err != nil {
 			continue
 		}
-		if err := s.repo.UpdateStatus(ctx, txnID, uuid.Nil, model.BankTxnReviewStatusManualPending); err != nil {
+		if err := s.repo.UpdateStatus(ctx, txnID, tenantID, model.BankTxnReviewStatusManualPending); err != nil {
 			return fmt.Errorf("reject txn %s: %w", txnIDStr, err)
 		}
 	}

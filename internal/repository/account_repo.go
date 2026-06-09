@@ -141,6 +141,58 @@ func (r *AccountRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID
 	return accounts, nil
 }
 
+// ListPaginated returns a paginated slice of accounts for a tenant, optionally
+// filtered by exact code match. Returns the page slice and the total count
+// (before pagination) for client-side paging.
+func (r *AccountRepository) ListPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int, code string) ([]model.Account, int, error) {
+	var total int
+	countQuery := `SELECT COUNT(*) FROM accounts WHERE tenant_id = $1`
+	countArgs := []interface{}{tenantID}
+	if code != "" {
+		countQuery += ` AND code = $2`
+		countArgs = append(countArgs, code)
+	}
+	if err := r.pool.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count accounts: %w", err)
+	}
+
+	query := `
+		SELECT id, code, name, account_type, root_type, parent_id, lft, rgt, is_group,
+		       company_id, tenant_id, currency, is_active, opening_balance, created_at, updated_at
+		FROM accounts
+		WHERE tenant_id = $1`
+	args := []interface{}{tenantID}
+	if code != "" {
+		query += ` AND code = $2`
+		args = append(args, code)
+	}
+	query += ` ORDER BY lft LIMIT $` + fmt.Sprintf("%d", len(args)+1) + ` OFFSET $` + fmt.Sprintf("%d", len(args)+2)
+	args = append(args, limit, offset)
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list accounts paginated: %w", err)
+	}
+	defer rows.Close()
+
+	var accounts []model.Account
+	for rows.Next() {
+		var a model.Account
+		if err := rows.Scan(
+			&a.ID, &a.Code, &a.Name, &a.AccountType, &a.RootType, &a.ParentID,
+			&a.Lft, &a.Rgt, &a.IsGroup, &a.CompanyID, &a.TenantID,
+			&a.Currency, &a.IsActive, &a.OpeningBalance, &a.CreatedAt, &a.UpdatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan account: %w", err)
+		}
+		accounts = append(accounts, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate accounts: %w", err)
+	}
+	return accounts, total, nil
+}
+
 // GetTree retrieves the account tree for the given tenant using nested set ordering.
 // Returns all accounts ordered by lft to allow the caller to reconstruct the tree.
 func (r *AccountRepository) GetTree(ctx context.Context, tenantID uuid.UUID) ([]model.Account, error) {

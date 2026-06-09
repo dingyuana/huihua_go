@@ -61,6 +61,7 @@ type JournalEntry struct {
 	CreatedBy        uuid.UUID       `json:"created_by" db:"created_by"`
 	CreatedAt        time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt        time.Time       `json:"updated_at" db:"updated_at"`
+	Version          int64           `json:"version" db:"version"`
 	DebitTotal       decimal.Decimal `json:"debit_total,omitempty" db:"debit_total"`
 	CreditTotal      decimal.Decimal `json:"credit_total,omitempty" db:"credit_total"`
 	CounterpartyName *string         `json:"counterparty_name,omitempty" db:"counterparty_name"`

@@ -7,14 +7,38 @@
       <el-col :span="8">
         <el-card shadow="never">
           <template #header>选择收款单</template>
-          <el-select v-model="selectedPayment" placeholder="搜索收款单" filterable style="width: 100%">
+          <el-select
+            v-model="selectedPayment"
+            placeholder="搜索收款单"
+            filterable
+            style="width: 100%"
+            :loading="loadingPayments"
+          >
+            <el-option
+              v-for="p in payments"
+              :key="p.id"
+              :label="paymentLabel(p)"
+              :value="p.id"
+            />
           </el-select>
         </el-card>
       </el-col>
       <el-col :span="8">
         <el-card shadow="never">
           <template #header>选择发票</template>
-          <el-select v-model="selectedInvoice" placeholder="搜索发票" filterable style="width: 100%">
+          <el-select
+            v-model="selectedInvoice"
+            placeholder="搜索发票"
+            filterable
+            style="width: 100%"
+            :loading="loadingInvoices"
+          >
+            <el-option
+              v-for="inv in invoices"
+              :key="inv.id"
+              :label="invoiceLabel(inv)"
+              :value="inv.id"
+            />
           </el-select>
         </el-card>
       </el-col>
@@ -82,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import request from '@/api/request'
@@ -100,6 +124,100 @@ const showForcePassDialog = ref(false)
 const forcePassReason = ref('')
 
 const checks = ref<CheckItem[]>([])
+
+// 下拉列表数据
+interface PaymentOption {
+  id: string
+  counterparty_name?: string
+  debit: string
+  credit: string
+  description?: string
+  txn_date: string
+}
+
+interface InvoiceOption {
+  id: string
+  invoice_no: string
+  customer_name?: string
+  total_amount: string
+  outstanding_amount: string
+  posting_date: string
+}
+
+const payments = ref<PaymentOption[]>([])
+const invoices = ref<InvoiceOption[]>([])
+const loadingPayments = ref(false)
+const loadingInvoices = ref(false)
+
+function paymentLabel(p: PaymentOption): string {
+  const amt = p.credit && p.credit !== '0' ? p.credit : p.debit
+  const party = p.counterparty_name ? p.counterparty_name : '无名'
+  const desc = p.description ? `(${p.description})` : ''
+  return `¥${amt} ${party} ${desc}`
+}
+
+function invoiceLabel(inv: InvoiceOption): string {
+  const cust = inv.customer_name ? ` - ${inv.customer_name}` : ''
+  return `${inv.invoice_no} ¥${inv.outstanding_amount}${cust}`
+}
+
+async function loadPayments() {
+  loadingPayments.value = true
+  try {
+    // 先查银行账户，拿 bank_account_id
+    const bankRes: any = await request.get('/bank-accounts')
+    const accounts: any[] = bankRes?.data?.list || bankRes?.data || []
+    const bankAccount = accounts.find((a: any) => !a.is_cash && a.is_active) || accounts[0]
+    if (!bankAccount) {
+      payments.value = []
+      return
+    }
+
+    const res: any = await request.get('/bank-transactions', {
+      params: { bank_account_id: bankAccount.id, page: 1, page_size: 200 },
+    })
+    const list: any[] = res?.data ?? res ?? []
+    payments.value = list.map(txn => ({
+      id: txn.id,
+      counterparty_name: txn.counterparty_name ?? '',
+      debit: txn.debit ?? '0',
+      credit: txn.credit ?? '0',
+      description: txn.description ?? '',
+      txn_date: txn.txn_date ?? '',
+    }))
+  } catch {
+    payments.value = []
+  } finally {
+    loadingPayments.value = false
+  }
+}
+
+async function loadInvoices() {
+  loadingInvoices.value = true
+  try {
+    const res: any = await request.get('/invoices', {
+      params: { status: 'unpaid', page_size: 200 },
+    })
+    const list: any[] = res?.list ?? res ?? []
+    invoices.value = list.map(inv => ({
+      id: inv.id,
+      invoice_no: inv.invoice_no ?? inv.invoice_number ?? '',
+      customer_name: inv.customer_name ?? '',
+      total_amount: inv.total_amount ?? '0',
+      outstanding_amount: inv.outstanding_amount ?? inv.outstanding ?? '0',
+      posting_date: inv.posting_date ?? '',
+    }))
+  } catch {
+    invoices.value = []
+  } finally {
+    loadingInvoices.value = false
+  }
+}
+
+onMounted(() => {
+  loadPayments()
+  loadInvoices()
+})
 
 const checkResults = computed(() => checks.value)
 const blockerCount = computed(() => checks.value.filter(c => c.status === 'blocked').length)

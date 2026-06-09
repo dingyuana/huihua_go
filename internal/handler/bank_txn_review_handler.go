@@ -5,6 +5,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
 	"huihua/finance/internal/service"
 )
@@ -49,6 +50,11 @@ func (h *BankTxnReviewHandler) ReviewList(c *fiber.Ctx) error {
 	txns, total, err := h.repo.ListByStatus(c.Context(), tenantID, status, page, pageSize)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list transactions"})
+	}
+
+	// Ensure data is always a JSON array, never null
+	if txns == nil {
+		txns = []model.BankTransaction{}
 	}
 
 	return c.JSON(fiber.Map{
@@ -148,7 +154,12 @@ func (h *BankTxnReviewHandler) RejectManual(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	if err := h.svc.RejectManual(c.Context(), req.TxnIDs); err != nil {
+	tenantID, ok := c.Locals("tenant_id").(uuid.UUID)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "tenant_id not found"})
+	}
+
+	if err := h.svc.RejectManual(c.Context(), tenantID, req.TxnIDs); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to reject transactions"})
 	}
 

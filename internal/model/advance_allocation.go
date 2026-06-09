@@ -21,4 +21,5 @@ type AdvanceAllocation struct {
 	Remark          *string         `db:"remark"`
 	CreatedBy       *uuid.UUID      `db:"created_by"`
 	CreatedAt       time.Time       `db:"created_at"`
+	ReversedAt      *time.Time      `db:"reversed_at"`
 }

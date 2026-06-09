@@ -13,6 +13,16 @@ func TestPeriodRepo_FindByPeriodNo(t *testing.T) {
 	repo := NewPeriodRepository(pool)
 	ctx := context.Background()
 
+	// Ensure period 202605 exists
+	_, err := pool.Exec(ctx, `
+		INSERT INTO accounting_periods (tenant_id, period_no, period_name, start_date, end_date, status)
+		VALUES ('00000000-0000-0000-0000-000000000001', 202605, '2026年5月', '2026-05-01', '2026-05-31', 'open')
+		ON CONFLICT (tenant_id, period_no) DO NOTHING
+	`)
+	if err != nil {
+		t.Fatalf("seed period 202605: %v", err)
+	}
+
 	periods, err := repo.ListByTenant(ctx, testTenantID)
 	if err != nil {
 		t.Fatalf("ListByTenant failed: %v", err)
@@ -54,6 +64,16 @@ func TestPeriodRepo_UpdateStatus(t *testing.T) {
 
 	periodNo := 202605
 	adminID := uuid.MustParse("00000000-0000-0000-0000-000000000101")
+
+	// Ensure period 202605 exists
+	_, err := pool.Exec(ctx, `
+		INSERT INTO accounting_periods (tenant_id, period_no, period_name, start_date, end_date, status)
+		VALUES ('00000000-0000-0000-0000-000000000001', 202605, '2026年5月', '2026-05-01', '2026-05-31', 'open')
+		ON CONFLICT (tenant_id, period_no) DO NOTHING
+	`)
+	if err != nil {
+		t.Fatalf("seed period 202605: %v", err)
+	}
 
 	periods, err := repo.ListByTenant(ctx, testTenantID)
 	if err != nil {

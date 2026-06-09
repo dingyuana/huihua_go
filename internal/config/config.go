@@ -10,11 +10,13 @@ import (
 )
 
 type Config struct {
-	App      AppConfig
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	JWT      JWTConfig
+	App       AppConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Redis     RedisConfig
+	JWT       JWTConfig
+	Minimax   MinimaxConfig
+	Sensenova SensenovaConfig
 }
 
 type AppConfig struct {
@@ -53,18 +55,42 @@ type JWTConfig struct {
 	Expiry string
 }
 
+type MinimaxConfig struct {
+	APIKey    string
+	ModelName string
+	APIBaseURL string
+}
+
+type SensenovaConfig struct {
+	APIKey    string
+	ModelName string
+	APIBaseURL string
+}
+
 func Load() *Config {
 	viper.SetEnvPrefix("HF")
 	viper.AutomaticEnv()
 	// Map HF_DATABASE_* → database.*
 	// HF_DATABASE_HOST → database.host, HF_DATABASE_PORT → database.port, etc.
-	viper.SetEnvKeyReplacer(strings.NewReplacer("DATABASE_", "database.", "REDIS_", "redis.", "JWT_", "jwt.", "SERVER_", "server.", "APP_", "app."))
+	viper.SetEnvKeyReplacer(strings.NewReplacer(
+		"DATABASE_", "database.",
+		"REDIS_", "redis.",
+		"JWT_", "jwt.",
+		"SERVER_", "server.",
+		"APP_", "app.",
+		"MINIMAX_", "minimax.",
+		"SENSENOVA_", "sensenova.",
+	))
 
 	viper.SetDefault("server.host", "0.0.0.0")
 	viper.SetDefault("server.port", "8080")
 	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("jwt.expiry", "30m")
 	viper.SetDefault("app.mode", "development")
+	viper.SetDefault("minimax.model_name", "abab3.0-chat")
+	viper.SetDefault("minimax.api_base_url", "https://api.minimax.chat/v1")
+	viper.SetDefault("sensenova.model_name", "SenseChat")
+	viper.SetDefault("sensenova.api_base_url", "https://api.sensenova.cn/v1")
 
 	// Try executable dir first, then current working directory
 	exeDir := filepath.Dir(os.Args[0])

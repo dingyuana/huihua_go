@@ -14,9 +14,10 @@ import (
 
 // InvoiceStateMachine handles invoice status transitions.
 type InvoiceStateMachine struct {
-	invoiceRepo    *repository.InvoiceRepository
-	paymentRepo    *repository.PaymentEntryRepository
-	auditRepo      *repository.AuditRepository
+	invoiceRepo      *repository.InvoiceRepository
+	paymentRepo      *repository.PaymentEntryRepository
+	auditRepo        *repository.AuditRepository
+	settlementLogRepo *repository.SettlementLogRepository
 }
 
 // NewInvoiceStateMachine creates a new InvoiceStateMachine.
@@ -30,6 +31,11 @@ func NewInvoiceStateMachine(
 		paymentRepo: paymentRepo,
 		auditRepo:   auditRepo,
 	}
+}
+
+// InjectSettlementLogRepo injects the settlement log repository.
+func (s *InvoiceStateMachine) InjectSettlementLogRepo(repo *repository.SettlementLogRepository) {
+	s.settlementLogRepo = repo
 }
 
 // InvoiceAction represents an action that triggers a status transition.
@@ -158,19 +164,13 @@ func (s *InvoiceStateMachine) ExecuteTransition(
 }
 
 // RollbackAllocation rolls back invoice allocation when a payment entry is cancelled.
+// Runs inside a DB transaction with SELECT FOR UPDATE on the invoice row.
+// Writes an immutable reversal settlement log capturing the before/after outstanding balances.
 func (s *InvoiceStateMachine) RollbackAllocation(
 	ctx context.Context,
 	tenantID, invoiceID, userID uuid.UUID,
 	allocatedAmount interface{},
 ) error {
-	invoice, err := s.invoiceRepo.GetByID(ctx, tenantID, invoiceID)
-	if err != nil {
-		return fmt.Errorf("get invoice: %w", err)
-	}
-	if invoice == nil {
-		return errors.New("invoice not found")
-	}
-
 	var amount decimal.Decimal
 	switch v := allocatedAmount.(type) {
 	case decimal.Decimal:
@@ -183,9 +183,27 @@ func (s *InvoiceStateMachine) RollbackAllocation(
 		return fmt.Errorf("invalid amount type: %T", allocatedAmount)
 	}
 
+	tx, err := s.invoiceRepo.BeginTx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.invoiceRepo.LockInvoiceForUpdate(ctx, tx, tenantID, invoiceID); err != nil {
+		return fmt.Errorf("lock invoice: %w", err)
+	}
+
+	invoice, err := s.invoiceRepo.GetByIDTx(ctx, tx, tenantID, invoiceID)
+	if err != nil {
+		return fmt.Errorf("get invoice (tx): %w", err)
+	}
+	if invoice == nil {
+		return errors.New("invoice not found")
+	}
+
 	newOutstanding := invoice.OutstandingAmount.Add(amount)
-	
-	if err := s.invoiceRepo.UpdateOutstandingAmount(ctx, tenantID, invoiceID, newOutstanding.String()); err != nil {
+
+	if err := s.invoiceRepo.UpdateOutstandingAmountTx(ctx, tx, tenantID, invoiceID, newOutstanding.String()); err != nil {
 		return fmt.Errorf("update outstanding amount: %w", err)
 	}
 
@@ -201,9 +219,32 @@ func (s *InvoiceStateMachine) RollbackAllocation(
 	}
 
 	if newStatus != invoice.Status {
-		if err := s.invoiceRepo.UpdateStatus(ctx, tenantID, invoiceID, newStatus); err != nil {
+		if err := s.invoiceRepo.UpdateStatusTx(ctx, tx, tenantID, invoiceID, newStatus); err != nil {
 			return fmt.Errorf("update status: %w", err)
 		}
+	}
+
+	if s.settlementLogRepo != nil {
+		// Use a manual_reversal source since RollbackAllocation is called from
+		// payment-cancellation flows that don't always pass the original payment_allocation ID.
+		// The synthetic source_id is the audit user_id so the log is traceable.
+		if err := repository.LogWriteOff(
+			ctx, tx, s.settlementLogRepo,
+			tenantID, uuid.New(), invoiceID,
+			model.SettlementLogSourceManualReversal,
+			model.SettlementLogDocSalesInvoice,
+			model.SettlementLogDirectionDebit,
+			amount,
+			invoice.OutstandingAmount,
+			newOutstanding,
+			&userID,
+		); err != nil {
+			return fmt.Errorf("write reversal settlement log: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
 	}
 
 	if s.auditRepo != nil {
@@ -212,7 +253,7 @@ func (s *InvoiceStateMachine) RollbackAllocation(
 			"status":             {invoice.Status, newStatus},
 		})
 		metadata, _ := json.Marshal(map[string]string{
-			"reason":         "payment cancelled",
+			"reason":           "payment cancelled",
 			"allocated_amount": amount.String(),
 		})
 		auditLog := &model.AuditLog{

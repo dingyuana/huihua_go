@@ -55,7 +55,17 @@ func (s *BankTxnReviewRepoSuite) setupTestTxn(status model.BankTxnReviewStatus, 
 	now := time.Now()
 	desc := "TASK-BANK-01.2-TEST-" + uuid.New().String()[:8]
 
+	// Ensure bank_account row exists before referencing it
 	_, err := s.pool.Exec(ctx, `
+		INSERT INTO bank_accounts (id, bank_name, account_number, company_id, tenant_id)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (id) DO NOTHING
+	`, bankAccountID, "测试银行", "TEST-0001", s.tenantID, s.tenantID)
+	if err != nil {
+		s.T().Fatalf("insert bank_account: %v", err)
+	}
+
+	_, err = s.pool.Exec(ctx, `
 		INSERT INTO bank_transactions (
 			id, tenant_id, bank_account_id, txn_date, description,
 			debit, credit, direction, counterparty_name, classification,

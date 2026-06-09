@@ -64,7 +64,7 @@ func TestSubmitReview_AC6(t *testing.T) {
 	pool := testPool(t)
 	tenantID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
-	// Classification that will fail because the account lookup returns nil
+	// Classification unknown — should be skipped, not error
 	txnID := seedBankTxn(ctx, pool, t, &bankTxnSeed{
 		tenantID:       tenantID,
 		status:         string(model.BankTxnReviewStatusClassified),
@@ -76,14 +76,21 @@ func TestSubmitReview_AC6(t *testing.T) {
 
 	svc := newBankTxnReviewService(pool)
 
-	_, err := svc.SubmitReview(ctx, tenantID, []string{txnID.String()}, nil)
-	if err == nil {
-		t.Fatal("expected SubmitReview to fail for missing account, but it succeeded")
+	results, err := svc.SubmitReview(ctx, tenantID, []string{txnID.String()}, nil)
+	if err != nil {
+		t.Fatalf("SubmitReview failed: %v", err)
+	}
+	if len(results.Results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results.Results))
+	}
+	result := results.Results[0]
+	if result.Outcome != "skipped" {
+		t.Errorf("expected outcome skipped for unknown classification, got %q", result.Outcome)
 	}
 
 	txn := getBankTxnByID(ctx, pool, t, txnID)
 	if txn.Status == nil || *txn.Status != string(model.BankTxnReviewStatusClassified) {
-		t.Errorf("expected status to remain classified after rollback, got %v", txn.Status)
+		t.Errorf("expected status to remain classified, got %v", txn.Status)
 	}
 }
 
@@ -106,7 +113,7 @@ func TestRejectManual_AC7(t *testing.T) {
 
 	svc := newBankTxnReviewService(pool)
 
-	err := svc.RejectManual(ctx, []string{txnID.String()})
+	err := svc.RejectManual(ctx, tenantID, []string{txnID.String()})
 	if err != nil {
 		t.Fatalf("RejectManual failed: %v", err)
 	}
@@ -173,11 +180,21 @@ func seedBankTxn(ctx context.Context, pool *pgxpool.Pool, t *testing.T, s *bankT
 	companyID := uuid.MustParse("3586c914-5eb4-426a-9d20-f297a10b147c")
 	tenantID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
+	// Ensure bank_account row exists before referencing it
+	_, err := pool.Exec(ctx, `
+		INSERT INTO bank_accounts (id, bank_name, account_number, company_id, tenant_id)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (id) DO NOTHING
+	`, bankAccountID, "测试银行", "TEST-0002", tenantID, tenantID)
+	if err != nil {
+		t.Fatalf("seed bank_account: %v", err)
+	}
+
 	// Use a random description suffix to avoid unique constraint violations
 	// when reference_no is null/empty (idx_bank_txn_unique_no_ref)
 	desc := fmt.Sprintf("test description %s", id.String())
 
-	_, err := pool.Exec(ctx, `
+	_, err = pool.Exec(ctx, `
 		INSERT INTO bank_transactions
 			(id, tenant_id, bank_account_id, company_id, txn_date, description,
 			 debit, credit, direction, classification, status, matched, confirmed,

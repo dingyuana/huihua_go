@@ -199,3 +199,9 @@ func (s *AccountService) GetTree(ctx context.Context, tenantID uuid.UUID) ([]mod
 	}
 	return []model.Account{synthetic}, nil
 }
+
+// List returns a paginated slice of accounts for the tenant.
+// `code` empty lists all; non-empty filters by exact code match.
+func (s *AccountService) List(ctx context.Context, tenantID uuid.UUID, limit, offset int, code string) ([]model.Account, int, error) {
+	return s.repo.ListPaginated(ctx, tenantID, limit, offset, code)
+}

@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,7 +56,7 @@ func (r *JournalRepository) GetByID(ctx context.Context, tenantID uuid.UUID, id 
 		       docstatus, reversed_id, reversal_id, submitted_by, submitted_at, created_by,
 		       created_at, updated_at, counterparty_name,
 		       source_doc_type, source_doc_id, source_doc_no,
-		       source_type, source_id, source_invoice_id
+		       source_type, source_id, source_invoice_id, version
 		FROM journal_entries
 		WHERE id = $1 AND tenant_id = $2`
 
@@ -65,7 +67,7 @@ func (r *JournalRepository) GetByID(ctx context.Context, tenantID uuid.UUID, id 
 		&je.SubmittedBy, &je.SubmittedAt, &je.CreatedBy, &je.CreatedAt, &je.UpdatedAt,
 		&je.CounterpartyName,
 		&je.SourceDocType, &je.SourceDocID, &je.SourceDocNo,
-		&je.SourceType, &je.SourceID, &je.SourceInvoiceID,
+		&je.SourceType, &je.SourceID, &je.SourceInvoiceID, &je.Version,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get journal entry by id: %w", err)
@@ -666,4 +668,71 @@ func (r *JournalRepository) ListUnmatched(ctx context.Context, tenantID uuid.UUI
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
+}
+
+// ErrConcurrentModification is returned by *WithVersion update methods when the
+// stored version does not match the expected version, indicating a lost-update
+// race condition.
+var ErrConcurrentModification = errors.New("concurrent modification detected")
+
+// UpdateFieldsWithVersion updates editable fields on a journal entry with optimistic
+// locking. Returns ErrConcurrentModification if the stored version does not match
+// expectedVersion. The version is auto-incremented on success.
+//
+// Use this in concurrent edit flows (e.g. voucher edit page) where two users might
+// read the same voucher, then both submit conflicting updates.
+func (r *JournalRepository) UpdateFieldsWithVersion(
+	ctx context.Context,
+	tenantID, id uuid.UUID,
+	expectedVersion int64,
+	fields map[string]interface{},
+) error {
+	if len(fields) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
+	setClauses := []string{"updated_at = NOW()", "version = version + 1"}
+	args := []interface{}{}
+	idx := 1
+	for col, val := range fields {
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, idx))
+		args = append(args, val)
+		idx++
+	}
+	args = append(args, id, tenantID, expectedVersion)
+	query := fmt.Sprintf(`
+		UPDATE journal_entries
+		SET %s
+		WHERE id = $%d AND tenant_id = $%d AND version = $%d`,
+		strings.Join(setClauses, ", "), idx, idx+1, idx+2)
+	tag, err := r.pool.Exec(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("update journal fields with version: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrConcurrentModification
+	}
+	return nil
+}
+
+// UpdateStatusWithVersion updates docstatus with optimistic locking.
+// Use for voucher submit/approve/reject/cancel flows where concurrent state
+// transitions are possible.
+func (r *JournalRepository) UpdateStatusWithVersion(
+	ctx context.Context,
+	tenantID, id uuid.UUID,
+	expectedVersion int64,
+	newStatus int16,
+) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE journal_entries
+		SET docstatus = $1, updated_at = NOW(), version = version + 1
+		WHERE id = $2 AND tenant_id = $3 AND version = $4`,
+		newStatus, id, tenantID, expectedVersion)
+	if err != nil {
+		return fmt.Errorf("update journal status with version: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrConcurrentModification
+	}
+	return nil
 }

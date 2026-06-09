@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -212,7 +213,7 @@ func (r *BankTransactionRepository) GetByID(ctx context.Context, tenantID, id uu
 	query := `
 		SELECT id, tenant_id, bank_account_id, txn_date, description, debit, credit, direction,
 			reference_no, counterparty_name, classification, matched, confirmed, matched_payment_entry_id, matched_gl_entry_id,
-			imported_from, raw_data, company_id, created_at
+			imported_from, raw_data, company_id, created_at, version
 		FROM bank_transactions
 		WHERE tenant_id = $1 AND id = $2`
 
@@ -222,7 +223,7 @@ func (r *BankTransactionRepository) GetByID(ctx context.Context, tenantID, id uu
 		&txn.Debit, &txn.Credit, &txn.Direction, &txn.ReferenceNo, &txn.CounterpartyName,
 		&txn.Classification,
 		&txn.Matched, &txn.Confirmed, &txn.MatchedPaymentEntryID, &txn.MatchedGLEntryID, &txn.ImportedFrom,
-		&txn.RawData, &txn.CompanyID, &txn.CreatedAt,
+		&txn.RawData, &txn.CompanyID, &txn.CreatedAt, &txn.Version,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get transaction by id: %w", err)
@@ -806,4 +807,47 @@ func (r *BankTransactionRepository) ListManualPending(
 	}
 
 	return txns, total, rows.Err()
+}
+
+// UpdateClassificationWithVersion updates the classification field with optimistic
+// locking. Returns an error if the stored version does not match expectedVersion.
+// Use in bank-transaction review flows where two users might both classify the
+// same row concurrently.
+func (r *BankTransactionRepository) UpdateClassificationWithVersion(
+	ctx context.Context, tenantID, id uuid.UUID,
+	expectedVersion int64,
+	classification string,
+) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE bank_transactions
+		SET classification = $1, updated_at = NOW(), version = version + 1
+		WHERE tenant_id = $2 AND id = $3 AND version = $4`,
+		classification, tenantID, id, expectedVersion)
+	if err != nil {
+		return fmt.Errorf("update classification with version: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("concurrent modification detected")
+	}
+	return nil
+}
+
+// UpdateMatchedInfoWithVersion marks a transaction as matched to a GL entry with
+// optimistic locking. Returns an error on version mismatch.
+func (r *BankTransactionRepository) UpdateMatchedInfoWithVersion(
+	ctx context.Context, tenantID, id, glEntryID uuid.UUID,
+	expectedVersion int64,
+) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE bank_transactions
+		SET matched = TRUE, matched_gl_entry_id = $1, updated_at = NOW(), version = version + 1
+		WHERE tenant_id = $2 AND id = $3 AND version = $4`,
+		glEntryID, tenantID, id, expectedVersion)
+	if err != nil {
+		return fmt.Errorf("update matched info with version: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("concurrent modification detected")
+	}
+	return nil
 }

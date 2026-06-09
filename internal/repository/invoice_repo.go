@@ -18,6 +18,97 @@ type InvoiceRepository struct {
 	pool *pgxpool.Pool
 }
 
+// BeginTx starts a new transaction for multi-step operations.
+func (r *InvoiceRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return r.pool.Begin(ctx)
+}
+
+// LockInvoiceForUpdate locks a sales_invoice row with SELECT FOR UPDATE.
+// Must be called within a transaction. Prevents concurrent allocation from over-settling.
+func (r *InvoiceRepository) LockInvoiceForUpdate(ctx context.Context, tx pgx.Tx, tenantID, id uuid.UUID) error {
+	_, err := tx.Exec(ctx, `
+		SELECT id FROM sales_invoices
+		WHERE tenant_id = $1 AND id = $2
+		FOR UPDATE`,
+		tenantID, id)
+	return err
+}
+
+// GetByIDTx retrieves a single invoice within a transaction.
+func (r *InvoiceRepository) GetByIDTx(ctx context.Context, tx pgx.Tx, tenantID, id uuid.UUID) (*model.SalesInvoice, error) {
+	inv := &model.SalesInvoice{}
+	query := `
+		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id, tenant_id,
+			posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
+			status, tax_template_id, return_against, is_return, is_reversed,
+			invoice_category, remark, source_red_invoice_no, docstatus,
+			created_by, invoice_kind, electronic_url, red_letter_info_id,
+			red_letter_reason, original_invoice_id, is_part_red, red_amount,
+			tax_authority_code, confirm_status, confirm_date, created_at
+		FROM sales_invoices WHERE tenant_id = $1 AND id = $2`
+	err := tx.QueryRow(ctx, query, tenantID, id).Scan(
+		&inv.ID, &inv.InvoiceNo, &inv.InvoiceCode, &inv.InvoiceType, &inv.CustomerID, &inv.TaxID,
+		&inv.CompanyID, &inv.TenantID, &inv.PostingDate, &inv.DueDate,
+		&inv.TotalAmount, &inv.TaxAmount, &inv.NetAmount, &inv.OutstandingAmount,
+		&inv.Status, &inv.TaxTemplateID, &inv.ReturnAgainst, &inv.IsReturn, &inv.IsReversed,
+		&inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo, &inv.DocStatus,
+		&inv.CreatedBy, &inv.InvoiceKind, &inv.ElectronicURL, &inv.RedLetterInfoID,
+		&inv.RedLetterReason, &inv.OriginalInvoiceID, &inv.IsPartRed, &inv.RedAmount,
+		&inv.TaxAuthorityCode, &inv.ConfirmStatus, &inv.ConfirmDate, &inv.CreatedAt,
+	)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get invoice (tx): %w", err)
+	}
+	return inv, nil
+}
+
+// CreateAllocationTx creates a payment allocation record within a transaction.
+func (r *InvoiceRepository) CreateAllocationTx(ctx context.Context, tx pgx.Tx, alloc *model.PaymentAllocation) error {
+	alloc.ID = uuid.New()
+	alloc.CreatedAt = time.Now()
+	_, err := tx.Exec(ctx, `
+		INSERT INTO payment_allocations (id, payment_entry_id, invoice_id, invoice_type, allocated_amount, discount_amount, tenant_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		alloc.ID, alloc.PaymentEntryID, alloc.InvoiceID, alloc.InvoiceType,
+		alloc.AllocatedAmount.String(), alloc.DiscountAmount.String(), alloc.TenantID, alloc.CreatedAt)
+	return err
+}
+
+// MarkAllocationReversed marks a payment allocation as reversed (sets reversed_at).
+func (r *InvoiceRepository) MarkAllocationReversed(ctx context.Context, tx pgx.Tx, allocationID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE payment_allocations SET reversed_at = NOW()
+		WHERE id = $1`,
+		allocationID)
+	return err
+}
+
+// GetAllocationsByInvoice retrieves all allocations for an invoice, ordered by newest first.
+func (r *InvoiceRepository) GetAllocationsByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]model.PaymentAllocation, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, payment_entry_id, invoice_id, invoice_type, allocated_amount, discount_amount, tenant_id, created_at, reversed_at
+		FROM payment_allocations WHERE tenant_id = $1 AND invoice_id = $2
+		ORDER BY created_at DESC`,
+		tenantID, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var allocs []model.PaymentAllocation
+	for rows.Next() {
+		var a model.PaymentAllocation
+		if err := rows.Scan(&a.ID, &a.PaymentEntryID, &a.InvoiceID, &a.InvoiceType,
+			&a.AllocatedAmount, &a.DiscountAmount, &a.TenantID, &a.CreatedAt, &a.ReversedAt); err != nil {
+			return nil, err
+		}
+		allocs = append(allocs, a)
+	}
+	return allocs, rows.Err()
+}
+
 // NewInvoiceRepository creates a new InvoiceRepository.
 func NewInvoiceRepository(pool *pgxpool.Pool) *InvoiceRepository {
 	return &InvoiceRepository{pool: pool}
