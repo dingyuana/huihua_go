@@ -579,6 +579,100 @@ func (s *ReconciliationService) ExecutePairs(ctx context.Context, tenantID uuid.
 	return result, nil
 }
 
+// ReversePair reverses an executed reconciliation pair within the same period.
+// Reverts: payment_allocations (reversed_at), ar_invoices (paid_amount/outstanding/status),
+// bank_transactions (matched=false), reconciliation_pairs (status=reversed).
+func (s *ReconciliationService) ReversePair(ctx context.Context, tenantID, pairID uuid.UUID) error {
+	// 1. Get pair — must be in executed status
+	pair, err := s.reconRepo.GetByID(ctx, tenantID, pairID)
+	if err != nil {
+		return fmt.Errorf("pair not found: %w", err)
+	}
+	if pair.Status != "executed" {
+		return fmt.Errorf("pair %s status is %s, expected executed to reverse", pairID, pair.Status)
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 2. Check no subsequent allocations on this invoice after this pair's execution
+	// (pair.MatchedAt indicates when the pair was originally executed)
+	var subsequentCount int
+	err = tx.QueryRow(ctx, `
+		SELECT COUNT(*) FROM payment_allocations
+		WHERE invoice_id = $1
+		  AND tenant_id = $2
+		  AND created_at > $3
+		  AND reversed_at IS NULL`,
+		pair.TargetID, tenantID, pair.MatchedAt,
+	).Scan(&subsequentCount)
+	if err != nil {
+		return fmt.Errorf("check subsequent allocations: %w", err)
+	}
+	if subsequentCount > 0 {
+		return fmt.Errorf("cannot reverse: invoice %s has %d subsequent allocation(s) after this pair", pair.TargetID, subsequentCount)
+	}
+
+	// 3. Lock ar_invoice FOR UPDATE
+	if err := s.arInvoiceRepo.LockForUpdate(ctx, tx, tenantID, pair.TargetID); err != nil {
+		return fmt.Errorf("lock invoice %s: %w", pair.TargetID, err)
+	}
+
+	// 4. Mark payment_allocations as reversed
+	_, err = tx.Exec(ctx, `
+		UPDATE payment_allocations
+		SET reversed_at = NOW()
+		WHERE payment_entry_id = $1
+		  AND invoice_id = $2
+		  AND invoice_type = 'ar_invoice'
+		  AND reversed_at IS NULL`,
+		pair.SourceID, pair.TargetID,
+	)
+	if err != nil {
+		return fmt.Errorf("reverse payment allocations: %w", err)
+	}
+
+	// 5. Revert ar_invoices paid_amount, outstanding_amount, status
+	_, err = tx.Exec(ctx, `
+		UPDATE ar_invoices
+		SET paid_amount = GREATEST(paid_amount - $3, 0),
+		    outstanding_amount = outstanding_amount + $3,
+		    last_allocation_at = NOW(),
+		    status = CASE
+		        WHEN outstanding_amount + $3 >= amount THEN 'verified'
+		        WHEN outstanding_amount + $3 > 0 THEN 'partially_paid'
+		        ELSE 'verified'
+		    END
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, pair.TargetID, pair.Amount.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("revert invoice %s: %w", pair.TargetID, err)
+	}
+
+	// 6. Revert bank_transactions matched = false (for bank_txn source)
+	if pair.SourceType == "bank_txn" {
+		_, err = tx.Exec(ctx, `
+			UPDATE bank_transactions SET matched = $3, updated_at = NOW()
+			WHERE tenant_id = $1 AND id = $2`,
+			tenantID, pair.SourceID, false,
+		)
+		if err != nil {
+			return fmt.Errorf("revert bank txn %s: %w", pair.SourceID, err)
+		}
+	}
+
+	// 7. Mark pair as reversed
+	if err := s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "reversed"); err != nil {
+		return fmt.Errorf("update pair status: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
 // ListPairs returns all pairs.
 func (s *ReconciliationService) ListPairs(ctx context.Context, tenantID uuid.UUID, status string) ([]model.ReconciliationPair, error) {
 	return s.reconRepo.ListByTenant(ctx, tenantID, status)

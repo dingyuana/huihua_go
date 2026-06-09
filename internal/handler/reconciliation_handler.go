@@ -181,3 +181,16 @@ func (h *ReconciliationHandler) ExecutePairs(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"data": result})
 }
+
+// ReversePair handles POST /reconciliation/pairs/:id/reverse.
+func (h *ReconciliationHandler) ReversePair(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	pairID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+	if err := h.svc.ReversePair(c.Context(), tenantID, pairID); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "reversed"})
+}
