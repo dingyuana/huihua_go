@@ -63,6 +63,16 @@ export function calculatePeriodSocial(periodNo: number): Promise<ApiResponse<{
   return request.post('/payroll/calculate-period-social', { period_no: periodNo })
 }
 
+/** 个税自动计算 */
+export function calculatePeriodTax(periodNo: number): Promise<ApiResponse<{
+  total_employees: number
+  total_tax: string
+  details: any[]
+  voucher: any
+}>> {
+  return request.post('/payroll/calculate-period-tax', { period_no: periodNo })
+}
+
 /** 查询社保配置列表 */
 export function fetchSocialConfig(): Promise<ApiResponse<{ configs: any[] }>> {
   return request.get('/payroll/social-config')

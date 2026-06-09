@@ -5,6 +5,7 @@
       <div class="header-actions">
         <el-button @click="showGenerateDialog = true">生成薪资凭证</el-button>
         <el-button @click="showSocialDialog = true">社保计提</el-button>
+        <el-button @click="showTaxDialog = true">个税计提</el-button>
         <el-button type="primary" @click="goCreate">新建工资单</el-button>
       </div>
     </div>
@@ -52,6 +53,47 @@
       <template #footer>
         <el-button @click="showSocialDialog = false">取消</el-button>
         <el-button type="primary" :loading="socialCalculating" @click="handleCalculateSocial">确认计提</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 个税计提对话框 -->
+    <el-dialog v-model="showTaxDialog" title="个税计提" width="520px">
+      <el-form :model="taxForm" label-width="100px">
+        <el-form-item label="会计年份" required>
+          <el-select v-model="taxForm.year" placeholder="选择年份" style="width: 100%">
+            <el-option v-for="y in availableYears" :key="y" :label="`${y}年`" :value="y" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="会计月份" required>
+          <el-select v-model="taxForm.month" placeholder="选择月份" style="width: 100%">
+            <el-option v-for="m in 12" :key="m" :label="`${m}月`" :value="m" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <div v-if="taxResult" style="margin: 0 0 16px 20px; padding: 12px; background: #f5f7fa; border-radius: 6px; line-height: 2;">
+        <div>计提总人数：<b>{{ taxResult.total_employees }}</b></div>
+        <div>个税总额：<b>¥{{ taxResult.total_tax }}</b></div>
+        <div v-if="taxResult.voucher">凭证号：<b>{{ taxResult.voucher.voucher_no }}</b></div>
+        <el-collapse style="margin-top: 8px">
+          <el-collapse-item title="查看详情" v-if="taxResult.details && taxResult.details.length">
+            <el-table :data="taxResult.details" size="small" border stripe max-height="300">
+              <el-table-column prop="employee_name" label="员工姓名" width="100" />
+              <el-table-column prop="taxable_income" label="应纳税所得额" width="130" align="right">
+                <template #default="{ row }">{{ formatAmount(row.taxable_income) }}</template>
+              </el-table-column>
+              <el-table-column prop="tax_rate" label="税率" width="70" align="right">
+                <template #default="{ row }">{{ row.tax_rate }}%</template>
+              </el-table-column>
+              <el-table-column prop="tax_amount" label="税额" width="110" align="right">
+                <template #default="{ row }">{{ formatAmount(row.tax_amount) }}</template>
+              </el-table-column>
+            </el-table>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+      <template #footer>
+        <el-button @click="showTaxDialog = false">取消</el-button>
+        <el-button type="primary" :loading="taxCalculating" @click="handleCalculateTax">确认计提</el-button>
       </template>
     </el-dialog>
 
@@ -132,7 +174,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { fetchPayrollList, deletePayroll, generatePeriodVouchers, calculatePeriodSocial } from '@/api/modules/payroll'
+import { fetchPayrollList, deletePayroll, generatePeriodVouchers, calculatePeriodSocial, calculatePeriodTax } from '@/api/modules/payroll'
 import DocStatusTag from '@/components/business/DocStatusTag.vue'
 import type { Payroll } from '@/types/models/payroll'
 
@@ -205,6 +247,34 @@ async function handleCalculateSocial() {
     ElMessage.error('社保计提失败：' + (e?.response?.data?.error || e?.message || e))
   } finally {
     socialCalculating.value = false
+  }
+}
+
+// 个税计提对话框
+const showTaxDialog = ref(false)
+const taxCalculating = ref(false)
+const taxResult = ref<any>(null)
+const taxForm = reactive({
+  year: new Date().getFullYear(),
+  month: new Date().getMonth() + 1,
+})
+
+async function handleCalculateTax() {
+  if (!taxForm.year || !taxForm.month) {
+    ElMessage.warning('请选择会计年份和月份')
+    return
+  }
+  const periodNo = taxForm.year * 100 + taxForm.month
+  taxCalculating.value = true
+  taxResult.value = null
+  try {
+    const res: any = await calculatePeriodTax(periodNo)
+    taxResult.value = res?.data || res
+    ElMessage.success('个税计提完成')
+  } catch (e: any) {
+    ElMessage.error('个税计提失败：' + (e?.response?.data?.error || e?.message || e))
+  } finally {
+    taxCalculating.value = false
   }
 }
 
