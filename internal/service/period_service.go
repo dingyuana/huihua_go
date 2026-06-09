@@ -809,7 +809,7 @@ func (s *PeriodService) GetCloseCheckSummary(ctx context.Context, tenantID uuid.
 	invoices, err := s.invoiceRepo.ListByTenant(ctx, tenantID, model.InvoiceFilter{})
 	if err == nil {
 		for _, inv := range invoices {
-			if inv.OutstandingAmount.IsPositive() && inv.DueDate.Before(cutoffDate) {
+			if inv.OutstandingAmount.IsPositive() && inv.DueDate != nil && inv.DueDate.Before(cutoffDate) {
 				overdueInvoices++
 			}
 		}
