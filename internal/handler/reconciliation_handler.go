@@ -151,3 +151,33 @@ func (h *ReconciliationHandler) ManualMatch(c *fiber.Ctx) error {
 	}
 	return c.Status(201).JSON(fiber.Map{"data": pairs, "count": len(pairs)})
 }
+
+// ExecutePairs handles POST /reconciliation/execute.
+func (h *ReconciliationHandler) ExecutePairs(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req struct {
+		PairIDs []string `json:"pair_ids"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if len(req.PairIDs) == 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "pair_ids is required"})
+	}
+
+	pairIDs := make([]uuid.UUID, 0, len(req.PairIDs))
+	for _, s := range req.PairIDs {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid pair_id: " + s})
+		}
+		pairIDs = append(pairIDs, id)
+	}
+
+	result, err := h.svc.ExecutePairs(c.Context(), tenantID, pairIDs)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error(), "partial": result})
+	}
+	return c.JSON(fiber.Map{"data": result})
+}

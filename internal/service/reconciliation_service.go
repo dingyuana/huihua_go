@@ -463,6 +463,122 @@ func (s *ReconciliationService) UnconfirmPair(ctx context.Context, tenantID, pai
 	return s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "matched")
 }
 
+// ExecutePairResult contains the result of executing reconciliation pairs.
+type ExecutePairResult struct {
+	ExecutedCount int          `json:"executed_count"`
+	FailedIDs     []uuid.UUID  `json:"failed_ids,omitempty"`
+	Errors        []string     `json:"errors,omitempty"`
+}
+
+// ExecutePairs executes confirmed reconciliation pairs in a single transaction.
+// For each pair: INSERT payment_allocations, UPDATE ar_invoices paid/outstanding/status,
+// UPDATE bank_transactions matched=true, UPDATE reconciliation_pairs status=executed.
+func (s *ReconciliationService) ExecutePairs(ctx context.Context, tenantID uuid.UUID, pairIDs []uuid.UUID) (*ExecutePairResult, error) {
+	if len(pairIDs) == 0 {
+		return &ExecutePairResult{}, nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	result := &ExecutePairResult{}
+
+	for _, pairID := range pairIDs {
+		// 1. Verify pair exists and is confirmed
+		pair, err := s.reconRepo.GetByID(ctx, tenantID, pairID)
+		if err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s not found: %v", pairID, err))
+			continue
+		}
+		if pair.Status != "confirmed" {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s status is %s, expected confirmed", pairID, pair.Status))
+			continue
+		}
+
+		now := time.Now()
+		allocID := uuid.New()
+
+		// 2. Lock ar_invoice FOR UPDATE within the transaction
+		if err := s.arInvoiceRepo.LockForUpdate(ctx, tx, tenantID, pair.TargetID); err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("lock invoice %s: %v", pair.TargetID, err))
+			continue
+		}
+
+		// 3. INSERT payment_allocations
+		_, err = tx.Exec(ctx, `
+			INSERT INTO payment_allocations (id, payment_entry_id, invoice_id, invoice_type, allocated_amount, tenant_id, created_at)
+			VALUES ($1, $2, $3, 'ar_invoice', $4, $5, $6)`,
+			allocID, pair.SourceID, pair.TargetID, pair.Amount.String(), tenantID, now,
+		)
+		if err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("insert allocation for %s: %v", pairID, err))
+			continue
+		}
+
+		// 4. UPDATE ar_invoices paid_amount, outstanding_amount, and status
+		_, err = tx.Exec(ctx, `
+			UPDATE ar_invoices
+			SET paid_amount = paid_amount + $3,
+			    outstanding_amount = amount - (paid_amount + $3),
+			    last_allocation_at = NOW(),
+			    status = CASE
+			        WHEN amount - (paid_amount + $3) <= 0 THEN 'paid'
+			        WHEN amount - (paid_amount + $3) < amount THEN 'partially_paid'
+			        ELSE status
+			    END
+			WHERE tenant_id = $1 AND id = $2`,
+			tenantID, pair.TargetID, pair.Amount.String(),
+		)
+		if err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("update invoice %s: %v", pair.TargetID, err))
+			continue
+		}
+
+		// 5. UPDATE bank_transactions matched = true (for bank_txn source pairs)
+		if pair.SourceType == "bank_txn" {
+			_, err = tx.Exec(ctx, `
+				UPDATE bank_transactions SET matched = $3, updated_at = NOW()
+				WHERE tenant_id = $1 AND id = $2`,
+				tenantID, pair.SourceID, true,
+			)
+			if err != nil {
+				result.FailedIDs = append(result.FailedIDs, pairID)
+				result.Errors = append(result.Errors, fmt.Sprintf("update bank txn %s: %v", pair.SourceID, err))
+				continue
+			}
+		}
+
+		// 6. UPDATE reconciliation_pairs status = 'executed'
+		if err := s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "executed"); err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("update pair status %s: %v", pairID, err))
+			continue
+		}
+
+		result.ExecutedCount++
+	}
+
+	if len(result.FailedIDs) > 0 {
+		tx.Rollback(ctx)
+		return result, fmt.Errorf("%d of %d pairs failed: %s",
+			len(result.FailedIDs), len(pairIDs), strings.Join(result.Errors, "; "))
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+
+	return result, nil
+}
+
 // ListPairs returns all pairs.
 func (s *ReconciliationService) ListPairs(ctx context.Context, tenantID uuid.UUID, status string) ([]model.ReconciliationPair, error) {
 	return s.reconRepo.ListByTenant(ctx, tenantID, status)
