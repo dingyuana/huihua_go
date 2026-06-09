@@ -155,13 +155,16 @@ func (s *VoucherService) CreateVoucher(ctx context.Context, tenantID, createdBy 
 
 // ListVouchersRequest holds filter params for listing vouchers.
 type ListVouchersRequest struct {
-	StartDate   *time.Time `json:"start_date,omitempty"`
-	EndDate     *time.Time `json:"end_date,omitempty"`
-	VoucherType *string    `json:"voucher_type,omitempty"`
-	DocStatus   *int16     `json:"doc_status,omitempty"`
-	AccountID   *uuid.UUID `json:"account_id,omitempty"` // filter by line account
-	Limit       int        `json:"limit,omitempty"`
-	Offset      int        `json:"offset,omitempty"`
+	StartDate   *time.Time      `json:"start_date,omitempty"`
+	EndDate     *time.Time      `json:"end_date,omitempty"`
+	VoucherType *string         `json:"voucher_type,omitempty"`
+	DocStatus   *int16          `json:"doc_status,omitempty"`
+	AccountID   *uuid.UUID      `json:"account_id,omitempty"`    // filter by line account
+	AmountMin   *decimal.Decimal `json:"amount_min,omitempty"`    // 金额范围下限
+	AmountMax   *decimal.Decimal `json:"amount_max,omitempty"`    // 金额范围上限
+	Keyword     *string          `json:"keyword,omitempty"`       // 摘要关键词
+	Limit       int              `json:"limit,omitempty"`
+	Offset      int              `json:"offset,omitempty"`
 }
 
 // VoucherDetail is a journal entry with its lines.
@@ -177,7 +180,7 @@ func (s *VoucherService) ListVouchers(ctx context.Context, tenantID uuid.UUID, r
 	if req.Limit > 0 && req.Limit <= 200 {
 		limit = req.Limit
 	}
-	return s.journalRepo.ListVouchers(ctx, tenantID, req.StartDate, req.EndDate, req.VoucherType, req.DocStatus, req.AccountID, limit, req.Offset)
+	return s.journalRepo.ListVouchers(ctx, tenantID, req.StartDate, req.EndDate, req.VoucherType, req.DocStatus, req.AccountID, req.AmountMin, req.AmountMax, req.Keyword, limit, req.Offset)
 }
 
 // GetVoucher retrieves a voucher with its lines.
