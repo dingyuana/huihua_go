@@ -166,6 +166,27 @@ func (h *PayrollHandler) GeneratePeriodVouchers(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"vouchers": vouchers})
 }
 
+// CalculatePeriodSocial handles POST /api/v1/payroll/calculate-period-social
+func (h *PayrollHandler) CalculatePeriodSocial(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	var req service.CalculatePeriodSocialRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if req.PeriodNo <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "period_no is required"})
+	}
+
+	result, err := h.svc.CalculatePeriodSocial(c.Context(), tenantID, userID, &req)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"result": result})
+}
+
 // GenerateVoucher handles POST /api/v1/payroll/:id/generate-voucher
 func (h *PayrollHandler) GenerateVoucher(c *fiber.Ctx) error {
 	idStr := c.Params("id")

@@ -14,10 +14,16 @@ import (
 
 // PayrollService handles payroll business logic.
 type PayrollService struct {
-	payrollRepo   *repository.PayrollRepository
-	journalRepo   *repository.JournalRepository
-	accountRepo   *repository.AccountRepository
-	templateSvc   *VoucherTemplateService
+	payrollRepo     *repository.PayrollRepository
+	journalRepo     *repository.JournalRepository
+	accountRepo     *repository.AccountRepository
+	templateSvc     *VoucherTemplateService
+	socialConfigRepo *repository.SocialConfigRepository
+}
+
+// SetSocialConfigRepo sets the social config repository
+func (s *PayrollService) SetSocialConfigRepo(repo *repository.SocialConfigRepository) {
+	s.socialConfigRepo = repo
 }
 
 // NewPayrollService creates a new PayrollService.
@@ -340,6 +346,186 @@ func (s *PayrollService) GeneratePeriodVouchers(ctx context.Context, tenantID uu
 	}
 
 	return []*model.JournalEntry{je1, je2, je3}, nil
+}
+
+// CalculatePeriodSocialRequest request body
+type CalculatePeriodSocialRequest struct {
+	PeriodNo int `json:"period_no"`
+}
+
+// CalculatePeriodSocialResult response body
+type CalculatePeriodSocialResult struct {
+	TotalSocial   decimal.Decimal     `json:"total_social"`
+	TotalHousing  decimal.Decimal     `json:"total_housing"`
+	TotalEmployer decimal.Decimal     `json:"total_employer"`
+	Voucher       *model.JournalEntry `json:"voucher"`
+}
+
+// CalculatePeriodSocial calculates employer social security and housing fund accrual
+// for a given payroll period based on social config rates, then generates a voucher.
+func (s *PayrollService) CalculatePeriodSocial(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID, req *CalculatePeriodSocialRequest) (*CalculatePeriodSocialResult, error) {
+	// 1. List all payroll records for the period
+	records, err := s.payrollRepo.ListByPeriod(ctx, tenantID, req.PeriodNo)
+	if err != nil {
+		return nil, fmt.Errorf("list payroll by period: %w", err)
+	}
+	if len(records) == 0 {
+		return nil, errors.New("no payroll records found for the period")
+	}
+
+	// 2. Get active social configs for the tenant
+	configs, err := s.socialConfigRepo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list social configs: %w", err)
+	}
+
+	var activeConfigs []model.SocialConfig
+	for _, c := range configs {
+		if c.IsActive {
+			activeConfigs = append(activeConfigs, c)
+		}
+	}
+
+	// 3. For each insurance type, calculate employer contribution (gross_salary × company_rate)
+	// Group by insurance_type to separate social from housing
+	type insuranceTotal struct {
+		total     decimal.Decimal
+		isHousing bool
+	}
+	grouped := make(map[string]insuranceTotal)
+
+	for _, cfg := range activeConfigs {
+		companyRate, err := decimal.NewFromString(cfg.CompanyRate)
+		if err != nil {
+			return nil, fmt.Errorf("parse company_rate for %s: %w", cfg.InsuranceType, err)
+		}
+
+		var total decimal.Decimal
+		for _, r := range records {
+			total = total.Add(r.GrossSalary.Mul(companyRate))
+		}
+
+		grouped[cfg.InsuranceType] = insuranceTotal{
+			total:     total,
+			isHousing: cfg.InsuranceType == "housing",
+		}
+	}
+
+	// 4. Aggregate totals
+	var totalSocial, totalHousing decimal.Decimal
+	for _, gt := range grouped {
+		if gt.isHousing {
+			totalHousing = totalHousing.Add(gt.total)
+		} else {
+			totalSocial = totalSocial.Add(gt.total)
+		}
+	}
+	totalEmployer := totalSocial.Add(totalHousing)
+
+	// 5. Generate accrual voucher
+	companyID := records[0].CompanyID
+	postingDate := records[0].PaymentDate
+
+	voucher, err := s.GenerateSocialVoucher(ctx, tenantID, userID, req.PeriodNo, totalSocial, totalHousing, companyID, postingDate)
+	if err != nil {
+		return nil, fmt.Errorf("generate social voucher: %w", err)
+	}
+
+	return &CalculatePeriodSocialResult{
+		TotalSocial:   totalSocial,
+		TotalHousing:  totalHousing,
+		TotalEmployer: totalEmployer,
+		Voucher:       voucher,
+	}, nil
+}
+
+// GenerateSocialVoucher creates a social security & housing fund accrual journal voucher.
+//
+//	Dr: 5601(管理费用-社保) = totalSocial + totalHousing
+//	Cr: 2211(应付职工薪酬-社保) = totalSocial
+//	Cr: 2211(应付职工薪酬-公积金) = totalHousing
+func (s *PayrollService) GenerateSocialVoucher(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID, periodNo int, totalSocial, totalHousing decimal.Decimal, companyID uuid.UUID, postingDate time.Time) (*model.JournalEntry, error) {
+	// Lookup accounts
+	account5601, err := s.accountRepo.GetByCode(ctx, tenantID, "5601")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 5601: %w", err)
+	}
+	account2211, err := s.accountRepo.GetByCode(ctx, tenantID, "2211")
+	if err != nil {
+		return nil, fmt.Errorf("lookup account 2211: %w", err)
+	}
+
+	// Generate voucher number
+	voucherResp, err := s.templateSvc.GenerateVoucherNumber(ctx, tenantID)
+	voucherNo := ""
+	if err == nil && voucherResp != nil {
+		voucherNo = voucherResp.VoucherNumber
+	}
+	if voucherNo == "" {
+		voucherNo = fmt.Sprintf("PY-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano()%1000000)
+	}
+
+	// Build period description
+	remark := fmt.Sprintf("%d年%d月社保公积金计提(公司部分)", periodNo/100, periodNo%100)
+
+	// Create journal entry
+	je := &model.JournalEntry{
+		ID:            uuid.New(),
+		VoucherNo:     voucherNo,
+		VoucherType:   ptr("Payroll"),
+		PostingDate:   postingDate,
+		CompanyID:     companyID,
+		TenantID:      tenantID,
+		DocStatus:     1,
+		CreatedBy:     userID,
+		SourceDocType: ptr("payroll"),
+		Remark:        &remark,
+	}
+
+	je, err = s.journalRepo.Create(ctx, tenantID, je)
+	if err != nil {
+		return nil, fmt.Errorf("create journal entry: %w", err)
+	}
+
+	totalAmount := totalSocial.Add(totalHousing)
+
+	// Build lines: 1 debit + 2 credits
+	lines := []model.JournalEntryLine{
+		{
+			ID:          uuid.New(),
+			AccountID:   account5601.ID,
+			Debit:       totalAmount,
+			Credit:      decimal.Zero,
+			AccountCode: account5601.Code,
+			AccountName: account5601.Name,
+			TenantID:    tenantID,
+		},
+		{
+			ID:          uuid.New(),
+			AccountID:   account2211.ID,
+			Debit:       decimal.Zero,
+			Credit:      totalSocial,
+			AccountCode: account2211.Code,
+			AccountName: account2211.Name + "-社保",
+			TenantID:    tenantID,
+		},
+		{
+			ID:          uuid.New(),
+			AccountID:   account2211.ID,
+			Debit:       decimal.Zero,
+			Credit:      totalHousing,
+			AccountCode: account2211.Code,
+			AccountName: account2211.Name + "-公积金",
+			TenantID:    tenantID,
+		},
+	}
+
+	_, err = s.journalRepo.AddLines(ctx, tenantID, je.ID, lines)
+	if err != nil {
+		return nil, fmt.Errorf("add journal entry lines: %w", err)
+	}
+
+	return je, nil
 }
 
 // GenerateVoucherFromPayroll generates a journal voucher from a payroll record.
