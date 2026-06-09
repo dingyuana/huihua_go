@@ -191,3 +191,47 @@ func (h *PeriodHandler) CloseCheckSummary(c *fiber.Ctx) error {
 
 	return c.JSON(result)
 }
+
+// PreviewClosing handles POST /api/v1/periods/preview-closing
+func (h *PeriodHandler) PreviewClosing(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req struct {
+		PeriodNo int `json:"period_no"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if req.PeriodNo <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "period_no is required"})
+	}
+
+	preview, err := h.svc.PreviewClosing(c.Context(), tenantID, req.PeriodNo)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": preview})
+}
+
+// ExecuteClosing handles POST /api/v1/periods/execute-closing
+func (h *PeriodHandler) ExecuteClosing(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req struct {
+		PeriodNo int    `json:"period_no"`
+		UserID   string `json:"user_id"`
+		UserName string `json:"user_name"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if req.PeriodNo <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "period_no is required"})
+	}
+
+	result, err := h.svc.ExecuteClosing(c.Context(), tenantID, req.PeriodNo, req.UserID, req.UserName)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": result})
+}

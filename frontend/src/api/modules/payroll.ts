@@ -47,3 +47,8 @@ export function approvePayroll(id: string): Promise<ApiResponse<{ voucher_id: st
 export function generateVoucherFromPayroll(id: string): Promise<ApiResponse<{ voucher_id: string }>> {
   return request.post(`/payroll/${id}/generate-voucher`)
 }
+
+/** 一键生成期间计提凭证 */
+export function generatePeriodVouchers(periodNo: number): Promise<ApiResponse<{ vouchers: any[] }>> {
+  return request.post('/payroll/generate-period-vouchers', { period_no: periodNo })
+}

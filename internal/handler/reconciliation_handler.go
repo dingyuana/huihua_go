@@ -21,7 +21,19 @@ func NewReconciliationHandler(svc *service.ReconciliationService) *Reconciliatio
 func (h *ReconciliationHandler) Run(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)
 	periodNo := c.QueryInt("period_no", 0)
-	result, err := h.svc.Reconcile(c.Context(), tenantID, periodNo)
+	tolerance := service.ToleranceConfig{
+		Percent: decimal.NewFromInt(10),
+		Enabled: true,
+	}
+	if t := c.Query("tolerance_percent"); t != "" {
+		if p, err := decimal.NewFromString(t); err == nil && p.GreaterThan(decimal.Zero) {
+			tolerance.Percent = p
+		}
+	}
+	if t := c.Query("tolerance_enabled"); t == "false" {
+		tolerance.Enabled = false
+	}
+	result, err := h.svc.Reconcile(c.Context(), tenantID, periodNo, tolerance)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -73,6 +85,16 @@ func (h *ReconciliationHandler) GetUnmatched(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"data": items})
+}
+
+// GetUnmatchedSummary returns unmatched amounts grouped by counterparty.
+func (h *ReconciliationHandler) GetUnmatchedSummary(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	summary, err := h.svc.GetUnmatchedSummary(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": summary})
 }
 
 // PreCheck handles POST /reconciliation/precheck.
@@ -150,4 +172,78 @@ func (h *ReconciliationHandler) ManualMatch(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.Status(201).JSON(fiber.Map{"data": pairs, "count": len(pairs)})
+}
+
+// ExecutePairs handles POST /reconciliation/execute.
+func (h *ReconciliationHandler) ExecutePairs(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req struct {
+		PairIDs []string `json:"pair_ids"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if len(req.PairIDs) == 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "pair_ids is required"})
+	}
+
+	pairIDs := make([]uuid.UUID, 0, len(req.PairIDs))
+	for _, s := range req.PairIDs {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid pair_id: " + s})
+		}
+		pairIDs = append(pairIDs, id)
+	}
+
+	result, err := h.svc.ExecutePairs(c.Context(), tenantID, pairIDs)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error(), "partial": result})
+	}
+	return c.JSON(fiber.Map{"data": result})
+}
+
+// ReversePair handles POST /reconciliation/pairs/:id/reverse.
+func (h *ReconciliationHandler) ReversePair(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	pairID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
+	if err := h.svc.ReversePair(c.Context(), tenantID, pairID); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "reversed"})
+}
+
+// ForcePass handles POST /reconciliation/precheck/force-pass.
+func (h *ReconciliationHandler) ForcePass(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req struct {
+		PaymentID string `json:"payment_id"`
+		InvoiceID string `json:"invoice_id"`
+		Reason    string `json:"reason,omitempty"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if req.PaymentID == "" || req.InvoiceID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "payment_id and invoice_id are required"})
+	}
+	paymentID, err := uuid.Parse(req.PaymentID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid payment_id"})
+	}
+	invoiceID, err := uuid.Parse(req.InvoiceID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid invoice_id"})
+	}
+
+	pair, err := h.svc.ForcePass(c.Context(), tenantID, paymentID, invoiceID, req.Reason)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(201).JSON(fiber.Map{"data": pair})
 }

@@ -101,5 +101,23 @@ export function closePeriod(data: ClosePeriodRequest): Promise<ApiResponse<{ mes
 }
 
 export function unclosePeriod(periodNo: number): Promise<ApiResponse<{ message: string }>> {
-  return request.post(`/periods/${periodNo}/unclose`)
+	return request.post(`/periods/${periodNo}/unclose`)
+}
+
+// ─── 损益结转预览与执行 ───
+
+export interface ClosingPreviewResult {
+	total_income: string
+	total_expense: string
+	net_income: string
+	voucher_no?: string
+	entry_count?: number
+}
+
+export function previewClosing(periodNo: number): Promise<ApiResponse<ClosingPreviewResult>> {
+	return request.post('/periods/preview-closing', { period_no: periodNo })
+}
+
+export function executeClosing(periodNo: number, userId: string, userName: string): Promise<ApiResponse<ClosingPreviewResult>> {
+	return request.post('/periods/execute-closing', { period_no: periodNo, user_id: userId, user_name: userName })
 }

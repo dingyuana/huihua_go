@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
 	"huihua/finance/internal/service"
@@ -450,11 +451,33 @@ func (h *VoucherHandler) List(c *fiber.Ctx) error {
 	}
 	offset := c.QueryInt("offset", 0)
 
+	// Parse decimal query params
+	var amountMin, amountMax *decimal.Decimal
+	if am := c.Query("amount_min"); am != "" {
+		if d, err := decimal.NewFromString(am); err == nil {
+			amountMin = &d
+		}
+	}
+	if am := c.Query("amount_max"); am != "" {
+		if d, err := decimal.NewFromString(am); err == nil {
+			amountMax = &d
+		}
+	}
+
+	// Parse keyword
+	var keyword *string
+	if kw := c.Query("keyword"); kw != "" {
+		keyword = &kw
+	}
+
 	vouchers, err := h.voucherSvc.ListVouchers(c.Context(), tenantID, &service.ListVouchersRequest{
-		StartDate: startDate,
-		EndDate:   endDate,
-		Limit:     limit,
-		Offset:    offset,
+		StartDate:  startDate,
+		EndDate:    endDate,
+		Limit:      limit,
+		Offset:     offset,
+		AmountMin:  amountMin,
+		AmountMax:  amountMax,
+		Keyword:    keyword,
 	})
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})

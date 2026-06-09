@@ -17,6 +17,7 @@ type Config struct {
 	JWT       JWTConfig
 	Minimax   MinimaxConfig
 	Sensenova SensenovaConfig
+	Agnes     AgnesConfig
 }
 
 type AppConfig struct {
@@ -67,6 +68,12 @@ type SensenovaConfig struct {
 	APIBaseURL string
 }
 
+type AgnesConfig struct {
+	APIKey    string
+	ModelName string
+	APIBaseURL string
+}
+
 func Load() *Config {
 	viper.SetEnvPrefix("HF")
 	viper.AutomaticEnv()
@@ -80,6 +87,7 @@ func Load() *Config {
 		"APP_", "app.",
 		"MINIMAX_", "minimax.",
 		"SENSENOVA_", "sensenova.",
+		"AGNES_", "agnes.",
 	))
 
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -89,8 +97,10 @@ func Load() *Config {
 	viper.SetDefault("app.mode", "development")
 	viper.SetDefault("minimax.model_name", "abab3.0-chat")
 	viper.SetDefault("minimax.api_base_url", "https://api.minimax.chat/v1")
-	viper.SetDefault("sensenova.model_name", "SenseChat")
-	viper.SetDefault("sensenova.api_base_url", "https://api.sensenova.cn/v1")
+	viper.SetDefault("sensenova.model_name", "deepseek-v4-flash")
+	viper.SetDefault("sensenova.api_base_url", "https://token.sensenova.cn/v1")
+	viper.SetDefault("agnes.model_name", "agnes-2.0")
+	viper.SetDefault("agnes.api_base_url", "https://www.agnes-ai.com/doc/agnes-2.0")
 
 	// Try executable dir first, then current working directory
 	exeDir := filepath.Dir(os.Args[0])

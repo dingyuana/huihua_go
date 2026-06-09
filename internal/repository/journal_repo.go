@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 )
 
@@ -477,7 +478,7 @@ func (r *JournalRepository) GetLines(ctx context.Context, tenantID uuid.UUID, jo
 }
 
 // ListVouchers retrieves vouchers with optional filters (for manual CRUD UI).
-func (r *JournalRepository) ListVouchers(ctx context.Context, tenantID uuid.UUID, startDate, endDate *time.Time, voucherType *string, docStatus *int16, accountID *uuid.UUID, limit, offset int) ([]model.JournalEntry, error) {
+func (r *JournalRepository) ListVouchers(ctx context.Context, tenantID uuid.UUID, startDate, endDate *time.Time, voucherType *string, docStatus *int16, accountID *uuid.UUID, amountMin, amountMax *decimal.Decimal, keyword *string, limit, offset int) ([]model.JournalEntry, error) {
 	query := `
 		SELECT je.id, je.voucher_no, je.voucher_type, je.posting_date, je.company_id,
 		       je.tenant_id, je.remark, je.docstatus, je.reversed_id, je.reversal_id,
@@ -533,6 +534,24 @@ func (r *JournalRepository) ListVouchers(ctx context.Context, tenantID uuid.UUID
 	if docStatus != nil {
 		query += fmt.Sprintf(" AND je.docstatus = $%d", argIdx)
 		args = append(args, *docStatus)
+		argIdx++
+	}
+
+	// Amount range filter — use the lateral subquery totals
+	if amountMin != nil {
+		query += fmt.Sprintf(" AND (COALESCE(jl.debit_total, 0) >= $%d OR COALESCE(jl.credit_total, 0) >= $%d)", argIdx, argIdx)
+		args = append(args, *amountMin)
+		argIdx++
+	}
+	if amountMax != nil {
+		query += fmt.Sprintf(" AND (COALESCE(jl.debit_total, 0) <= $%d OR COALESCE(jl.credit_total, 0) <= $%d)", argIdx, argIdx)
+		args = append(args, *amountMax)
+		argIdx++
+	}
+	// Keyword filter on remark
+	if keyword != nil {
+		query += fmt.Sprintf(" AND je.remark ILIKE '%%' || $%d || '%%'", argIdx)
+		args = append(args, *keyword)
 		argIdx++
 	}
 

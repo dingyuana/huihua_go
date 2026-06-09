@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS reconciliation_pairs (
     target_id UUID NOT NULL,
     amount DECIMAL(18, 2) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',  -- pending / matched / confirmed
-    match_level VARCHAR(5) NOT NULL,  -- L1 / L2 / L3 / L4 / L5
+    match_level VARCHAR(20) NOT NULL,  -- L1 / L2 / L3 / L4 / L5 / manual
     matched_at TIMESTAMPTZ,
     confirmed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
