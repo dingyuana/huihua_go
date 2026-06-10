@@ -23,6 +23,15 @@
             />
           </el-select>
         </el-card>
+        <el-card v-if="currentPayment" shadow="never" class="payment-detail-card">
+          <template #header>收款单详情</template>
+          <div class="payment-detail">
+            <p><b>对方：</b>{{ currentPayment.counterparty_name || '-' }}</p>
+            <p><b>金额：</b>¥{{ paymentAmount(currentPayment) }}</p>
+            <p><b>日期：</b>{{ currentPayment.txn_date || '-' }}</p>
+            <p v-if="currentPayment.description"><b>摘要：</b>{{ currentPayment.description }}</p>
+          </div>
+        </el-card>
       </el-col>
       <el-col :span="10">
         <el-card shadow="never">
@@ -56,18 +65,6 @@
               <template #default="{ row }"><el-checkbox :model-value="isSelected(row)" /></template>
             </el-table-column>
           </el-table>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never">
-          <template #header>收款单详情</template>
-          <div v-if="currentPayment" class="payment-detail">
-            <p><b>对方：</b>{{ currentPayment.counterparty_name || '-' }}</p>
-            <p><b>金额：</b>¥{{ paymentAmount(currentPayment) }}</p>
-            <p><b>日期：</b>{{ currentPayment.txn_date || '-' }}</p>
-            <p v-if="currentPayment.description"><b>摘要：</b>{{ currentPayment.description }}</p>
-          </div>
-          <div v-else class="payment-detail empty">请先选择收款单</div>
         </el-card>
       </el-col>
     </el-row>
@@ -179,11 +176,25 @@ function paymentAmount(p: any): string {
 }
 
 const filteredInvoices = computed(() => {
-  if (!invoiceFilter.value) return invoices.value
-  const q = invoiceFilter.value.toLowerCase()
-  return invoices.value.filter((inv: any) =>
-    (inv.invoice_no || '').toLowerCase().includes(q)
-  )
+  const partyName = currentPayment.value?.counterparty_name || ''
+  let list = invoices.value
+  // 只显示与收款单对方名称一致的发票
+  if (partyName) {
+    list = list.filter((inv: any) => {
+      const invName = (inv.customer_name || '').trim().toLowerCase()
+      return invName === partyName.trim().toLowerCase()
+    })
+  } else {
+    return [] // 未选收款单不显示发票
+  }
+  // 文本搜索过滤
+  if (invoiceFilter.value) {
+    const q = invoiceFilter.value.toLowerCase()
+    list = list.filter((inv: any) =>
+      (inv.invoice_no || '').toLowerCase().includes(q)
+    )
+  }
+  return list
 })
 
 async function loadPayments() {
@@ -309,6 +320,7 @@ async function execute() {
 <style scoped>
 .page-header h3 { font-size: 18px; margin-bottom: 16px; }
 .selection-row { margin-bottom: 16px; }
+.payment-detail-card { margin-top: 12px; }
 .payment-detail { font-size: 13px; line-height: 1.8; }
 .payment-detail.empty { color: #999; }
 .precheck-card { margin-bottom: 16px; }
