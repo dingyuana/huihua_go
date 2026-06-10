@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS reconciliation_pairs (
     target_type VARCHAR(20) NOT NULL,  -- invoice / payment
     target_id UUID NOT NULL,
     amount DECIMAL(18, 2) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',  -- pending / matched / confirmed
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',  -- pending / matched / confirmed / executed / reversed
     match_level VARCHAR(20) NOT NULL,  -- L1 / L2 / L3 / L4 / L5 / manual
     matched_at TIMESTAMPTZ,
     confirmed_at TIMESTAMPTZ,

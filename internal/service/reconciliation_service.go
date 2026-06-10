@@ -739,10 +739,10 @@ func (s *ReconciliationService) ReversePair(ctx context.Context, tenantID, pairI
 			    outstanding_amount = outstanding_amount + $3,
 			    last_allocation_at = NOW(),
 			    status = CASE
-			        WHEN outstanding_amount + $3 >= amount THEN 'verified'
-			        WHEN outstanding_amount + $3 > 0 THEN 'partially_paid'
-			        ELSE 'verified'
-			    END
+			            WHEN outstanding_amount + $3 >= amount THEN 'confirmed'
+			            WHEN outstanding_amount + $3 > 0 THEN 'partially_paid'
+			            ELSE 'confirmed'
+			        END
 			WHERE tenant_id = $1 AND id = $2`,
 			tenantID, pair.TargetID, pair.Amount.String(),
 		)

@@ -16,7 +16,7 @@ type ReconciliationPair struct {
 	TargetType  string          `json:"target_type" db:"target_type"` // invoice / payment
 	TargetID    uuid.UUID       `json:"target_id" db:"target_id"`
 	Amount      decimal.Decimal `json:"amount" db:"amount"`
-	Status      string          `json:"status" db:"status"`           // pending / matched / confirmed
+	Status      string          `json:"status" db:"status"`           // pending / matched / confirmed / executed / reversed
 	MatchLevel  string          `json:"match_level" db:"match_level"` // L1/L2/L3/L4/L5
 	MatchedAt   *time.Time      `json:"matched_at" db:"matched_at"`
 	ConfirmedAt *time.Time      `json:"confirmed_at" db:"confirmed_at"`
