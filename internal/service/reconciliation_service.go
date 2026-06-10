@@ -410,16 +410,32 @@ func (s *ReconciliationService) PreCheck(ctx context.Context, tenantID, paymentI
 		if bankTxn.CounterpartyName != nil {
 			bankCounterparty = *bankTxn.CounterpartyName
 		}
-		if bankCounterparty != "" && inv.CustomerName != "" &&
-			bankCounterparty != inv.CustomerName {
+		if bankCounterparty != "" && inv.CustomerName != "" {
+			if bankCounterparty != inv.CustomerName {
+				checks = append(checks, model.PreCheckItem{
+					ID: "customer_match", Name: "客商一致性",
+					Status: "warning", Message: "收款单对方(" + bankCounterparty + ") 与发票客户(" + inv.CustomerName + ") 不一致，请确认",
+				})
+			} else {
+				checks = append(checks, model.PreCheckItem{
+					ID: "customer_match", Name: "客商一致性",
+					Status: "passed", Message: "收款单对方(" + bankCounterparty + ") 与发票客户(" + inv.CustomerName + ") 一致",
+				})
+			}
+		} else if bankCounterparty == "" && inv.CustomerName != "" {
 			checks = append(checks, model.PreCheckItem{
 				ID: "customer_match", Name: "客商一致性",
-				Status: "warning", Message: "收款单对方(" + bankCounterparty + ") 与发票客户(" + inv.CustomerName + ") 不一致，请确认",
+				Status: "warning", Message: "无法比对：收款单缺少对方名称（发票客户: " + inv.CustomerName + "）",
+			})
+		} else if inv.CustomerName == "" && bankCounterparty != "" {
+			checks = append(checks, model.PreCheckItem{
+				ID: "customer_match", Name: "客商一致性",
+				Status: "warning", Message: "无法比对：发票缺少客户名称（收款单对方: " + bankCounterparty + "）",
 			})
 		} else {
 			checks = append(checks, model.PreCheckItem{
 				ID: "customer_match", Name: "客商一致性",
-				Status: "passed", Message: "收款单与发票客商信息匹配",
+				Status: "warning", Message: "无法比对：双方均缺少名称信息",
 			})
 		}
 	}
