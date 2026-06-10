@@ -40,6 +40,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
         { path: '/setup/bank-accounts', title: '资金账户' },
         { path: '/setup/parties', title: '客商档案' },
         { path: '/setup/rules', title: '规则库' },
+        { path: '/classification-rules', title: '分类科目映射规则' },
         { path: '/setup/voucher-templates', title: '凭证模板' },
       ],
     },
