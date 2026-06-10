@@ -63,6 +63,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '规则库', roles: ['admin'] },
       },
       {
+        path: 'classification-rules',
+        name: 'ClassificationRuleList',
+        component: () => import('@/views/classification-rules/ClassificationRuleList.vue'),
+        meta: { title: '分类科目映射规则', roles: ['admin'] },
+      },
+      {
         path: 'setup/voucher-templates',
         name: 'VoucherTemplateList',
         component: () => import('@/views/setup/VoucherTemplateList.vue'),
