@@ -27,6 +27,41 @@ func (s *PayrollService) SetSocialConfigRepo(repo *repository.SocialConfigReposi
 	s.socialConfigRepo = repo
 }
 
+// ListSocialConfigs returns all social configs for a tenant.
+func (s *PayrollService) ListSocialConfigs(ctx context.Context, tenantID uuid.UUID) ([]model.SocialConfig, error) {
+	return s.socialConfigRepo.ListByTenant(ctx, tenantID)
+}
+
+// UpdateSocialConfigRequest is the request body for updating a social config.
+type UpdateSocialConfigRequest struct {
+	CompanyRate  string `json:"company_rate"`
+	PersonalRate string `json:"personal_rate"`
+	IsActive     *bool  `json:"is_active"`
+}
+
+// UpdateSocialConfig updates a social config's rates and active status.
+func (s *PayrollService) UpdateSocialConfig(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, req *UpdateSocialConfigRequest) error {
+	existing, err := s.socialConfigRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		return fmt.Errorf("get social config: %w", err)
+	}
+	if existing == nil {
+		return errors.New("social config not found")
+	}
+
+	if req.CompanyRate != "" {
+		existing.CompanyRate = req.CompanyRate
+	}
+	if req.PersonalRate != "" {
+		existing.PersonalRate = req.PersonalRate
+	}
+	if req.IsActive != nil {
+		existing.IsActive = *req.IsActive
+	}
+
+	return s.socialConfigRepo.Update(ctx, tenantID, existing)
+}
+
 // NewPayrollService creates a new PayrollService.
 func NewPayrollService(
 	payrollRepo *repository.PayrollRepository,

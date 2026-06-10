@@ -270,3 +270,37 @@ func (h *PayrollHandler) ExportTax(c *fiber.Ctx) error {
 	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="tax_%d.xlsx"`, periodNo))
 	return c.Send(data)
 }
+
+// HandleListSocialConfigs handles GET /api/v1/payroll/social-config
+func (h *PayrollHandler) HandleListSocialConfigs(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	configs, err := h.svc.ListSocialConfigs(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"configs": configs})
+}
+
+// HandleUpdateSocialConfig handles PUT /api/v1/payroll/social-config/:id
+func (h *PayrollHandler) HandleUpdateSocialConfig(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	}
+
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req service.UpdateSocialConfigRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	if err := h.svc.UpdateSocialConfig(c.Context(), tenantID, id, &req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "social config updated"})
+}
