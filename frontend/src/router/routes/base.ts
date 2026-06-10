@@ -94,6 +94,24 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '收付款单', roles: ['cashier', 'admin', 'agent'] },
       },
       {
+        path: 'payments/new',
+        name: 'PaymentForm',
+        component: () => import('@/views/payments/PaymentForm.vue'),
+        meta: { title: '新增收付款单', roles: ['cashier', 'admin', 'agent'] },
+      },
+      {
+        path: 'payments/:id',
+        name: 'PaymentDetail',
+        component: () => import('@/views/payments/PaymentDetail.vue'),
+        meta: { title: '收付款单详情', roles: ['cashier', 'admin', 'agent'] },
+      },
+      {
+        path: 'payments/:id/edit',
+        name: 'PaymentEdit',
+        component: () => import('@/views/payments/PaymentForm.vue'),
+        meta: { title: '编辑收付款单', roles: ['cashier', 'admin', 'agent'] },
+      },
+      {
         path: 'invoices',
         name: 'InvoiceList',
         component: () => import('@/views/invoices/InvoiceList.vue'),
