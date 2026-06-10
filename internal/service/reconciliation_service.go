@@ -322,10 +322,15 @@ func (s *ReconciliationService) PreCheck(ctx context.Context, tenantID, paymentI
 			Status: "blocked", Message: "收款单不存在",
 		})
 	} else {
-		if bankTxn.Matched {
+		if bankTxn.MatchedGLEntryID != nil {
 			checks = append(checks, model.PreCheckItem{
 				ID: "payment_exists", Name: "收款单有效",
-				Status: "blocked", Message: "该收款单已被核销，不可重复核销",
+				Status: "blocked", Message: "该收款单已生成凭证，不可核销",
+			})
+		} else if bankTxn.MatchedPaymentEntryID != nil {
+			checks = append(checks, model.PreCheckItem{
+				ID: "payment_exists", Name: "收款单有效",
+				Status: "warning", Message: "该收款单已有对应收付款单，核销后需关联处理",
 			})
 		} else if bankTxn.Credit.IsZero() && bankTxn.Debit.IsZero() {
 			checks = append(checks, model.PreCheckItem{
