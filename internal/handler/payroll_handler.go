@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"fmt"
+	"strconv"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"huihua/finance/internal/service"
@@ -166,6 +169,48 @@ func (h *PayrollHandler) GeneratePeriodVouchers(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"vouchers": vouchers})
 }
 
+// CalculatePeriodSocial handles POST /api/v1/payroll/calculate-period-social
+func (h *PayrollHandler) CalculatePeriodSocial(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	var req service.CalculatePeriodSocialRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if req.PeriodNo <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "period_no is required"})
+	}
+
+	result, err := h.svc.CalculatePeriodSocial(c.Context(), tenantID, userID, &req)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"result": result})
+}
+
+// CalculatePeriodTax handles POST /api/v1/payroll/calculate-period-tax
+func (h *PayrollHandler) CalculatePeriodTax(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+
+	var req service.CalculatePeriodTaxRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if req.PeriodNo <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "period_no is required"})
+	}
+
+	result, err := h.svc.CalculatePeriodTax(c.Context(), tenantID, userID, &req)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"result": result})
+}
+
 // GenerateVoucher handles POST /api/v1/payroll/:id/generate-voucher
 func (h *PayrollHandler) GenerateVoucher(c *fiber.Ctx) error {
 	idStr := c.Params("id")
@@ -186,4 +231,76 @@ func (h *PayrollHandler) GenerateVoucher(c *fiber.Ctx) error {
 		"voucher_id": voucher.ID,
 		"voucher_no": voucher.VoucherNo,
 	})
+}
+
+// ExportSalary handles GET /api/v1/payroll/export-salary
+func (h *PayrollHandler) ExportSalary(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+	periodNo, err := strconv.Atoi(c.Query("period_no"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "period_no is required"})
+	}
+
+	data, err := h.svc.ExportSalaryExcel(c.Context(), tenantID, userID, periodNo)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="salary_%d.xlsx"`, periodNo))
+	return c.Send(data)
+}
+
+// ExportTax handles GET /api/v1/payroll/export-tax
+func (h *PayrollHandler) ExportTax(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+	periodNo, err := strconv.Atoi(c.Query("period_no"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "period_no is required"})
+	}
+
+	data, err := h.svc.ExportTaxExcel(c.Context(), tenantID, userID, periodNo)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="tax_%d.xlsx"`, periodNo))
+	return c.Send(data)
+}
+
+// HandleListSocialConfigs handles GET /api/v1/payroll/social-config
+func (h *PayrollHandler) HandleListSocialConfigs(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	configs, err := h.svc.ListSocialConfigs(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"configs": configs})
+}
+
+// HandleUpdateSocialConfig handles PUT /api/v1/payroll/social-config/:id
+func (h *PayrollHandler) HandleUpdateSocialConfig(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	}
+
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+
+	var req service.UpdateSocialConfigRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	if err := h.svc.UpdateSocialConfig(c.Context(), tenantID, id, &req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "social config updated"})
 }

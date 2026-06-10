@@ -52,3 +52,63 @@ export function generateVoucherFromPayroll(id: string): Promise<ApiResponse<{ vo
 export function generatePeriodVouchers(periodNo: number): Promise<ApiResponse<{ vouchers: any[] }>> {
   return request.post('/payroll/generate-period-vouchers', { period_no: periodNo })
 }
+
+/** 社保计提计算 */
+export function calculatePeriodSocial(periodNo: number): Promise<ApiResponse<{
+  total_social: string
+  total_housing: string
+  total_employer: string
+  voucher: any
+}>> {
+  return request.post('/payroll/calculate-period-social', { period_no: periodNo })
+}
+
+/** 个税自动计算 */
+export function calculatePeriodTax(periodNo: number): Promise<ApiResponse<{
+  total_employees: number
+  total_tax: string
+  details: any[]
+  voucher: any
+}>> {
+  return request.post('/payroll/calculate-period-tax', { period_no: periodNo })
+}
+
+/** 查询社保配置列表 */
+export function fetchSocialConfig(): Promise<ApiResponse<{ configs: any[] }>> {
+  return request.get('/payroll/social-config')
+}
+
+/** 更新社保配置 */
+export function updateSocialConfig(id: string, data: { company_rate?: string; personal_rate?: string; is_active?: boolean }): Promise<ApiResponse<void>> {
+  return request.put(`/payroll/social-config/${id}`, data)
+}
+
+/** 导出工资单Excel */
+export async function exportSalaryExcel(periodNo: number): Promise<void> {
+  const token = localStorage.getItem('huihua_token')
+  const response = await fetch(`/api/v1/payroll/export-salary?period_no=${periodNo}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `salary_${periodNo}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** 导出一个税明细Excel */
+export async function exportTaxExcel(periodNo: number): Promise<void> {
+  const token = localStorage.getItem('huihua_token')
+  const response = await fetch(`/api/v1/payroll/export-tax?period_no=${periodNo}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `tax_${periodNo}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}

@@ -66,6 +66,13 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
     { path: '/reports/aging', title: '账龄分析', icon: 'Histogram' },
     { path: '/reports/credit', title: '信用管控', icon: 'CreditCardFilled' },
     {
+      path: '/payroll', title: '工资单', icon: 'Money',
+      children: [
+        { path: '/payroll', title: '工资单列表' },
+        { path: '/payroll/social-config', title: '社保配置' },
+      ],
+    },
+    {
       path: '/reconciliation', title: '核销中心', icon: 'Link',
       children: [
         { path: '/reconciliation/precheck', title: '预检' },

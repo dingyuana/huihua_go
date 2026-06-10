@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 )
 
@@ -175,4 +176,53 @@ func (r *PayrollRepository) GetNextPayrollNo(ctx context.Context, tenantID uuid.
 	}
 	seq++
 	return fmt.Sprintf("%s%04d", period[:16], seq), nil
+}
+
+// ListByEmployeeAndYear retrieves payroll records for a specific employee in a given year.
+// Year is converted to period range: 2026 → 202601-202612.
+func (r *PayrollRepository) ListByEmployeeAndYear(ctx context.Context, tenantID uuid.UUID, employeeName string, year int) ([]model.Payroll, error) {
+	startPeriod := year*100 + 1
+	endPeriod := year*100 + 12
+
+	query := `
+		SELECT id, tenant_id, company_id, payroll_no, employee_name, department_name, period_no, gross_salary, individual_tax, social_security, housing_fund, other_deductions, net_salary, payment_date, bank_account_no, status, docstatus, voucher_id, voucher_no, source, remark, created_by, created_at, updated_at
+		FROM payroll_records
+		WHERE tenant_id = $1 AND employee_name = $2 AND period_no >= $3 AND period_no <= $4
+		ORDER BY period_no`
+
+	rows, err := r.pool.Query(ctx, query, tenantID, employeeName, startPeriod, endPeriod)
+	if err != nil {
+		return nil, fmt.Errorf("list payroll by employee and year: %w", err)
+	}
+	defer rows.Close()
+
+	var list []model.Payroll
+	for rows.Next() {
+		var p model.Payroll
+		if err := rows.Scan(
+			&p.ID, &p.TenantID, &p.CompanyID, &p.PayrollNo,
+			&p.EmployeeName, &p.DepartmentName, &p.PeriodNo,
+			&p.GrossSalary, &p.IndividualTax, &p.SocialSecurity,
+			&p.HousingFund, &p.OtherDeductions, &p.NetSalary,
+			&p.PaymentDate, &p.BankAccountNo, &p.Status,
+			&p.DocStatus, &p.VoucherID, &p.VoucherNo,
+			&p.Source, &p.Remark, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan payroll: %w", err)
+		}
+		list = append(list, p)
+	}
+	return list, rows.Err()
+}
+
+// UpdateIndividualTax updates the individual_tax field for a payroll record.
+func (r *PayrollRepository) UpdateIndividualTax(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, tax decimal.Decimal) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE payroll_records SET individual_tax = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+		tax, id, tenantID,
+	)
+	if err != nil {
+		return fmt.Errorf("update individual tax: %w", err)
+	}
+	return nil
 }

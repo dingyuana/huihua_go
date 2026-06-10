@@ -285,6 +285,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/payroll/PayrollForm.vue'),
         meta: { title: '编辑工资单', roles: ['admin', 'agent'] },
       },
+      {
+        path: 'payroll/social-config',
+        name: 'SocialConfig',
+        component: () => import('@/views/payroll/SocialConfig.vue'),
+        meta: { title: '社保配置' },
+      },
       // ==== 报销单 ====
       {
         path: 'expense/reimbursement',
