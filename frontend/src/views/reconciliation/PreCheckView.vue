@@ -188,8 +188,10 @@ async function loadPayments() {
       params: { bank_account_id: bankAccount.id, page: 1, page_size: 200 },
     })
     const list: any[] = res?.data ?? res ?? []
-    payments.value = list.map(txn => ({
-      id: txn.id,
+    payments.value = list
+      .filter((t: any) => !t.matched)
+      .map(txn => ({
+        id: txn.id,
       counterparty_name: txn.counterparty_name ?? '',
       debit: txn.debit ?? '0',
       credit: txn.credit ?? '0',
