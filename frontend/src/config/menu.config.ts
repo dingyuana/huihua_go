@@ -28,6 +28,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
         { path: '/reconciliation/precheck', title: '预检' },
         { path: '/reconciliation/match', title: '匹配推荐' },
         { path: '/reconciliation/manual', title: '手工核销' },
+        { path: '/reconciliation/review', title: '核销审批' },
       ],
     },
   ],
@@ -79,6 +80,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
         { path: '/reconciliation/precheck', title: '预检' },
         { path: '/reconciliation/match', title: '匹配推荐' },
         { path: '/reconciliation/manual', title: '手工核销' },
+        { path: '/reconciliation/review', title: '核销审批' },
       ],
     },
     {

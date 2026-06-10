@@ -154,6 +154,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/reconciliation/ManualMatch.vue'),
         meta: { title: '手工核销', roles: ['accountant_ar', 'admin'] },
       },
+      {
+        path: 'reconciliation/review',
+        name: 'ReconciliationReview',
+        component: () => import('@/views/reconciliation/ReviewView.vue'),
+        meta: { title: '核销审批', roles: ['accountant_ar', 'admin'] },
+      },
       // ==== F5 凭证 ====
       {
         path: 'vouchers',

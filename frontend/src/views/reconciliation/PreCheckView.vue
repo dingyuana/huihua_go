@@ -305,7 +305,7 @@ async function executeReconciliation() {
     await request.post('/reconciliation/execute', {
       pair_ids: [pairId],
     })
-    ElMessage.success('核销执行成功！')
+    ElMessage.success('已提交审核，等待审批')
     precheckDone.value = false
     selectedPayment.value = ''
     selectedInvoice.value = ''
@@ -337,7 +337,7 @@ async function executeForcePass() {
     await request.post('/reconciliation/execute', {
       pair_ids: [pairId],
     })
-    ElMessage.success('强制通过核销执行成功！')
+    ElMessage.success('已提交审核，等待审批')
     showForcePassDialog.value = false
     forcePassReason.value = ''
     precheckDone.value = false

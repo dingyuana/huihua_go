@@ -278,14 +278,22 @@ async function execute() {
   if (!selectedPaymentId.value || allocations.value.length === 0) return
   executing.value = true
   try {
-    await request.post('/reconciliation/manual', {
+    const res: any = await request.post('/reconciliation/manual', {
       bank_transaction_id: selectedPaymentId.value,
       allocations: allocations.value.map(a => ({
         invoice_id: a.invoice_id,
         amount: (parseFloat(a.amount || '0')).toFixed(2),
       })),
     })
-    ElMessage.success('核销执行成功！')
+    // 自动提交审核
+    const pairData = res?.data
+    const pairId = pairData?.id
+    if (pairId) {
+      try {
+        await request.post('/reconciliation/execute', { pair_ids: [pairId] })
+      } catch { /* ignore */ }
+    }
+    ElMessage.success('已提交审核，等待审批')
     allocations.value = []
     precheckItems.value = []
     loadInvoices()

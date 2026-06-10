@@ -167,7 +167,7 @@ async function executeAll() {
   try {
     const pairIds = all.map(p => p.pairId)
     await request.post('/reconciliation/execute', { pair_ids: pairIds })
-    ElMessage.success(`核销执行成功，共 ${pairIds.length} 条`)
+    ElMessage.success(`已提交审核，共 ${pairIds.length} 条，等待审批`)
     allPairs.value = []
     result.value = null
   } catch (e: any) {

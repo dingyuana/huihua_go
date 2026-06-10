@@ -536,10 +536,49 @@ type ExecutePairResult struct {
 	Errors        []string     `json:"errors,omitempty"`
 }
 
-// ExecutePairs executes confirmed reconciliation pairs in a single transaction.
-// For each pair: INSERT payment_allocations, UPDATE ar_invoices paid/outstanding/status,
-// UPDATE bank_transactions matched=true, UPDATE reconciliation_pairs status=executed.
+// ExecutePairs submits reconciliation pairs for review.
+// Sets status to pending_review (no actual DB writes yet — approval does that).
 func (s *ReconciliationService) ExecutePairs(ctx context.Context, tenantID uuid.UUID, pairIDs []uuid.UUID) (*ExecutePairResult, error) {
+	if len(pairIDs) == 0 {
+		return &ExecutePairResult{}, nil
+	}
+
+	result := &ExecutePairResult{}
+
+	for _, pairID := range pairIDs {
+		pair, err := s.reconRepo.GetByID(ctx, tenantID, pairID)
+		if err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s not found: %v", pairID, err))
+			continue
+		}
+		// Accept confirmed (manual match) or matched (auto match)
+		if pair.Status != "confirmed" && pair.Status != "matched" {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s status is %s, expected confirmed or matched", pairID, pair.Status))
+			continue
+		}
+
+		if err := s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "pending_review"); err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("update pair status %s: %v", pairID, err))
+			continue
+		}
+		result.ExecutedCount++
+	}
+
+	if len(result.FailedIDs) > 0 {
+		return result, fmt.Errorf("%d of %d pairs failed: %s",
+			len(result.FailedIDs), len(pairIDs), strings.Join(result.Errors, "; "))
+	}
+
+	return result, nil
+}
+
+// ApprovePairs approves pending_review pairs and writes actual data.
+// For each pair: INSERT payment_allocations, UPDATE invoices paid/outstanding/status,
+// UPDATE bank_transactions matched=true, UPDATE reconciliation_pairs status=executed.
+func (s *ReconciliationService) ApprovePairs(ctx context.Context, tenantID uuid.UUID, pairIDs []uuid.UUID) (*ExecutePairResult, error) {
 	if len(pairIDs) == 0 {
 		return &ExecutePairResult{}, nil
 	}
@@ -553,16 +592,16 @@ func (s *ReconciliationService) ExecutePairs(ctx context.Context, tenantID uuid.
 	result := &ExecutePairResult{}
 
 	for _, pairID := range pairIDs {
-		// 1. Verify pair exists and is confirmed
+		// 1. Verify pair exists and is pending_review
 		pair, err := s.reconRepo.GetByID(ctx, tenantID, pairID)
 		if err != nil {
 			result.FailedIDs = append(result.FailedIDs, pairID)
 			result.Errors = append(result.Errors, fmt.Sprintf("pair %s not found: %v", pairID, err))
 			continue
 		}
-		if pair.Status != "confirmed" {
+		if pair.Status != "pending_review" {
 			result.FailedIDs = append(result.FailedIDs, pairID)
-			result.Errors = append(result.Errors, fmt.Sprintf("pair %s status is %s, expected confirmed", pairID, pair.Status))
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s status is %s, expected pending_review", pairID, pair.Status))
 			continue
 		}
 
@@ -679,6 +718,43 @@ func (s *ReconciliationService) ExecutePairs(ctx context.Context, tenantID uuid.
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+
+	return result, nil
+}
+
+// RejectPairs rejects pending_review pairs, setting status to rejected.
+func (s *ReconciliationService) RejectPairs(ctx context.Context, tenantID uuid.UUID, pairIDs []uuid.UUID) (*ExecutePairResult, error) {
+	if len(pairIDs) == 0 {
+		return &ExecutePairResult{}, nil
+	}
+
+	result := &ExecutePairResult{}
+
+	for _, pairID := range pairIDs {
+		pair, err := s.reconRepo.GetByID(ctx, tenantID, pairID)
+		if err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s not found: %v", pairID, err))
+			continue
+		}
+		if pair.Status != "pending_review" {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s status is %s, expected pending_review", pairID, pair.Status))
+			continue
+		}
+
+		if err := s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "rejected"); err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("update pair status %s: %v", pairID, err))
+			continue
+		}
+		result.ExecutedCount++
+	}
+
+	if len(result.FailedIDs) > 0 {
+		return result, fmt.Errorf("%d of %d pairs failed: %s",
+			len(result.FailedIDs), len(pairIDs), strings.Join(result.Errors, "; "))
 	}
 
 	return result, nil
