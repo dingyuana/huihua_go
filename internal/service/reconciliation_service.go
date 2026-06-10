@@ -110,6 +110,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 					result.Pairs = append(result.Pairs, pair)
 					matchedBank[txn.ID.String()] = true
 					matchedInv[inv.ID.String()] = true
+					_ = s.bankTxnRepo.UpdateMatched(ctx, tenantID, txn.ID, true)
 					break
 				}
 			}
@@ -139,6 +140,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 					result.Pairs = append(result.Pairs, pair)
 					matchedBank[txn.ID.String()] = true
 					matchedInv[inv.ID.String()] = true
+					_ = s.bankTxnRepo.UpdateMatched(ctx, tenantID, txn.ID, true)
 					break
 				}
 			}
@@ -171,6 +173,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 					result.Pairs = append(result.Pairs, pair)
 					matchedBank[txn.ID.String()] = true
 					matchedInv[inv.ID.String()] = true
+					_ = s.bankTxnRepo.UpdateMatched(ctx, tenantID, txn.ID, true)
 					break
 				}
 			}
@@ -201,6 +204,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 					result.Pairs = append(result.Pairs, pair)
 					matchedBank[txn.ID.String()] = true
 					matchedInv[inv.ID.String()] = true
+					_ = s.bankTxnRepo.UpdateMatched(ctx, tenantID, txn.ID, true)
 					break
 				}
 			}
@@ -237,6 +241,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 					result.Pairs = append(result.Pairs, pair)
 					matchedBank[txn.ID.String()] = true
 					matchedInv[inv.ID.String()] = true
+					_ = s.bankTxnRepo.UpdateMatched(ctx, tenantID, txn.ID, true)
 					break
 				}
 			}
@@ -288,7 +293,19 @@ func (s *ReconciliationService) makePair(tenantID uuid.UUID, st string, sid uuid
 }
 
 // ConfirmPair confirms a matched pair.
+// For bank_txn pairs: simple status change matched → confirmed.
+// For payment_entry pairs: uses repo-level ConfirmPair (handles payment_allocations).
 func (s *ReconciliationService) ConfirmPair(ctx context.Context, tenantID, pairID uuid.UUID) error {
+	pair, err := s.reconRepo.GetByID(ctx, tenantID, pairID)
+	if err != nil {
+		return fmt.Errorf("pair not found: %w", err)
+	}
+	if pair.SourceType == "bank_txn" {
+		if pair.Status != "matched" {
+			return fmt.Errorf("bank_txn pair status must be matched, got %s", pair.Status)
+		}
+		return s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "confirmed")
+	}
 	return s.reconRepo.ConfirmPair(ctx, tenantID, pairID)
 }
 
