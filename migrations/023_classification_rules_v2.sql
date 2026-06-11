@@ -28,7 +28,7 @@ CREATE POLICY tenant_isolation ON classification_rules
     USING (tenant_id = current_setting('app.current_tenant')::uuid);
 
 -- Indexes
-CREATE INDEX idx_classification_rules_tenant ON classification_rules(tenant_id);
-CREATE INDEX idx_classification_rules_priority ON classification_rules(priority);
-CREATE INDEX idx_classification_rules_active ON classification_rules(is_active) WHERE is_active = TRUE;
-CREATE INDEX idx_classification_rules_classification ON classification_rules(classification);
+CREATE INDEX IF NOT EXISTS idx_classification_rules_tenant ON classification_rules(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_classification_rules_priority ON classification_rules(priority);
+CREATE INDEX IF NOT EXISTS idx_classification_rules_active ON classification_rules(is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_classification_rules_classification ON classification_rules(classification);

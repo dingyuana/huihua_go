@@ -21,6 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_bank_journal_entries_voucher ON bank_journal_entr
 CREATE INDEX IF NOT EXISTS idx_bank_journal_entries_tenant_date ON bank_journal_entries(tenant_id, txn_date DESC);
 
 ALTER TABLE bank_journal_entries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON bank_journal_entries;
 CREATE POLICY tenant_isolation ON bank_journal_entries
     USING (tenant_id = current_setting('app.current_tenant')::uuid);
 

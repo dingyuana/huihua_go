@@ -17,6 +17,8 @@ type Account struct {
 	ParentID       *uuid.UUID      `json:"parent_id,omitempty" db:"parent_id"`
 	Lft            int             `json:"lft" db:"lft"`
 	Rgt            int             `json:"rgt" db:"rgt"`
+	Level          int             `json:"level" db:"level"`
+	Path           string          `json:"path,omitempty" db:"path"`
 	IsGroup        bool            `json:"is_group" db:"is_group"`
 	CompanyID      uuid.UUID       `json:"company_id" db:"company_id"`
 	TenantID       uuid.UUID       `json:"tenant_id" db:"tenant_id"`

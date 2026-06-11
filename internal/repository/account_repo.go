@@ -20,6 +20,35 @@ func NewAccountRepository(pool *pgxpool.Pool) *AccountRepository {
 	return &AccountRepository{pool: pool}
 }
 
+// Update updates an account's editable fields (code, name, account_type, root_type, parent_id, is_group, company_id, currency, is_active, opening_balance).
+// Does NOT modify tree-structure fields (lft, rgt, level, path, tenant_id).
+func (r *AccountRepository) Update(ctx context.Context, a *model.Account) error {
+	query := `
+		UPDATE accounts
+		SET code=$1, name=$2, account_type=$3, root_type=$4, parent_id=$5,
+		    is_group=$6, company_id=$7, currency=$8, is_active=$9,
+		    opening_balance=$10, updated_at=NOW()
+		WHERE id=$11`
+	_, err := r.pool.Exec(ctx, query,
+		a.Code, a.Name, a.AccountType, a.RootType, a.ParentID,
+		a.IsGroup, a.CompanyID, a.Currency, a.IsActive,
+		a.OpeningBalance, a.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update account: %w", err)
+	}
+	return nil
+}
+
+// Delete removes an account by ID (tenant-scoped).
+func (r *AccountRepository) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM accounts WHERE id=$1 AND tenant_id=$2`, id, tenantID)
+	if err != nil {
+		return fmt.Errorf("delete account: %w", err)
+	}
+	return nil
+}
+
 // Create inserts a new account and returns it.
 func (r *AccountRepository) Create(ctx context.Context, tenantID uuid.UUID, a *model.Account) (*model.Account, error) {
 	query := `
@@ -225,6 +254,38 @@ func (r *AccountRepository) GetTree(ctx context.Context, tenantID uuid.UUID) ([]
 		return nil, fmt.Errorf("iterate account tree: %w", err)
 	}
 	return accounts, nil
+}
+
+// HasChildren checks whether an account has child nodes (direct children).
+func (r *AccountRepository) HasChildren(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (bool, error) {
+	var count int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM accounts WHERE parent_id = $1 AND tenant_id = $2`, id, tenantID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("has children: %w", err)
+	}
+	return count > 0, nil
+}
+
+// GetMaxRgt returns the maximum rgt value across all accounts for the tenant.
+// Returns 0 if no accounts exist.
+func (r *AccountRepository) GetMaxRgt(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	var maxRgt int
+	err := r.pool.QueryRow(ctx, `SELECT COALESCE(MAX(rgt), 0) FROM accounts WHERE tenant_id = $1`, tenantID).Scan(&maxRgt)
+	if err != nil {
+		return 0, fmt.Errorf("get max rgt: %w", err)
+	}
+	return maxRgt, nil
+}
+
+// GetMaxSiblingRgt returns the maximum rgt value among direct children of the given parent.
+// Returns parent.lft if no children exist (so the new child starts at parent.lft + 1).
+func (r *AccountRepository) GetMaxSiblingRgt(ctx context.Context, tenantID uuid.UUID, parentID uuid.UUID) (int, error) {
+	var maxRgt int
+	err := r.pool.QueryRow(ctx, `SELECT COALESCE(MAX(rgt), 0) FROM accounts WHERE parent_id = $1 AND tenant_id = $2`, parentID, tenantID).Scan(&maxRgt)
+	if err != nil {
+		return 0, fmt.Errorf("get max sibling rgt: %w", err)
+	}
+	return maxRgt, nil
 }
 
 // ListByType retrieves accounts by account_type.
