@@ -74,6 +74,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/setup/VoucherTemplateList.vue'),
         meta: { title: '凭证模板', roles: ['admin'] },
       },
+      {
+        path: 'subjects',
+        name: 'SubjectTree',
+        component: () => import('@/views/subjects/SubjectTree.vue'),
+        meta: { title: '科目管理', roles: ['admin', 'agent'], keepAlive: true },
+      },
       // ==== F2 票据采集 ====
       {
         path: 'bank/import',

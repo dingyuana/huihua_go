@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
 	"huihua/finance/pkg/utils"
@@ -97,18 +98,19 @@ func (s *AccountService) buildAccountFromSeed(sd seedAccountRow, tenantID, compa
 		rgt = *sd.rgt
 	}
 	acc := &model.Account{
-		ID:          uuid.New(),
-		Code:        sd.code,
-		Name:        sd.name,
-		AccountType: utils.StrPtr(sd.accountType),
-		RootType:    utils.StrPtr(sd.rootType),
-		IsGroup:     ig,
-		Lft:         lft,
-		Rgt:         rgt,
-		CompanyID:   companyID,
-		TenantID:    tenantID,
-		Currency:    "CNY",
-		IsActive:    true,
+		ID:             uuid.New(),
+		Code:           sd.code,
+		Name:           sd.name,
+		AccountType:    utils.StrPtr(sd.accountType),
+		RootType:       utils.StrPtr(sd.rootType),
+		IsGroup:        ig,
+		Lft:            lft,
+		Rgt:            rgt,
+		CompanyID:      companyID,
+		TenantID:       tenantID,
+		Currency:       "CNY",
+		IsActive:       true,
+		OpeningBalance: decimal.Zero,
 	}
 	if sd.parentCode != nil && *sd.parentCode != "" {
 		if pid, ok := parentCodeMap[*sd.parentCode]; ok {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
@@ -38,7 +39,7 @@ type CreateCompanyRequest struct {
 func (s *SetupService) CreateCompany(ctx context.Context, tenantID uuid.UUID, req CreateCompanyRequest) (*model.CompanySettings, error) {
 	// Check if already initialized
 	existing, err := s.companyRepo.GetByTenant(ctx, tenantID)
-	if err == nil && existing.IsInitialized {
+	if err == nil && existing != nil && existing.IsInitialized {
 		// Already initialized: update company info without re-creating periods/accounts
 		if req.FiscalYearStartMonth < 1 || req.FiscalYearStartMonth > 12 {
 			return nil, fmt.Errorf("fiscal_year_start_month must be between 1 and 12")
@@ -141,8 +142,8 @@ func (s *SetupService) CreateCompany(ctx context.Context, tenantID uuid.UUID, re
 		return nil, fmt.Errorf("create periods: %w", err)
 	}
 
-	// Initialize chart of accounts from seed
-	if err := s.accountSvc.InitFromSeedWithTx(ctx, tx, tenantID, created.ID); err != nil {
+	// Initialize chart of accounts from seed (skip if already exists)
+	if err := s.initAccountsIfNotExists(ctx, tx, tenantID, created.ID); err != nil {
 		return nil, fmt.Errorf("init chart of accounts: %w", err)
 	}
 
@@ -162,7 +163,7 @@ func (s *SetupService) CreateCompany(ctx context.Context, tenantID uuid.UUID, re
 // GetStatus returns the current setup status for a tenant.
 func (s *SetupService) GetStatus(ctx context.Context, tenantID uuid.UUID) (map[string]interface{}, error) {
 	cs, err := s.companyRepo.GetByTenant(ctx, tenantID)
-	if err != nil {
+	if err != nil || cs == nil {
 		return map[string]interface{}{"initialized": false}, nil
 	}
 	periods, err := s.periodRepo.ListByTenant(ctx, tenantID)
@@ -175,4 +176,17 @@ func (s *SetupService) GetStatus(ctx context.Context, tenantID uuid.UUID) (map[s
 		"periods_count": len(periods),
 		"periods":       periods,
 	}, nil
+}
+
+// initAccountsIfNotExists checks if accounts already exist for the tenant and initializes them only if not.
+func (s *SetupService) initAccountsIfNotExists(ctx context.Context, tx pgx.Tx, tenantID, companyID uuid.UUID) error {
+	var count int64
+	err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM accounts WHERE tenant_id = $1`, tenantID).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check existing accounts: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+	return s.accountSvc.InitFromSeedWithTx(ctx, tx, tenantID, companyID)
 }

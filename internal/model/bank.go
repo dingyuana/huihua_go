@@ -49,8 +49,9 @@ type ImportResult struct {
 	TotalRows          int               `json:"total_rows"`
 	SuccessCount       int               `json:"success_count"`
 	FailedCount        int               `json:"failed_count"`
-	FailedRows         []int             `json:"failed_rows,omitempty"`    // row numbers that failed
-	FailedReasons      []FailedRowDetail `json:"failed_reasons,omitempty"` // per-row failure details
+	DuplicateCount     int               `json:"duplicate_count"`               // number of duplicate rows skipped
+	FailedRows         []int             `json:"failed_rows,omitempty"`          // row numbers that failed
+	FailedReasons      []FailedRowDetail `json:"failed_reasons,omitempty"`       // per-row failure details
 	ErrorMsg           string            `json:"error_message,omitempty"`
 	ImportedTxns       []BankTransaction `json:"imported_txns,omitempty"`        // 本次成功导入的流水（仅含当前批次，用于按需触发自动生成凭证）
 	AutoCreatedParties int               `json:"auto_created_parties,omitempty"` // 本次导入中自动创建到对方档案的往来单位数量

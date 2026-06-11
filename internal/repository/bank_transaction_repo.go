@@ -32,7 +32,10 @@ func (r *BankTransactionRepository) ImportBatch(ctx context.Context, tenantID, b
 	insertQuery := `
 		INSERT INTO bank_transactions (id, tenant_id, bank_account_id, txn_date, description,
 			debit, credit, direction, reference_no, counterparty_name, classification, matched, company_id, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		ON CONFLICT (tenant_id, bank_account_id, txn_date, description, debit, credit) DO NOTHING`
+
+	insertedCount := 0
 
 	for _, txn := range txns {
 		if txn.ID == uuid.Nil {
@@ -56,24 +59,17 @@ func (r *BankTransactionRepository) ImportBatch(ctx context.Context, tenantID, b
 			classification = *txn.Classification
 		}
 
-		exists, err := r.existsByKey(ctx, tenantID, bankAccountID, txn)
-		if err != nil {
-			return 0, fmt.Errorf("import batch: check exists: %w", err)
-		}
-		if exists {
-			continue
-		}
-
-		_, err = r.pool.Exec(ctx, insertQuery,
+		tag, err := r.pool.Exec(ctx, insertQuery,
 			txn.ID, tenantID, bankAccountID, txn.TxnDate, txn.Description,
 			debit, credit, txn.Direction, txn.ReferenceNo, txn.CounterpartyName,
 			classification, txn.Matched, txn.CompanyID, time.Now())
 		if err != nil {
 			return 0, fmt.Errorf("import batch: %w", err)
 		}
+		insertedCount += int(tag.RowsAffected())
 	}
 
-	return len(txns), nil
+	return insertedCount, nil
 }
 
 func (r *BankTransactionRepository) existsByKey(ctx context.Context, tenantID, bankAccountID uuid.UUID, txn model.BankTransaction) (bool, error) {

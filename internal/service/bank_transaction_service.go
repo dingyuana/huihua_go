@@ -389,11 +389,15 @@ func (s *BankTransactionService) ImportFromExcel(ctx context.Context, tenantID, 
 
 	// Batch import
 	if len(txns) > 0 {
-		_, err = s.repo.ImportBatch(ctx, tenantID, bankAccountID, txns)
+		insertedCount, err := s.repo.ImportBatch(ctx, tenantID, bankAccountID, txns)
 		if err != nil {
 			return nil, fmt.Errorf("import batch: %w", err)
 		}
-		result.ImportedTxns = txns
+		result.DuplicateCount = len(txns) - insertedCount
+		result.SuccessCount = insertedCount
+		if insertedCount > 0 {
+			result.ImportedTxns = txns[:insertedCount]
+		}
 	}
 
 	return result, nil
