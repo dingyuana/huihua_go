@@ -207,3 +207,133 @@ func (s *AccountService) GetTree(ctx context.Context, tenantID uuid.UUID) ([]mod
 func (s *AccountService) List(ctx context.Context, tenantID uuid.UUID, limit, offset int, code string) ([]model.Account, int, error) {
 	return s.repo.ListPaginated(ctx, tenantID, limit, offset, code)
 }
+
+// Create creates a new account. If parentID is provided, the account is inserted
+// as a child in the nested set. If parentID is nil, it becomes a root-level node.
+func (s *AccountService) Create(ctx context.Context, tenantID uuid.UUID, a *model.Account) (*model.Account, error) {
+	// Validate code uniqueness
+	existing, err := s.repo.GetByCode(ctx, tenantID, a.Code)
+	if err == nil && existing != nil && existing.ID != uuid.Nil {
+		return nil, fmt.Errorf("科目编码 %s 已存在", a.Code)
+	}
+
+	a.ID = uuid.New()
+	a.TenantID = tenantID
+	a.IsActive = true
+
+	// Calculate nested set values (lft, rgt)
+	if a.ParentID != nil && *a.ParentID != uuid.Nil {
+		parent, err := s.repo.GetByID(ctx, tenantID, *a.ParentID)
+		if err != nil {
+			return nil, fmt.Errorf("父科目不存在: %w", err)
+		}
+		// Compute max sibling rgt inside parent
+		maxSiblingRgt, err := s.repo.GetMaxSiblingRgt(ctx, tenantID, *a.ParentID)
+		if err != nil {
+			return nil, fmt.Errorf("获取同级最大 rgt: %w", err)
+		}
+		start := maxSiblingRgt
+		if start <= parent.Lft {
+			start = parent.Lft + 1
+		}
+		a.Lft = start
+		a.Rgt = start + 1
+		a.Level = parent.Level + 1
+		a.Path = parent.Path
+		if a.Path != "" {
+			a.Path += "-" + a.Code
+		} else {
+			a.Path = a.Code
+		}
+	} else {
+		// Root node
+		maxRgt, err := s.repo.GetMaxRgt(ctx, tenantID)
+		if err != nil {
+			return nil, fmt.Errorf("获取最大 rgt: %w", err)
+		}
+		a.Lft = maxRgt + 1
+		a.Rgt = maxRgt + 2
+		a.Level = 0
+		a.Path = a.Code
+	}
+
+	return s.repo.Create(ctx, tenantID, a)
+}
+
+// Update updates an account's editable fields.
+func (s *AccountService) Update(ctx context.Context, tenantID uuid.UUID, a *model.Account) error {
+	// Ensure account exists
+	existing, err := s.repo.GetByID(ctx, tenantID, a.ID)
+	if err != nil {
+		return fmt.Errorf("科目不存在: %w", err)
+	}
+	// Preserve non-editable fields
+	a.Code = existing.Code
+	a.ParentID = existing.ParentID
+	a.Lft = existing.Lft
+	a.Rgt = existing.Rgt
+	a.Level = existing.Level
+	a.Path = existing.Path
+	a.TenantID = existing.TenantID
+	a.CompanyID = existing.CompanyID
+	return s.repo.Update(ctx, a)
+}
+
+// Delete removes an account after checking it has no children.
+func (s *AccountService) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error {
+	hasChildren, err := s.repo.HasChildren(ctx, tenantID, id)
+	if err != nil {
+		return fmt.Errorf("检查子科目: %w", err)
+	}
+	if hasChildren {
+		return fmt.Errorf("该科目存在下级科目，无法删除")
+	}
+	return s.repo.Delete(ctx, tenantID, id)
+}
+
+// GetByID retrieves an account by ID.
+func (s *AccountService) GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*model.Account, error) {
+	return s.repo.GetByID(ctx, tenantID, id)
+}
+
+// AutoCode generates a suggested code for a new child of the given parent.
+func (s *AccountService) AutoCode(ctx context.Context, tenantID uuid.UUID, parentID uuid.UUID) (string, error) {
+	parent, err := s.repo.GetByID(ctx, tenantID, parentID)
+	if err != nil {
+		return "", fmt.Errorf("父科目不存在: %w", err)
+	}
+	maxRgt, err := s.repo.GetMaxSiblingRgt(ctx, tenantID, parentID)
+	if err != nil {
+		return "", fmt.Errorf("获取同级编码: %w", err)
+	}
+	// Get all siblings to compute the next sequence number
+	// Simple heuristic: next sibling = parent.code + "-" + next_seq
+	// We use maxRgt as indicator of presence — actually need to find the max code suffix
+	// Better approach: query all children and find max suffix
+	children, err := s.repo.ListByParent(ctx, tenantID, parentID)
+	if err != nil {
+		return "", fmt.Errorf("获取子科目列表: %w", err)
+	}
+	maxSeq := 0
+	for _, child := range children {
+		// Parse the last segment of the code after the parent's prefix
+		childCode := child.Code
+		if len(childCode) > len(parent.Code) && childCode[:len(parent.Code)] == parent.Code {
+			// Try to parse the suffix as a number
+			suffix := childCode[len(parent.Code):]
+			// Remove any separator
+			if len(suffix) > 0 && (suffix[0] == '-' || suffix[0] == '.') {
+				suffix = suffix[1:]
+			}
+			// Try parsing as int
+			var seq int
+			n, _ := fmt.Sscanf(suffix, "%d", &seq)
+			if n == 1 && seq > maxSeq {
+				maxSeq = seq
+			}
+		}
+	}
+	nextSeq := maxSeq + 1
+	suggested := fmt.Sprintf("%s-%02d", parent.Code, nextSeq)
+	return suggested, nil
+}

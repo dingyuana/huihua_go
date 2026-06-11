@@ -288,6 +288,36 @@ func (r *AccountRepository) GetMaxSiblingRgt(ctx context.Context, tenantID uuid.
 	return maxRgt, nil
 }
 
+// ListByParent retrieves direct children of a given parent account.
+func (r *AccountRepository) ListByParent(ctx context.Context, tenantID uuid.UUID, parentID uuid.UUID) ([]model.Account, error) {
+	query := `
+		SELECT id, code, name, account_type, root_type, parent_id, lft, rgt, is_group,
+		       company_id, tenant_id, currency, is_active, opening_balance, created_at, updated_at
+		FROM accounts
+		WHERE parent_id = $1 AND tenant_id = $2
+		ORDER BY code`
+
+	rows, err := r.pool.Query(ctx, query, parentID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list accounts by parent: %w", err)
+	}
+	defer rows.Close()
+
+	var accounts []model.Account
+	for rows.Next() {
+		var a model.Account
+		if err := rows.Scan(
+			&a.ID, &a.Code, &a.Name, &a.AccountType, &a.RootType, &a.ParentID,
+			&a.Lft, &a.Rgt, &a.IsGroup, &a.CompanyID, &a.TenantID,
+			&a.Currency, &a.IsActive, &a.OpeningBalance, &a.CreatedAt, &a.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan account: %w", err)
+		}
+		accounts = append(accounts, a)
+	}
+	return accounts, rows.Err()
+}
+
 // ListByType retrieves accounts by account_type.
 func (r *AccountRepository) ListByType(ctx context.Context, tenantID uuid.UUID, accountType string) ([]model.Account, error) {
 	query := `
