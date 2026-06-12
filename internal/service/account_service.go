@@ -333,3 +333,9 @@ func (s *AccountService) AutoCode(ctx context.Context, tenantID uuid.UUID, paren
 	suggested := fmt.Sprintf("%s-%02d", parent.Code, nextSeq)
 	return suggested, nil
 }
+
+// ListLedgerOnly returns accounts eligible for posting (leaf + active),
+// ordered by code. Used by the frontend "ledger accounts only" dropdown.
+func (s *AccountService) ListLedgerOnly(ctx context.Context, tenantID uuid.UUID) ([]model.Account, error) {
+	return s.repo.ListLedgerOnly(ctx, tenantID)
+}
