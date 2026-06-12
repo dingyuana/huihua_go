@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
@@ -1114,3 +1116,151 @@ func computeKeyIndicators(ctx context.Context, glEntryRepo *repository.GLEntryRe
 }
 
 func stringPtr(s string) *string { return &s }
+
+// ─── CreatePeriodRequest / UpdatePeriodRequest ───
+
+// CreatePeriodRequest is the request body for creating a new accounting period.
+type CreatePeriodRequest struct {
+	PeriodNo   int       `json:"period_no"`
+	PeriodName string    `json:"period_name"`
+	StartDate  time.Time `json:"start_date"`
+	EndDate    time.Time `json:"end_date"`
+}
+
+// UpdatePeriodRequest is the request body for updating a period's metadata.
+type UpdatePeriodRequest struct {
+	PeriodName *string    `json:"period_name"`
+	StartDate  *time.Time `json:"start_date"`
+	EndDate    *time.Time `json:"end_date"`
+}
+
+// CreatePeriod creates a new accounting period after validating overlap and period_no uniqueness.
+func (s *PeriodService) CreatePeriod(ctx context.Context, tenantID uuid.UUID, req CreatePeriodRequest) (*model.AccountingPeriod, error) {
+	if req.PeriodNo <= 0 {
+		return nil, errors.New("period_no is required")
+	}
+	if req.PeriodName == "" {
+		return nil, errors.New("period_name is required")
+	}
+	if req.StartDate.IsZero() || req.EndDate.IsZero() {
+		return nil, errors.New("start_date and end_date are required")
+	}
+	if req.EndDate.Before(req.StartDate) {
+		return nil, errors.New("end_date must be after start_date")
+	}
+
+	// Check overlap with existing periods
+	overlap, err := s.periodRepo.CheckOverlap(ctx, tenantID, req.StartDate, req.EndDate, nil)
+	if err != nil {
+		return nil, fmt.Errorf("check overlap: %w", err)
+	}
+	if overlap {
+		return nil, errors.New("period date range overlaps with an existing period")
+	}
+
+	p := &model.AccountingPeriod{
+		PeriodNo:   req.PeriodNo,
+		PeriodName: req.PeriodName,
+		StartDate:  req.StartDate,
+		EndDate:    req.EndDate,
+		Status:     "open",
+	}
+	created, err := s.periodRepo.Create(ctx, tenantID, p)
+	if err != nil {
+		// pgx unique violation (period_no per tenant)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, errors.New("period_no already exists for this tenant")
+		}
+		return nil, fmt.Errorf("create period: %w", err)
+	}
+	return created, nil
+}
+
+// UpdatePeriod updates a period's metadata after validating constraints.
+func (s *PeriodService) UpdatePeriod(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, req UpdatePeriodRequest) error {
+	period, err := s.periodRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errors.New("period not found")
+		}
+		return fmt.Errorf("get period: %w", err)
+	}
+
+	if req.StartDate != nil || req.EndDate != nil {
+		if period.Status == "closed" {
+			return errors.New("cannot change dates of a closed period")
+		}
+		start := req.StartDate
+		if start == nil {
+			start = &period.StartDate
+		}
+		end := req.EndDate
+		if end == nil {
+			end = &period.EndDate
+		}
+		if end.Before(*start) {
+			return errors.New("end_date must be after start_date")
+		}
+		overlap, err := s.periodRepo.CheckOverlap(ctx, tenantID, *start, *end, &id)
+		if err != nil {
+			return fmt.Errorf("check overlap: %w", err)
+		}
+		if overlap {
+			return errors.New("period date range overlaps with an existing period")
+		}
+	}
+
+	if err := s.periodRepo.UpdateMeta(ctx, tenantID, id, req.PeriodName, req.StartDate, req.EndDate); err != nil {
+		return fmt.Errorf("update period: %w", err)
+	}
+	return nil
+}
+
+// DeletePeriod deletes a period after verifying it is not closed and has no journal entries.
+func (s *PeriodService) DeletePeriod(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error {
+	period, err := s.periodRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errors.New("period not found")
+		}
+		return fmt.Errorf("get period: %w", err)
+	}
+	if period.Status == "closed" {
+		return errors.New("cannot delete a closed period")
+	}
+
+	// Check for journal entries referencing this period
+	periodStr := fmt.Sprintf("%d", period.PeriodNo)
+	vouchers, err := s.journalRepo.GetByPeriod(ctx, tenantID, periodStr)
+	if err != nil {
+		return fmt.Errorf("check journal entries: %w", err)
+	}
+	if len(vouchers) > 0 {
+		return errors.New("cannot delete period with existing journal entries")
+	}
+
+	if err := s.periodRepo.Delete(ctx, tenantID, id); err != nil {
+		return fmt.Errorf("delete period: %w", err)
+	}
+	return nil
+}
+
+// EnablePeriod sets a closed period back to open status.
+func (s *PeriodService) EnablePeriod(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error {
+	period, err := s.periodRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errors.New("period not found")
+		}
+		return fmt.Errorf("get period: %w", err)
+	}
+	if period.Status != "closed" {
+		return errors.New("only closed periods can be enabled")
+	}
+
+	if err := s.periodRepo.UpdateStatus(ctx, tenantID, period.PeriodNo, "open", uuid.Nil); err != nil {
+		return fmt.Errorf("enable period: %w", err)
+	}
+	return nil
+}

@@ -235,3 +235,60 @@ func (h *PeriodHandler) ExecuteClosing(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"data": result})
 }
+
+// CreatePeriod handles POST /api/v1/periods
+func (h *PeriodHandler) CreatePeriod(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	var req service.CreatePeriodRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	period, err := h.svc.CreatePeriod(c.Context(), tenantID, req)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"data": period})
+}
+
+// UpdatePeriod handles PUT /api/v1/periods/:id
+func (h *PeriodHandler) UpdatePeriod(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	}
+	var req service.UpdatePeriodRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+	if err := h.svc.UpdatePeriod(c.Context(), tenantID, id, req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "updated"})
+}
+
+// DeletePeriod handles DELETE /api/v1/periods/:id
+func (h *PeriodHandler) DeletePeriod(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	}
+	if err := h.svc.DeletePeriod(c.Context(), tenantID, id); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "deleted"})
+}
+
+// EnablePeriod handles POST /api/v1/periods/:id/enable
+func (h *PeriodHandler) EnablePeriod(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid id"})
+	}
+	if err := h.svc.EnablePeriod(c.Context(), tenantID, id); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "enabled"})
+}
