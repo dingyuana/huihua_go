@@ -208,7 +208,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 
 	// Expense invoice routes (进项发票)
 	expenseInvoiceRepo := repository.NewExpenseInvoiceRepository(db.GetPool())
-	expenseInvoiceSvc := service.NewExpenseInvoiceService(expenseInvoiceRepo)
+	expenseInvoiceSvc := service.NewExpenseInvoiceService(expenseInvoiceRepo, apInvoiceRepo)
 	expenseInvoiceHandler := handler.NewExpenseInvoiceHandler(expenseInvoiceSvc)
 	api.Get("/expense-invoices", expenseInvoiceHandler.List)
 	api.Post("/expense-invoices", expenseInvoiceHandler.Create)
@@ -217,6 +217,7 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Delete("/expense-invoices/:id", expenseInvoiceHandler.Delete)
 	api.Post("/expense-invoices/:id/verify", expenseInvoiceHandler.Verify)
 	api.Post("/expense-invoices/verify/batch", expenseInvoiceHandler.BatchVerify)
+	api.Post("/expense-invoices/:id/confirm", expenseInvoiceHandler.Confirm)
 	api.Post("/expense-invoices/:id/deduct", expenseInvoiceHandler.Deduct)
 
 	// Expense invoice import routes

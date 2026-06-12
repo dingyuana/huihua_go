@@ -201,6 +201,28 @@ func (h *ExpenseInvoiceHandler) BatchVerify(c *fiber.Ctx) error {
 	})
 }
 
+// Confirm handles POST /expense-invoices/:id/confirm
+// Confirms the expense invoice and auto-creates the corresponding ApInvoice.
+func (h *ExpenseInvoiceHandler) Confirm(c *fiber.Ctx) error {
+	tenantID := c.Locals("tenant_id").(uuid.UUID)
+	userID := c.Locals("user_id").(uuid.UUID)
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid id",
+		})
+	}
+
+	inv, err := h.svc.Confirm(c.Context(), tenantID, id, userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(inv)
+}
+
 // Deduct handles POST /expense-invoices/:id/deduct
 func (h *ExpenseInvoiceHandler) Deduct(c *fiber.Ctx) error {
 	tenantID := c.Locals("tenant_id").(uuid.UUID)

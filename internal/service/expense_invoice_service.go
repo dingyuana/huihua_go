@@ -6,16 +6,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"huihua/finance/internal/model"
 	"huihua/finance/internal/repository"
 )
 
 type ExpenseInvoiceService struct {
-	repo *repository.ExpenseInvoiceRepository
+	repo          *repository.ExpenseInvoiceRepository
+	apInvoiceRepo *repository.ApInvoiceRepository
 }
 
-func NewExpenseInvoiceService(repo *repository.ExpenseInvoiceRepository) *ExpenseInvoiceService {
-	return &ExpenseInvoiceService{repo: repo}
+func NewExpenseInvoiceService(repo *repository.ExpenseInvoiceRepository, apInvoiceRepo *repository.ApInvoiceRepository) *ExpenseInvoiceService {
+	return &ExpenseInvoiceService{
+		repo:          repo,
+		apInvoiceRepo: apInvoiceRepo,
+	}
 }
 
 // Create creates a new expense invoice
@@ -132,6 +137,61 @@ func (s *ExpenseInvoiceService) BatchVerify(ctx context.Context, tenantID uuid.U
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+// Confirm confirms an expense invoice and auto-creates the corresponding ApInvoice (应付单).
+// This links the expense invoice to the payables ledger for payment processing.
+func (s *ExpenseInvoiceService) Confirm(ctx context.Context, tenantID, id, userID uuid.UUID) (*model.ExpenseInvoice, error) {
+	inv, err := s.repo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	if inv == nil {
+		return nil, errors.New("expense invoice not found")
+	}
+	if inv.Status == "confirmed" {
+		return nil, errors.New("expense invoice already confirmed")
+	}
+
+	now := time.Now()
+
+	// Create ApInvoice linked to this expense invoice
+	var supplierID uuid.UUID
+	if inv.VendorID != nil {
+		supplierID = *inv.VendorID
+	}
+	ap := &model.ApInvoice{
+		ID:                uuid.New(),
+		TenantID:          tenantID,
+		CompanyID:         inv.CompanyID,
+		SupplierID:        supplierID,
+		InvoiceID:         id,
+		InvoiceNo:         inv.InvoiceNo,
+		Amount:            inv.TotalAmount,
+		PaidAmount:        decimal.Zero,
+		OutstandingAmount: inv.TotalAmount,
+		Status:            string(model.ApInvoiceStatusConfirmed),
+		SourceType:        "expense_invoice",
+		CreatedBy:         &userID,
+		CreatedAt:         now,
+		ConfirmedAt:       &now,
+		ConfirmedBy:       &userID,
+	}
+	if err := s.apInvoiceRepo.Create(ctx, ap); err != nil {
+		return nil, err
+	}
+
+	// Update expense invoice status
+	if err := s.repo.UpdateFields(ctx, tenantID, id, map[string]interface{}{
+		"status":     "confirmed",
+		"updated_at": now,
+	}); err != nil {
+		return nil, err
+	}
+
+	inv.Status = "confirmed"
+	inv.UpdatedAt = &now
+	return inv, nil
 }
 
 // DeductInvoice marks an expense invoice as deducted
