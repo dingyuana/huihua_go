@@ -302,14 +302,10 @@ func (s *AccountService) AutoCode(ctx context.Context, tenantID uuid.UUID, paren
 	if err != nil {
 		return "", fmt.Errorf("父科目不存在: %w", err)
 	}
-	maxRgt, err := s.repo.GetMaxSiblingRgt(ctx, tenantID, parentID)
+	_, err = s.repo.GetMaxSiblingRgt(ctx, tenantID, parentID)
 	if err != nil {
 		return "", fmt.Errorf("获取同级编码: %w", err)
 	}
-	// Get all siblings to compute the next sequence number
-	// Simple heuristic: next sibling = parent.code + "-" + next_seq
-	// We use maxRgt as indicator of presence — actually need to find the max code suffix
-	// Better approach: query all children and find max suffix
 	children, err := s.repo.ListByParent(ctx, tenantID, parentID)
 	if err != nil {
 		return "", fmt.Errorf("获取子科目列表: %w", err)
