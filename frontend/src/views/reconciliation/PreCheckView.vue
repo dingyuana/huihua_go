@@ -68,7 +68,20 @@
 
       <div class="precheck-actions">
         <BlockingGuard :blocked="blockerCount > 0" :blocked-count="blockerCount">
-          <el-button type="primary" @click="showForcePassDialog = true">
+          <el-button
+            type="primary"
+            :loading="executing"
+            :disabled="blockerCount > 0"
+            @click="executeReconciliation"
+          >
+            执行核销
+          </el-button>
+          <el-button
+            v-if="blockerCount > 0"
+            type="warning"
+            :loading="executing"
+            @click="showForcePassDialog = true"
+          >
             强制通过并核销
           </el-button>
         </BlockingGuard>
@@ -97,7 +110,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showForcePassDialog = false">取消</el-button>
-        <el-button type="primary" :disabled="!forcePassReason" @click="executeForcePass">
+        <el-button type="primary" :loading="executing" :disabled="!forcePassReason" @click="executeForcePass">
           确认强制通过
         </el-button>
       </template>
@@ -108,18 +121,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useRouter } from 'vue-router'
 import request from '@/api/request'
 import CheckResultPanel from '@/components/check/CheckResultPanel.vue'
 import CheckSummaryCard from '@/components/check/CheckSummaryCard.vue'
 import BlockingGuard from '@/components/check/BlockingGuard.vue'
 import type { CheckItem, CheckSummary } from '@/types/check'
 
-const router = useRouter()
 const selectedPayment = ref('')
 const selectedInvoice = ref('')
 const precheckDone = ref(false)
 const loading = ref(false)
+const executing = ref(false)
 const showForcePassDialog = ref(false)
 const forcePassReason = ref('')
 
@@ -164,7 +176,6 @@ function invoiceLabel(inv: InvoiceOption): string {
 async function loadPayments() {
   loadingPayments.value = true
   try {
-    // 先查银行账户，拿 bank_account_id
     const bankRes: any = await request.get('/bank-accounts')
     const accounts: any[] = bankRes?.data?.list || bankRes?.data || []
     const bankAccount = accounts.find((a: any) => !a.is_cash && a.is_active) || accounts[0]
@@ -177,8 +188,10 @@ async function loadPayments() {
       params: { bank_account_id: bankAccount.id, page: 1, page_size: 200 },
     })
     const list: any[] = res?.data ?? res ?? []
-    payments.value = list.map(txn => ({
-      id: txn.id,
+    payments.value = list
+      .filter((t: any) => !t.matched)
+      .map(txn => ({
+        id: txn.id,
       counterparty_name: txn.counterparty_name ?? '',
       debit: txn.debit ?? '0',
       credit: txn.credit ?? '0',
@@ -195,10 +208,10 @@ async function loadPayments() {
 async function loadInvoices() {
   loadingInvoices.value = true
   try {
-    const res: any = await request.get('/invoices', {
-      params: { status: 'unpaid', page_size: 200 },
+    const res: any = await request.get('/invoices/unmatched', {
+      params: { page_size: 200 },
     })
-    const list: any[] = res?.list ?? res ?? []
+    const list: any[] = res?.data ?? res ?? []
     invoices.value = list.map(inv => ({
       id: inv.id,
       invoice_no: inv.invoice_no ?? inv.invoice_number ?? '',
@@ -249,19 +262,95 @@ async function runPrecheck() {
       loading.value = false
       return
     }
-  } catch {
-    // fallback
+  } catch (e: any) {
+    checks.value = []
+    loading.value = false
+    ElMessage.error(e?.message || '预检失败')
+    return
   }
   checks.value = []
   loading.value = false
-  ElMessage.success('预检完成')
 }
 
-function executeForcePass() {
-  ElMessage.success(`已强制通过核销（原因：${forcePassReason.value}）`)
-  showForcePassDialog.value = false
-  forcePassReason.value = ''
-  router.push('/reconciliation/match')
+async function executeReconciliation() {
+  if (!selectedPayment.value || !selectedInvoice.value) return
+  executing.value = true
+  try {
+    // 先预检检查是否仍有blocked
+    const preRes: any = await request.post('/reconciliation/precheck', {
+      payment_id: selectedPayment.value,
+      invoice_id: selectedInvoice.value,
+    })
+    const items = preRes?.data?.checks || preRes?.data
+    if (Array.isArray(items) && items.some((c: any) => c.status === 'blocked')) {
+      ElMessage.warning('存在阻塞项，请使用强制通过')
+      executing.value = false
+      return
+    }
+
+    // force-pass (即使全部passed也需要创建pair)
+    const fpRes: any = await request.post('/reconciliation/precheck/force-pass', {
+      payment_id: selectedPayment.value,
+      invoice_id: selectedInvoice.value,
+      reason: '预检通过，正常核销',
+    })
+    const pairId = fpRes?.data?.id || fpRes?.id
+    if (!pairId) {
+      ElMessage.error('创建核销对失败')
+      executing.value = false
+      return
+    }
+
+    // 执行核销
+    await request.post('/reconciliation/execute', {
+      pair_ids: [pairId],
+    })
+    ElMessage.success('已提交审核，等待审批')
+    precheckDone.value = false
+    selectedPayment.value = ''
+    selectedInvoice.value = ''
+    checks.value = []
+    loadPayments()
+    loadInvoices()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '核销失败')
+  } finally {
+    executing.value = false
+  }
+}
+
+async function executeForcePass() {
+  executing.value = true
+  try {
+    const fpRes: any = await request.post('/reconciliation/precheck/force-pass', {
+      payment_id: selectedPayment.value,
+      invoice_id: selectedInvoice.value,
+      reason: forcePassReason.value,
+    })
+    const pairId = fpRes?.data?.id || fpRes?.id
+    if (!pairId) {
+      ElMessage.error('强制通过失败')
+      executing.value = false
+      return
+    }
+
+    await request.post('/reconciliation/execute', {
+      pair_ids: [pairId],
+    })
+    ElMessage.success('已提交审核，等待审批')
+    showForcePassDialog.value = false
+    forcePassReason.value = ''
+    precheckDone.value = false
+    selectedPayment.value = ''
+    selectedInvoice.value = ''
+    checks.value = []
+    loadPayments()
+    loadInvoices()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '强制通过核销失败')
+  } finally {
+    executing.value = false
+  }
 }
 </script>
 

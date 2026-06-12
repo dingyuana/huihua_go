@@ -28,6 +28,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
         { path: '/reconciliation/precheck', title: '预检' },
         { path: '/reconciliation/match', title: '匹配推荐' },
         { path: '/reconciliation/manual', title: '手工核销' },
+        { path: '/reconciliation/review', title: '核销审批' },
       ],
     },
   ],
@@ -62,6 +63,14 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
         { path: '/ap-invoices', title: '应付款单' },
         { path: '/advance-receipts', title: '预收款单' },
         { path: '/advance-payments', title: '预付款单' },
+        { path: '/expense/reimbursement', title: '费用报销单' },
+      ],
+    },
+    {
+      path: '/payroll', title: '工资管理', icon: 'Money',
+      children: [
+        { path: '/payroll', title: '工资单列表' },
+        { path: '/payroll/new', title: '新增工资单' },
       ],
     },
     { path: '/reports/aging', title: '账龄分析', icon: 'Histogram' },
@@ -79,6 +88,7 @@ export const roleMenuMap: Record<Role, MenuItem[]> = {
         { path: '/reconciliation/precheck', title: '预检' },
         { path: '/reconciliation/match', title: '匹配推荐' },
         { path: '/reconciliation/manual', title: '手工核销' },
+        { path: '/reconciliation/review', title: '核销审批' },
       ],
     },
     {

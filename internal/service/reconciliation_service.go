@@ -110,6 +110,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 					result.Pairs = append(result.Pairs, pair)
 					matchedBank[txn.ID.String()] = true
 					matchedInv[inv.ID.String()] = true
+					_ = s.bankTxnRepo.UpdateMatched(ctx, tenantID, txn.ID, true)
 					break
 				}
 			}
@@ -139,6 +140,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 					result.Pairs = append(result.Pairs, pair)
 					matchedBank[txn.ID.String()] = true
 					matchedInv[inv.ID.String()] = true
+					_ = s.bankTxnRepo.UpdateMatched(ctx, tenantID, txn.ID, true)
 					break
 				}
 			}
@@ -171,6 +173,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 					result.Pairs = append(result.Pairs, pair)
 					matchedBank[txn.ID.String()] = true
 					matchedInv[inv.ID.String()] = true
+					_ = s.bankTxnRepo.UpdateMatched(ctx, tenantID, txn.ID, true)
 					break
 				}
 			}
@@ -201,6 +204,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 					result.Pairs = append(result.Pairs, pair)
 					matchedBank[txn.ID.String()] = true
 					matchedInv[inv.ID.String()] = true
+					_ = s.bankTxnRepo.UpdateMatched(ctx, tenantID, txn.ID, true)
 					break
 				}
 			}
@@ -237,6 +241,7 @@ func (s *ReconciliationService) Reconcile(ctx context.Context, tenantID uuid.UUI
 					result.Pairs = append(result.Pairs, pair)
 					matchedBank[txn.ID.String()] = true
 					matchedInv[inv.ID.String()] = true
+					_ = s.bankTxnRepo.UpdateMatched(ctx, tenantID, txn.ID, true)
 					break
 				}
 			}
@@ -288,7 +293,19 @@ func (s *ReconciliationService) makePair(tenantID uuid.UUID, st string, sid uuid
 }
 
 // ConfirmPair confirms a matched pair.
+// For bank_txn pairs: simple status change matched → confirmed.
+// For payment_entry pairs: uses repo-level ConfirmPair (handles payment_allocations).
 func (s *ReconciliationService) ConfirmPair(ctx context.Context, tenantID, pairID uuid.UUID) error {
+	pair, err := s.reconRepo.GetByID(ctx, tenantID, pairID)
+	if err != nil {
+		return fmt.Errorf("pair not found: %w", err)
+	}
+	if pair.SourceType == "bank_txn" {
+		if pair.Status != "matched" {
+			return fmt.Errorf("bank_txn pair status must be matched, got %s", pair.Status)
+		}
+		return s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "confirmed")
+	}
 	return s.reconRepo.ConfirmPair(ctx, tenantID, pairID)
 }
 
@@ -322,10 +339,15 @@ func (s *ReconciliationService) PreCheck(ctx context.Context, tenantID, paymentI
 			Status: "blocked", Message: "收款单不存在",
 		})
 	} else {
-		if bankTxn.Matched {
+		if bankTxn.MatchedGLEntryID != nil {
 			checks = append(checks, model.PreCheckItem{
 				ID: "payment_exists", Name: "收款单有效",
-				Status: "blocked", Message: "该收款单已被核销，不可重复核销",
+				Status: "blocked", Message: "该收款单已生成凭证，不可核销",
+			})
+		} else if bankTxn.MatchedPaymentEntryID != nil {
+			checks = append(checks, model.PreCheckItem{
+				ID: "payment_exists", Name: "收款单有效",
+				Status: "warning", Message: "该收款单已有对应收付款单，核销后需关联处理",
 			})
 		} else if bankTxn.Credit.IsZero() && bankTxn.Debit.IsZero() {
 			checks = append(checks, model.PreCheckItem{
@@ -388,16 +410,32 @@ func (s *ReconciliationService) PreCheck(ctx context.Context, tenantID, paymentI
 		if bankTxn.CounterpartyName != nil {
 			bankCounterparty = *bankTxn.CounterpartyName
 		}
-		if bankCounterparty != "" && inv.CustomerName != "" &&
-			bankCounterparty != inv.CustomerName {
+		if bankCounterparty != "" && inv.CustomerName != "" {
+			if bankCounterparty != inv.CustomerName {
+				checks = append(checks, model.PreCheckItem{
+					ID: "customer_match", Name: "客商一致性",
+					Status: "warning", Message: "收款单对方(" + bankCounterparty + ") 与发票客户(" + inv.CustomerName + ") 不一致，请确认",
+				})
+			} else {
+				checks = append(checks, model.PreCheckItem{
+					ID: "customer_match", Name: "客商一致性",
+					Status: "passed", Message: "收款单对方(" + bankCounterparty + ") 与发票客户(" + inv.CustomerName + ") 一致",
+				})
+			}
+		} else if bankCounterparty == "" && inv.CustomerName != "" {
 			checks = append(checks, model.PreCheckItem{
 				ID: "customer_match", Name: "客商一致性",
-				Status: "warning", Message: "收款单对方(" + bankCounterparty + ") 与发票客户(" + inv.CustomerName + ") 不一致，请确认",
+				Status: "warning", Message: "无法比对：收款单缺少对方名称（发票客户: " + inv.CustomerName + "）",
+			})
+		} else if inv.CustomerName == "" && bankCounterparty != "" {
+			checks = append(checks, model.PreCheckItem{
+				ID: "customer_match", Name: "客商一致性",
+				Status: "warning", Message: "无法比对：发票缺少客户名称（收款单对方: " + bankCounterparty + "）",
 			})
 		} else {
 			checks = append(checks, model.PreCheckItem{
 				ID: "customer_match", Name: "客商一致性",
-				Status: "passed", Message: "收款单与发票客商信息匹配",
+				Status: "warning", Message: "无法比对：双方均缺少名称信息",
 			})
 		}
 	}
@@ -498,10 +536,49 @@ type ExecutePairResult struct {
 	Errors        []string     `json:"errors,omitempty"`
 }
 
-// ExecutePairs executes confirmed reconciliation pairs in a single transaction.
-// For each pair: INSERT payment_allocations, UPDATE ar_invoices paid/outstanding/status,
-// UPDATE bank_transactions matched=true, UPDATE reconciliation_pairs status=executed.
+// ExecutePairs submits reconciliation pairs for review.
+// Sets status to pending_review (no actual DB writes yet — approval does that).
 func (s *ReconciliationService) ExecutePairs(ctx context.Context, tenantID uuid.UUID, pairIDs []uuid.UUID) (*ExecutePairResult, error) {
+	if len(pairIDs) == 0 {
+		return &ExecutePairResult{}, nil
+	}
+
+	result := &ExecutePairResult{}
+
+	for _, pairID := range pairIDs {
+		pair, err := s.reconRepo.GetByID(ctx, tenantID, pairID)
+		if err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s not found: %v", pairID, err))
+			continue
+		}
+		// Accept confirmed (manual match) or matched (auto match)
+		if pair.Status != "confirmed" && pair.Status != "matched" {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s status is %s, expected confirmed or matched", pairID, pair.Status))
+			continue
+		}
+
+		if err := s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "pending_review"); err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("update pair status %s: %v", pairID, err))
+			continue
+		}
+		result.ExecutedCount++
+	}
+
+	if len(result.FailedIDs) > 0 {
+		return result, fmt.Errorf("%d of %d pairs failed: %s",
+			len(result.FailedIDs), len(pairIDs), strings.Join(result.Errors, "; "))
+	}
+
+	return result, nil
+}
+
+// ApprovePairs approves pending_review pairs and writes actual data.
+// For each pair: INSERT payment_allocations, UPDATE invoices paid/outstanding/status,
+// UPDATE bank_transactions matched=true, UPDATE reconciliation_pairs status=executed.
+func (s *ReconciliationService) ApprovePairs(ctx context.Context, tenantID uuid.UUID, pairIDs []uuid.UUID) (*ExecutePairResult, error) {
 	if len(pairIDs) == 0 {
 		return &ExecutePairResult{}, nil
 	}
@@ -515,16 +592,16 @@ func (s *ReconciliationService) ExecutePairs(ctx context.Context, tenantID uuid.
 	result := &ExecutePairResult{}
 
 	for _, pairID := range pairIDs {
-		// 1. Verify pair exists and is confirmed
+		// 1. Verify pair exists and is pending_review
 		pair, err := s.reconRepo.GetByID(ctx, tenantID, pairID)
 		if err != nil {
 			result.FailedIDs = append(result.FailedIDs, pairID)
 			result.Errors = append(result.Errors, fmt.Sprintf("pair %s not found: %v", pairID, err))
 			continue
 		}
-		if pair.Status != "confirmed" {
+		if pair.Status != "pending_review" {
 			result.FailedIDs = append(result.FailedIDs, pairID)
-			result.Errors = append(result.Errors, fmt.Sprintf("pair %s status is %s, expected confirmed", pairID, pair.Status))
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s status is %s, expected pending_review", pairID, pair.Status))
 			continue
 		}
 
@@ -646,6 +723,43 @@ func (s *ReconciliationService) ExecutePairs(ctx context.Context, tenantID uuid.
 	return result, nil
 }
 
+// RejectPairs rejects pending_review pairs, setting status to rejected.
+func (s *ReconciliationService) RejectPairs(ctx context.Context, tenantID uuid.UUID, pairIDs []uuid.UUID) (*ExecutePairResult, error) {
+	if len(pairIDs) == 0 {
+		return &ExecutePairResult{}, nil
+	}
+
+	result := &ExecutePairResult{}
+
+	for _, pairID := range pairIDs {
+		pair, err := s.reconRepo.GetByID(ctx, tenantID, pairID)
+		if err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s not found: %v", pairID, err))
+			continue
+		}
+		if pair.Status != "pending_review" {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("pair %s status is %s, expected pending_review", pairID, pair.Status))
+			continue
+		}
+
+		if err := s.reconRepo.UpdateStatus(ctx, tenantID, pairID, "rejected"); err != nil {
+			result.FailedIDs = append(result.FailedIDs, pairID)
+			result.Errors = append(result.Errors, fmt.Sprintf("update pair status %s: %v", pairID, err))
+			continue
+		}
+		result.ExecutedCount++
+	}
+
+	if len(result.FailedIDs) > 0 {
+		return result, fmt.Errorf("%d of %d pairs failed: %s",
+			len(result.FailedIDs), len(pairIDs), strings.Join(result.Errors, "; "))
+	}
+
+	return result, nil
+}
+
 // ReversePair reverses an executed reconciliation pair within the same period.
 // Reverts: payment_allocations (reversed_at), ar_invoices (paid_amount/outstanding/status),
 // bank_transactions (matched=false), reconciliation_pairs (status=reversed).
@@ -734,10 +848,10 @@ func (s *ReconciliationService) ReversePair(ctx context.Context, tenantID, pairI
 			    outstanding_amount = outstanding_amount + $3,
 			    last_allocation_at = NOW(),
 			    status = CASE
-			        WHEN outstanding_amount + $3 >= amount THEN 'verified'
-			        WHEN outstanding_amount + $3 > 0 THEN 'partially_paid'
-			        ELSE 'verified'
-			    END
+			            WHEN outstanding_amount + $3 >= amount THEN 'confirmed'
+			            WHEN outstanding_amount + $3 > 0 THEN 'partially_paid'
+			            ELSE 'confirmed'
+			        END
 			WHERE tenant_id = $1 AND id = $2`,
 			tenantID, pair.TargetID, pair.Amount.String(),
 		)

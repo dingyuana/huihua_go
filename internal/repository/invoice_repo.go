@@ -282,16 +282,18 @@ func (r *InvoiceRepository) GetByInvoiceNo(ctx context.Context, tenantID uuid.UU
 // GetRedInvoices returns all red-letter (is_return=true) invoices for a tenant.
 func (r *InvoiceRepository) GetRedInvoices(ctx context.Context, tenantID uuid.UUID) ([]*model.SalesInvoice, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
-			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
-			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
-			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
-			original_invoice_id,
-			COALESCE(is_part_red, FALSE) AS is_part_red,
-			COALESCE(red_amount, 0) AS red_amount,
-			tax_authority_code, COALESCE(confirm_status, 'unconfirmed') AS confirm_status, COALESCE(confirm_date, created_at) AS confirm_date, created_at
-		FROM sales_invoices WHERE tenant_id = $1 AND is_return = true
-		ORDER BY posting_date DESC`,
+		SELECT si.id, si.invoice_no, si.invoice_code, si.invoice_type, si.customer_id, si.tax_id, si.company_id,
+			si.tenant_id, si.posting_date, si.due_date, si.total_amount, si.tax_amount, si.net_amount, si.outstanding_amount,
+			si.status, si.tax_template_id, si.return_against, si.is_return, si.is_reversed, si.invoice_category, si.remark, si.source_red_invoice_no,
+			si.original_invoice_id,
+			COALESCE(si.is_part_red, FALSE) AS is_part_red,
+			COALESCE(si.red_amount, 0) AS red_amount,
+			si.tax_authority_code, COALESCE(si.confirm_status, 'unconfirmed') AS confirm_status, COALESCE(si.confirm_date, si.created_at) AS confirm_date, si.created_at,
+			COALESCE(p.name, '') AS customer_name
+		FROM sales_invoices si
+		LEFT JOIN parties p ON si.customer_id = p.id
+		WHERE si.tenant_id = $1 AND si.is_return = true
+		ORDER BY si.posting_date DESC`,
 		tenantID)
 	if err != nil {
 		return nil, err
@@ -306,7 +308,7 @@ func (r *InvoiceRepository) GetRedInvoices(ctx context.Context, tenantID uuid.UU
 			&inv.ReturnAgainst, &inv.IsReturn, &inv.IsReversed, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
 			&inv.DocStatus, &inv.CreatedBy, &inv.InvoiceKind, &inv.ElectronicURL, &inv.RedLetterInfoID, &inv.RedLetterReason,
 			&inv.OriginalInvoiceID, &inv.IsPartRed, &inv.RedAmount, &inv.TaxAuthorityCode, &inv.ConfirmStatus, &inv.ConfirmDate,
-			&inv.CreatedAt); err != nil {
+			&inv.CreatedAt, &inv.CustomerName); err != nil {
 			return nil, err
 		}
 		result = append(result, &inv)
@@ -575,24 +577,27 @@ func (r *InvoiceRepository) UpdateOutstandingAmount(ctx context.Context, tenantI
 // ListInvoicesForMatching retrieves invoices that can be matched to a bank transaction.
 func (r *InvoiceRepository) ListInvoicesForMatching(ctx context.Context, tenantID uuid.UUID, customerID *uuid.UUID) ([]model.SalesInvoice, error) {
 	query := `
-		SELECT id, invoice_no, invoice_code, invoice_type, customer_id, tax_id, company_id,
-			tenant_id, posting_date, due_date, total_amount, tax_amount, net_amount, outstanding_amount,
-			status, tax_template_id, return_against, is_return, is_reversed, invoice_category, remark, source_red_invoice_no,
-			docstatus, created_by, invoice_kind, electronic_url, red_letter_info_id, red_letter_reason,
-			original_invoice_id,
-			COALESCE(is_part_red, FALSE) AS is_part_red,
-			COALESCE(red_amount, 0) AS red_amount,
-			tax_authority_code, COALESCE(confirm_status, 'unconfirmed') AS confirm_status, COALESCE(confirm_date, created_at) AS confirm_date, created_at
-		FROM sales_invoices WHERE tenant_id = $1 AND outstanding_amount > 0`
+		SELECT si.id, si.invoice_no, si.invoice_code, si.invoice_type, si.customer_id, si.tax_id, si.company_id,
+			si.tenant_id, si.posting_date, si.due_date, si.total_amount, si.tax_amount, si.net_amount, si.outstanding_amount,
+			si.status, si.tax_template_id, si.return_against, si.is_return, si.is_reversed, si.invoice_category, si.remark, si.source_red_invoice_no,
+			si.docstatus, si.created_by, si.invoice_kind, si.electronic_url, si.red_letter_info_id, si.red_letter_reason,
+			si.original_invoice_id,
+			COALESCE(si.is_part_red, FALSE) AS is_part_red,
+			COALESCE(si.red_amount, 0) AS red_amount,
+			si.tax_authority_code, COALESCE(si.confirm_status, 'unconfirmed') AS confirm_status, COALESCE(si.confirm_date, si.created_at) AS confirm_date, si.created_at,
+			COALESCE(p.name, '') AS customer_name
+		FROM sales_invoices si
+		LEFT JOIN parties p ON si.customer_id = p.id
+		WHERE si.tenant_id = $1 AND si.outstanding_amount > 0`
 	args := []interface{}{tenantID}
 	argIdx := 2
 
 	if customerID != nil {
-		query += fmt.Sprintf(" AND customer_id = $%d", argIdx)
+		query += fmt.Sprintf(" AND si.customer_id = $%d", argIdx)
 		args = append(args, *customerID)
 	}
 
-	query += " ORDER BY posting_date ASC"
+	query += " ORDER BY si.posting_date ASC"
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -609,7 +614,7 @@ func (r *InvoiceRepository) ListInvoicesForMatching(ctx context.Context, tenantI
 			&inv.ReturnAgainst, &inv.IsReturn, &inv.IsReversed, &inv.InvoiceCategory, &inv.Remark, &inv.SourceRedInvoiceNo,
 			&inv.DocStatus, &inv.CreatedBy, &inv.InvoiceKind, &inv.ElectronicURL, &inv.RedLetterInfoID, &inv.RedLetterReason,
 			&inv.OriginalInvoiceID, &inv.IsPartRed, &inv.RedAmount, &inv.TaxAuthorityCode, &inv.ConfirmStatus, &inv.ConfirmDate,
-			&inv.CreatedAt); err != nil {
+			&inv.CreatedAt, &inv.CustomerName); err != nil {
 			return nil, err
 		}
 		invoices = append(invoices, inv)

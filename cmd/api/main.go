@@ -408,6 +408,8 @@ func setupRoutes(app *fiber.App, db *database.DB, rdb *database.RedisClient, cfg
 	api.Post("/reconciliation/precheck", reconciliationHandler.PreCheck)
 	api.Post("/reconciliation/precheck/force-pass", reconciliationHandler.ForcePass)
 	api.Post("/reconciliation/execute", reconciliationHandler.ExecutePairs)
+	api.Post("/reconciliation/approve", reconciliationHandler.ApprovePairs)
+	api.Post("/reconciliation/reject", reconciliationHandler.RejectPairs)
 
 	// Bank reconciliation (银企对账) routes
 	bankReconciliationSvc := service.NewBankReconciliationService(bankTransactionRepo, journalRepo, bankRepo, glEntryRepo)
